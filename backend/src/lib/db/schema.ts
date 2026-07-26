@@ -94,7 +94,9 @@ export const transactionOverrides = pgTable('transaction_overrides', {
   categoryId: uuid('category_id').references(() => categories.id),
   subcategoryId: uuid('subcategory_id').references(() => subcategories.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => ({
+  uniqueTransactionOverride: unique().on(table.userId, table.plaidTransactionId),
+}))
 
 export const budgets = pgTable('budgets', {
   id: uuid('id').primaryKey().defaultRandom(),

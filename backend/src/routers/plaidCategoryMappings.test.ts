@@ -12,13 +12,13 @@ describe('plaidCategoryMappings router', () => {
     const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
 
     await expect(
-      caller.create({ plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: 'cat-1' }),
+      caller.create({ plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: '11111111-1111-1111-1111-111111111111' }),
     ).rejects.toThrow()
   })
 
   it('list returns mappings scoped to the caller', async () => {
     repoMock.list.mockResolvedValue([
-      { id: 'map-1', plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: 'cat-1' },
+      { id: 'map-1', plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: '11111111-1111-1111-1111-111111111111' },
     ])
     const { plaidCategoryMappingsRouter } = await import('./plaidCategoryMappings.js')
     const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })

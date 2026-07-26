@@ -1,0 +1,1 @@
+ALTER TABLE "transaction_overrides" ADD CONSTRAINT "transaction_overrides_user_id_plaid_transaction_id_unique" UNIQUE("user_id","plaid_transaction_id");
