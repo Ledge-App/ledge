@@ -7,7 +7,7 @@ export const budgetsRouter = router({
   list: protectedProcedure.query(({ ctx }) => budgetRepository.list(ctx.jwt)),
 
   create: protectedProcedure
-    .input(z.object({ categoryId: z.string(), amount: z.string(), period: z.enum(['monthly', 'weekly', 'yearly']) }))
+    .input(z.object({ categoryId: z.string().uuid(), amount: z.string(), period: z.enum(['monthly', 'weekly', 'yearly']) }))
     .mutation(({ ctx, input }) => budgetRepository.create(ctx.jwt, ctx.userId, input)),
 
   update: protectedProcedure
