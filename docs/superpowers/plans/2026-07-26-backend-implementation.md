@@ -2399,7 +2399,10 @@ export const categoriesRouter = router({
 
   update: protectedProcedure
     .input(z.object({ id: z.string().uuid(), name: z.string().min(1).optional(), color: z.string().min(1).optional(), icon: z.string().min(1).optional() }))
-    .mutation(({ ctx, input }) => categoryRepository.update(ctx.jwt, input.id, input)),
+    .mutation(({ ctx, input }) => {
+      const { id, ...patch } = input
+      return categoryRepository.update(ctx.jwt, id, patch)
+    }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
