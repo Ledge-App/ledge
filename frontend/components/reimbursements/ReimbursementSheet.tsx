@@ -1,0 +1,77 @@
+import { useState } from 'react'
+import { Pressable, Text, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { colors } from '@/constants/theme'
+import { BottomSheet } from '@/components/ui/BottomSheet'
+import { Button } from '@/components/ui/Button'
+import { formatAmount } from '@/lib/format/money'
+import type { FeedItem } from '@/lib/transactions/resolveFeed'
+
+interface ReimbursementSheetProps {
+  visible: boolean
+  expenseItem: FeedItem | null
+  candidateIncomeItems: FeedItem[]
+  onClose: () => void
+  onSave: (linkedIncomeIds: string[]) => void
+}
+
+export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems, onClose, onSave }: ReimbursementSheetProps) {
+  const [linkedIds, setLinkedIds] = useState<string[]>([])
+
+  if (!expenseItem) return null
+
+  const linkedItems = candidateIncomeItems.filter((c) => linkedIds.includes(c.id))
+  const linkedTotal = linkedItems.reduce((sum, c) => sum + Math.abs(c.amount), 0)
+  const netExpense = Math.max(0, expenseItem.amount - linkedTotal)
+  const unlinkedCandidates = candidateIncomeItems.filter((c) => !linkedIds.includes(c.id))
+
+  function toggleLink(id: string) {
+    setLinkedIds((prev) => (prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id]))
+  }
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose}>
+      <Text className="font-sansSemi text-lg text-textPrimary">Reimbursement for</Text>
+      <Text className="mb-4 font-mono text-base text-expense">
+        {expenseItem.merchantName} {formatAmount(expenseItem.amount)}
+      </Text>
+
+      <Text className="mb-2 font-sansMed text-sm text-textSecondary">Link incoming payment(s)</Text>
+      {unlinkedCandidates.map((candidate) => (
+        <View key={candidate.id} className="flex-row items-center justify-between py-2">
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="arrow-undo" size={16} color={colors.reimbursed} />
+            <Text className="font-sans text-base text-textPrimary">{candidate.merchantName}</Text>
+            <Text className="font-mono text-sm text-income">{formatAmount(candidate.amount)}</Text>
+          </View>
+          <Pressable onPress={() => toggleLink(candidate.id)}>
+            <Text className="font-sansMed text-sm text-primary">Link</Text>
+          </Pressable>
+        </View>
+      ))}
+
+      {linkedItems.length > 0 ? (
+        <View className="mt-4 gap-2">
+          <Text className="font-sansMed text-sm text-textSecondary">Linked:</Text>
+          {linkedItems.map((linked) => (
+            <View key={linked.id} className="flex-row items-center justify-between py-1">
+              <Text className="font-sans text-base text-textPrimary">
+                ✓ {linked.merchantName} {formatAmount(linked.amount)}
+              </Text>
+              <Pressable onPress={() => toggleLink(linked.id)} hitSlop={8}>
+                <Ionicons name="close" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <Text className="my-4 font-sans text-base text-textPrimary">
+        Net expense: {formatAmount(expenseItem.amount)} − {formatAmount(linkedTotal)} ={' '}
+        <Text className="font-mono text-expense">{formatAmount(netExpense)}</Text>
+      </Text>
+
+      <Button label="Save Reimbursement" onPress={() => onSave(linkedIds)} disabled={linkedIds.length === 0} />
+    </BottomSheet>
+  )
+}
