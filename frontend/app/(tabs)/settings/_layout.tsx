@@ -12,6 +12,7 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Settings' }} />
+      <Stack.Screen name="accounts" options={{ title: 'Accounts' }} />
       <Stack.Screen name="plaid-account" options={{ title: 'Plaid Developer Account' }} />
     </Stack>
   )
