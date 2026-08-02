@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Alert, Pressable, SectionList, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
@@ -13,6 +13,7 @@ import { useReimbursements } from '@/hooks/useReimbursements'
 import { useManualTransactions } from '@/hooks/useManualTransactions'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
+import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
@@ -31,8 +32,10 @@ export default function TransactionsScreen() {
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManualId, setEditingManualId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
-  const { feed, categoryById, isLoading, error } = useTransactionFeed()
+  const { feed, categoryById, spendByDay, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
   const categories = useCategories()
   const subcategories = useSubcategories()
@@ -62,6 +65,34 @@ export default function TransactionsScreen() {
         data: items,
       }))
   }, [monthFeed])
+
+  const daysInMonth = new Date(month.year, month.month, 0).getDate()
+  const firstWeekday = new Date(month.year, month.month - 1, 1).getDay()
+  const todayKey = new Date().toISOString().slice(0, 10)
+
+  const calendarDays = useMemo(() => {
+    const days: Array<{ day: number; dateKey: string } | null> = []
+    for (let i = 0; i < firstWeekday; i++) days.push(null)
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${month.year}-${String(month.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      days.push({ day, dateKey })
+    }
+    return days
+  }, [month, daysInMonth, firstWeekday])
+
+  const monthSummary = useMemo(() => {
+    let income = 0
+    let expense = 0
+    for (const item of monthFeed) {
+      if (item.isReimbursementIncome) continue
+      const net = item.netAmount ?? item.amount
+      if (net > 0) expense += net
+      else income += Math.abs(net)
+    }
+    return { income, expense, net: income - expense }
+  }, [monthFeed])
+
+  const selectedDayItems = selectedDay ? monthFeed.filter((item) => item.date === selectedDay) : []
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -171,36 +202,92 @@ export default function TransactionsScreen() {
       <View className="flex-row items-center justify-between px-5 py-3">
         <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
         <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
-        <Ionicons name="list" size={20} color={colors.primary} />
+        <View className="flex-row gap-3">
+          <Pressable onPress={() => setViewMode('list')} accessibilityLabel="List view">
+            <Ionicons name="list" size={20} color={viewMode === 'list' ? colors.primary : colors.textMuted} />
+          </Pressable>
+          <Pressable onPress={() => setViewMode('calendar')} accessibilityLabel="Calendar view">
+            <Ionicons name="calendar" size={20} color={viewMode === 'calendar' ? colors.primary : colors.textMuted} />
+          </Pressable>
+        </View>
       </View>
 
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
       {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 96 }}
-        renderSectionHeader={({ section }) => (
-          <View className="flex-row items-center justify-between bg-background py-2">
-            <Text className="font-sansSemi text-sm text-textSecondary">{section.title}</Text>
-            <Text className="font-mono text-sm text-textSecondary">{formatAmount(section.total)}</Text>
+      {viewMode === 'list' ? (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 96 }}
+          renderSectionHeader={({ section }) => (
+            <View className="flex-row items-center justify-between bg-background py-2">
+              <Text className="font-sansSemi text-sm text-textSecondary">{section.title}</Text>
+              <Text className="font-mono text-sm text-textSecondary">{formatAmount(section.total)}</Text>
+            </View>
+          )}
+          renderItem={({ item }) => {
+            const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
+            return (
+              <TransactionRow
+                item={item}
+                categoryName={category?.name ?? 'Uncategorized'}
+                categoryColor={category?.color ?? colors.textMuted}
+                categoryIcon={category?.icon ?? '❓'}
+                reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
+                onPress={() => handleRowPress(item)}
+              />
+            )
+          }}
+        />
+      ) : (
+        <View className="flex-1 px-5">
+          <View className="mb-4 flex-row flex-wrap">
+            {calendarDays.map((cell, index) =>
+              cell ? (
+                <View key={cell.dateKey} style={{ width: '14.28%' }}>
+                  <CalendarCell
+                    day={cell.day}
+                    netAmount={spendByDay.get(cell.dateKey)?.net ?? null}
+                    hasReimbursement={spendByDay.get(cell.dateKey)?.hasReimbursement ?? false}
+                    isToday={cell.dateKey === todayKey}
+                    isSelected={cell.dateKey === selectedDay}
+                    onPress={() => setSelectedDay(cell.dateKey === selectedDay ? null : cell.dateKey)}
+                  />
+                </View>
+              ) : (
+                <View key={`empty-${index}`} style={{ width: '14.28%' }} />
+              ),
+            )}
           </View>
-        )}
-        renderItem={({ item }) => {
-          const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
-          return (
-            <TransactionRow
-              item={item}
-              categoryName={category?.name ?? 'Uncategorized'}
-              categoryColor={category?.color ?? colors.textMuted}
-              categoryIcon={category?.icon ?? '❓'}
-              reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-              onPress={() => handleRowPress(item)}
+
+          <View className="mb-4 flex-row justify-between rounded-md bg-surface p-4">
+            <Text className="font-mono text-sm text-income">Income {formatAmount(monthSummary.income)}</Text>
+            <Text className="font-mono text-sm text-expense">Expenses {formatAmount(monthSummary.expense)}</Text>
+            <Text className="font-mono text-sm text-textPrimary">Net {formatAmount(monthSummary.net)}</Text>
+          </View>
+
+          {selectedDay ? (
+            <FlatList
+              data={selectedDayItems}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
+                return (
+                  <TransactionRow
+                    item={item}
+                    categoryName={category?.name ?? 'Uncategorized'}
+                    categoryColor={category?.color ?? colors.textMuted}
+                    categoryIcon={category?.icon ?? '❓'}
+                    reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
+                    onPress={() => handleRowPress(item)}
+                  />
+                )
+              }}
             />
-          )
-        }}
-      />
+          ) : null}
+        </View>
+      )}
 
       <Pressable
         onPress={() => {
