@@ -67,6 +67,10 @@ export default function TransactionsScreen() {
     setSelectedDay(null)
   }, [month])
 
+  useEffect(() => {
+    setCategoryFilter(categoryIdParam ?? null)
+  }, [categoryIdParam])
+
   const sections = useMemo(() => {
     const byDate = new Map<string, FeedItem[]>()
     for (const item of filteredFeed) {
