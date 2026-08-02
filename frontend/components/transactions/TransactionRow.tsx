@@ -7,6 +7,7 @@ interface TransactionRowProps {
   categoryName: string
   categoryColor: string
   categoryIcon: string
+  reimbursementCategoryName: string | null
   onPress?: () => void
 }
 
@@ -15,9 +16,9 @@ function formatAmount(amount: number): string {
   return `${sign}$${Math.abs(amount).toFixed(2)}`
 }
 
-export function TransactionRow({ item, categoryName, categoryColor, categoryIcon, onPress }: TransactionRowProps) {
+export function TransactionRow({ item, categoryName, categoryColor, categoryIcon, reimbursementCategoryName, onPress }: TransactionRowProps) {
   const isIncome = item.amount < 0
-  const amountColor = item.isReimbursementIncome ? colors.income : isIncome ? colors.income : colors.expense
+  const amountColor = isIncome ? colors.income : colors.expense
   const iconColor = item.isReimbursementIncome ? colors.reimbursed : categoryColor
   const iconBg = item.isReimbursementIncome ? hexToRgba(colors.reimbursed, 0.18) : hexToRgba(categoryColor, 0.18)
 
@@ -34,7 +35,11 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
 
       <View className="flex-1 gap-0.5">
         <Text className="font-sansSemi text-base text-textPrimary">
-          {item.isReimbursementIncome ? 'Reimbursement' : categoryName}
+          {item.isReimbursementIncome
+            ? reimbursementCategoryName
+              ? `Reimbursement · ${reimbursementCategoryName}`
+              : 'Reimbursement'
+            : categoryName}
         </Text>
         <Text className="font-sans text-sm text-textSecondary" numberOfLines={1}>
           {item.merchantName}
