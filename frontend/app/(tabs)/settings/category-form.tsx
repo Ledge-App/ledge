@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { router, useLocalSearchParams } from 'expo-router'
-import { View } from 'react-native'
+import { Alert, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useCategories } from '@/hooks/useCategories'
 import { usePlaidCategoryMappings } from '@/hooks/usePlaidCategoryMappings'
 import { CategoryForm } from '@/components/categories/CategoryForm'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { PFC_TAXONOMY } from '@/constants/plaid'
 
 function primaryForCode(detailedCode: string): string {
@@ -57,16 +58,34 @@ export default function CategoryFormScreen() {
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!category) return
-    setError(null)
-    try {
-      await categories.delete({ id: category.id })
-      router.back()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this category.')
-    }
+    Alert.alert(
+      `Delete "${category.name}"?`,
+      'Transactions using this category will become uncategorized. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setError(null)
+            try {
+              await categories.delete({ id: category.id })
+              router.back()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Could not delete this category.')
+            }
+          },
+        },
+      ],
+    )
   }
+
+  // CategoryForm seeds its name/color/icon/selectedCodes state from props with once-only
+  // useState initializers, so it must never mount before both queries have resolved —
+  // otherwise an edit would open with empty PFC codes and Save would wipe real mappings.
+  if (categories.isLoading || mappings.isLoading) return <LoadingScreen />
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
