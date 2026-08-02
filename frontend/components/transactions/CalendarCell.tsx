@@ -23,6 +23,7 @@ export function CalendarCell({ day, netAmount, hasReimbursement, isToday, isSele
   }
 
   const amountColor = netAmount == null ? colors.textMuted : netAmount < 0 ? colors.income : colors.expense
+  const dateColor = isToday ? colors.primary : netAmount != null ? colors.textPrimary : colors.textMuted
 
   return (
     <Animated.View style={animatedStyle}>
@@ -37,7 +38,7 @@ export function CalendarCell({ day, netAmount, hasReimbursement, isToday, isSele
           borderColor: colors.primary,
         }}
       >
-        <Text className="font-sansMed text-sm" style={{ color: isToday ? colors.primary : colors.textPrimary }}>
+        <Text className="font-sansMed text-sm" style={{ color: dateColor }}>
           {day}
         </Text>
         {netAmount != null ? (
