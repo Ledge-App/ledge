@@ -29,6 +29,7 @@ export default function SettingsIndexScreen() {
             label="Plaid Developer Account"
             onPress={() => router.push('/(tabs)/settings/plaid-account')}
           />
+          <SettingsRow icon="pricetags" label="Categories" onPress={() => router.push('/(tabs)/settings/categories')} />
         </View>
       </View>
 
