@@ -14,6 +14,8 @@ import { TextField } from '@/components/ui/TextField'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
@@ -26,7 +28,7 @@ export default function BudgetsScreen() {
   const [newPeriod, setNewPeriod] = useState<Budget['period']>('monthly')
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const { feed, error } = useTransactionFeed()
+  const { feed, isLoading, error } = useTransactionFeed()
   const budgets = useBudgets()
   const categories = useCategories()
 
@@ -66,6 +68,19 @@ export default function BudgetsScreen() {
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save this budget. Try again.')
     }
+  }
+
+  const hasNoCategories = !categories.isLoading && (categories.data?.length ?? 0) === 0
+
+  // Every hook above must run before these early returns (rules of hooks).
+  if (isLoading || budgets.isLoading) return <LoadingScreen />
+
+  if (hasNoCategories) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+        <EmptyState message="No categories yet — add one in Settings → Categories to start budgeting." />
+      </SafeAreaView>
+    )
   }
 
   return (

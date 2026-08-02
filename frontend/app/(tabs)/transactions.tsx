@@ -20,6 +20,8 @@ import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
 import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
@@ -208,6 +210,9 @@ export default function TransactionsScreen() {
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
   )
 
+  // Every hook above must run before this early return (rules of hooks).
+  if (isLoading) return <LoadingScreen />
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-row items-center justify-between px-5 py-3">
@@ -241,7 +246,9 @@ export default function TransactionsScreen() {
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
       {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-      {viewMode === 'list' ? (
+      {filteredFeed.length === 0 ? (
+        <EmptyState message="No transactions this month" />
+      ) : viewMode === 'list' ? (
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}

@@ -12,6 +12,7 @@ import { usePlaidLink } from '@/hooks/usePlaidLink'
 import { HeroCard } from '@/components/dashboard/HeroCard'
 import { AccountRow } from '@/components/accounts/AccountRow'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 // Plaid's AccountType enum: 'investment' | 'credit' | 'depository' | 'loan' | 'brokerage' | 'other'.
 // Credit cards AND loans (mortgage, student, auto) are liabilities — they must be subtracted
@@ -72,6 +73,29 @@ export default function AccountsScreen() {
       setIsConnecting(false)
       setError(err instanceof Error ? err.message : 'Could not open Plaid Link. Try again.')
     }
+  }
+
+  // design.md specifies a full-screen prompt for this screen when nothing is linked,
+  // routing to the BYOK screen first if no Plaid credentials exist yet.
+  if (!accounts.isLoading && (accounts.data?.length ?? 0) === 0 && !credentials.isLoading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+        <View className="px-5 pt-4">{error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}</View>
+        {!credentials.data ? (
+          <EmptyState
+            message="Connect your Plaid developer account to get started"
+            actionLabel="Connect Plaid"
+            onAction={() => router.push('/(tabs)/settings/plaid-account')}
+          />
+        ) : (
+          <EmptyState
+            message="Link your first account to get started"
+            actionLabel="Link Account"
+            onAction={handleAddAccount}
+          />
+        )}
+      </SafeAreaView>
+    )
   }
 
   return (

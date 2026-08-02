@@ -19,6 +19,8 @@ import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
@@ -122,6 +124,19 @@ export default function DashboardScreen() {
   const candidateIncomeItems = feed.filter(
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
   )
+
+  const hasNoAccounts = !accounts.isLoading && (accounts.data?.length ?? 0) === 0
+
+  // Every hook above must run before these early returns (rules of hooks).
+  if (isLoading) return <LoadingScreen />
+
+  if (hasNoAccounts) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+        <EmptyState message="Link an account in Settings to see your spending here." />
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
