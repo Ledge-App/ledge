@@ -8,6 +8,7 @@ import { useCategories } from './useCategories'
 import { useReimbursements } from './useReimbursements'
 import { getCachedTransactions, setCachedTransactions, getCursor, setCursor } from '@/lib/storage/mmkv'
 import { applyReimbursements, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { PlaidTransaction } from '@/types/domain'
 
 export function useTransactionFeed() {
@@ -105,38 +106,15 @@ export function useTransactionFeed() {
 
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 
-  const spendByCategory = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const item of feed) {
-      if (item.amount <= 0 || !item.categoryId) continue
-      const net = item.netAmount ?? item.amount
-      totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + net)
-    }
-    return totals
-  }, [feed])
-
-  // Per-day aggregate lives here (rather than in the calendar screen) so Dashboard,
-  // Budgets and the Transactions calendar all read identical numbers.
-  const spendByDay = useMemo(() => {
-    const totals = new Map<string, { net: number; hasReimbursement: boolean }>()
-    for (const item of feed) {
-      const existing = totals.get(item.date) ?? { net: 0, hasReimbursement: false }
-      const hasReimbursement = existing.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome
-      if (item.isReimbursementIncome) {
-        totals.set(item.date, { net: existing.net, hasReimbursement })
-        continue
-      }
-      const net = item.netAmount ?? item.amount
-      totals.set(item.date, { net: existing.net + net, hasReimbursement })
-    }
-    return totals
-  }, [feed])
+  // Delegates to the shared aggregator rather than recomputing inline, so these numbers
+  // can never drift from what Dashboard, Budgets and the Transactions calendar show.
+  const aggregate = useMemo(() => aggregateMonth(feed), [feed])
 
   return {
     feed,
     categoryById,
-    spendByCategory,
-    spendByDay,
+    spendByCategory: aggregate.spendByCategory,
+    spendByDay: aggregate.spendByDay,
     isLoading:
       accounts.isLoading ||
       manualTransactions.isLoading ||

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { Budget } from '@/types/domain'
 
 export default function BudgetsScreen() {
@@ -31,14 +32,7 @@ export default function BudgetsScreen() {
 
   const monthFeed = useMemo(() => filterByMonth(feed, month), [feed, month])
 
-  const spendByCategory = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const item of monthFeed) {
-      if (item.amount <= 0 || !item.categoryId || item.isReimbursementIncome) continue
-      totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + (item.netAmount ?? item.amount))
-    }
-    return totals
-  }, [monthFeed])
+  const { spendByCategory } = useMemo(() => aggregateMonth(monthFeed), [monthFeed])
 
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 

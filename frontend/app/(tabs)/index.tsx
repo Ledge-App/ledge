@@ -21,6 +21,7 @@ import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementShe
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
 export default function DashboardScreen() {
@@ -48,27 +49,10 @@ export default function DashboardScreen() {
   )
   const monthFeed = useMemo(() => filterByMonth(accountFilteredFeed, month), [accountFilteredFeed, month])
 
-  const spendByCategory = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const item of monthFeed) {
-      if (item.amount <= 0 || !item.categoryId || item.isReimbursementIncome) continue
-      const net = item.netAmount ?? item.amount
-      totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + net)
-    }
-    return totals
-  }, [monthFeed])
-
-  const totalExpenses = Array.from(spendByCategory.values()).reduce((sum, v) => sum + v, 0)
-
-  const incomeTotals = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const item of monthFeed) {
-      if (item.amount >= 0 || !item.categoryId || item.isReimbursementIncome) continue
-      totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + Math.abs(item.amount))
-    }
-    return totals
-  }, [monthFeed])
-  const totalIncome = Array.from(incomeTotals.values()).reduce((sum, v) => sum + v, 0)
+  const { spendByCategory, incomeByCategory, totalExpense, totalIncome } = useMemo(
+    () => aggregateMonth(monthFeed),
+    [monthFeed],
+  )
 
   const recentTransactions = accountFilteredFeed.slice(0, 5)
 
@@ -147,7 +131,7 @@ export default function DashboardScreen() {
         {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
         <Pressable onPress={() => setExpensesOpen((v) => !v)} className="flex-row items-center gap-2">
-          <Text className="font-sansSemi text-lg text-expense">Expenses {formatAmount(totalExpenses)}</Text>
+          <Text className="font-sansSemi text-lg text-expense">Expenses {formatAmount(totalExpense)}</Text>
           <Ionicons name={expensesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.expense} />
         </Pressable>
         {expensesOpen ? (
@@ -172,9 +156,9 @@ export default function DashboardScreen() {
         </Pressable>
         {incomeOpen ? (
           <View className="flex-row flex-wrap gap-3">
-            {(categories.data?.filter((c) => incomeTotals.has(c.id)) ?? []).map((category) => (
+            {(categories.data?.filter((c) => incomeByCategory.has(c.id)) ?? []).map((category) => (
               <View key={category.id} className="w-[48%]">
-                <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeTotals.get(category.id) ?? 0} budget={null} />
+                <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeByCategory.get(category.id) ?? 0} budget={null} />
               </View>
             ))}
           </View>

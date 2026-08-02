@@ -22,6 +22,7 @@ import { ManualTransactionSheet } from '@/components/transactions/ManualTransact
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { ManualTransaction } from '@/types/domain'
 
@@ -95,34 +96,9 @@ export default function TransactionsScreen() {
     return days
   }, [month, daysInMonth, firstWeekday])
 
-  const monthSummary = useMemo(() => {
-    let income = 0
-    let expense = 0
-    for (const item of filteredFeed) {
-      if (item.isReimbursementIncome) continue
-      const net = item.netAmount ?? item.amount
-      if (net > 0) expense += net
-      else income += Math.abs(net)
-    }
-    return { income, expense, net: income - expense }
-  }, [filteredFeed])
+  const { spendByDay, totalExpense, totalIncome } = useMemo(() => aggregateMonth(filteredFeed), [filteredFeed])
 
   const selectedDayItems = selectedDay ? filteredFeed.filter((item) => item.date === selectedDay) : []
-
-  const spendByDayFiltered = useMemo(() => {
-    const totals = new Map<string, { net: number; hasReimbursement: boolean }>()
-    for (const item of filteredFeed) {
-      const existing = totals.get(item.date) ?? { net: 0, hasReimbursement: false }
-      const hasReimbursement = existing.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome
-      if (item.isReimbursementIncome) {
-        totals.set(item.date, { net: existing.net, hasReimbursement })
-        continue
-      }
-      const net = item.netAmount ?? item.amount
-      totals.set(item.date, { net: existing.net + net, hasReimbursement })
-    }
-    return totals
-  }, [filteredFeed])
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -300,8 +276,8 @@ export default function TransactionsScreen() {
                 <View key={cell.dateKey} style={{ width: '14.28%' }}>
                   <CalendarCell
                     day={cell.day}
-                    netAmount={spendByDayFiltered.get(cell.dateKey)?.net ?? null}
-                    hasReimbursement={spendByDayFiltered.get(cell.dateKey)?.hasReimbursement ?? false}
+                    netAmount={spendByDay.get(cell.dateKey)?.net ?? null}
+                    hasReimbursement={spendByDay.get(cell.dateKey)?.hasReimbursement ?? false}
                     isToday={cell.dateKey === todayKey}
                     isSelected={cell.dateKey === selectedDay}
                     onPress={() => setSelectedDay(cell.dateKey === selectedDay ? null : cell.dateKey)}
@@ -314,9 +290,9 @@ export default function TransactionsScreen() {
           </View>
 
           <View className="mb-4 flex-row justify-between rounded-md bg-surface p-4">
-            <Text className="font-mono text-sm text-income">Income {formatAmount(monthSummary.income)}</Text>
-            <Text className="font-mono text-sm text-expense">Expenses {formatAmount(monthSummary.expense)}</Text>
-            <Text className="font-mono text-sm text-textPrimary">Net {formatAmount(monthSummary.net)}</Text>
+            <Text className="font-mono text-sm text-income">Income {formatAmount(totalIncome)}</Text>
+            <Text className="font-mono text-sm text-expense">Expenses {formatAmount(totalExpense)}</Text>
+            <Text className="font-mono text-sm text-textPrimary">Net {formatAmount(totalIncome - totalExpense)}</Text>
           </View>
 
           {selectedDay ? (
