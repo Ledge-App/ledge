@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Ledge",
+    "slug": "ledge",
+    "scheme": "ledge",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAFAF8",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ledge.app",
+      "associatedDomains": ["applinks:ledge-oauth-88792.netlify.app"]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAFAF8",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ledge.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store"
+    ]
+  }
+}
