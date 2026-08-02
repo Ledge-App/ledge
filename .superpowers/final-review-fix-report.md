@@ -172,3 +172,13 @@ Placed near the existing `selectedDay` reset effect (line ~69).
   month, per the fix brief's "in place of the normal SectionList/calendar content".
 - Fix 8 completes Fix 3's category filtering by handling the re-mounting case where the
   route param changes after the Transactions tab has already been mounted once.
+
+## Re-review outcome (final round)
+Findings 1,2,4+5,6,7 fully ADDRESSED and verified (aggregateMonth logic traced by hand across categorized/uncategorized/reimbursed/fully-reimbursed cases; consumption confirmed in all 4 call sites with no parallel implementations surviving). Finding 3 was partially addressed (worked on first tab mount, not on repeat navigation) — fixed with one more commit (99a1096) syncing categoryFilter via useEffect on categoryIdParam change.
+
+Deferred (not blocking, logged for awareness):
+- isLoading now triggers a full-screen LoadingScreen blank on every background resync (not just first load), since useTransactionFeed's isLoading includes the sync mutation's in-flight state. Not currently user-facing since no pull-to-refresh/RefreshControl exists anywhere in the app yet. Should gate on `feed.length === 0 && isLoading` instead when pull-to-refresh is added.
+- Transactions "No transactions this month" empty-state copy also shows when a category filter yields zero rows in an otherwise non-empty month (cosmetic wording, not incorrect).
+- Dashboard headline total (aggregateMonth's totalExpense, includes uncategorized items) intentionally no longer reconciles exactly with the sum of visible category cards (which only show categorized spend) — a deliberate convention choice from the aggregation refactor.
+
+Core screens plan (all 18 tasks) is complete, merged to main, and ready to finish.
