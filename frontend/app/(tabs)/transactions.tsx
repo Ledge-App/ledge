@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, FlatList, Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -35,7 +35,7 @@ export default function TransactionsScreen() {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
-  const { feed, categoryById, spendByDay, isLoading, error } = useTransactionFeed()
+  const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
   const categories = useCategories()
   const subcategories = useSubcategories()
@@ -49,6 +49,10 @@ export default function TransactionsScreen() {
     [feed, selectedAccountId],
   )
   const monthFeed = useMemo(() => filterByMonth(accountFilteredFeed, month), [accountFilteredFeed, month])
+
+  useEffect(() => {
+    setSelectedDay(null)
+  }, [month])
 
   const sections = useMemo(() => {
     const byDate = new Map<string, FeedItem[]>()
@@ -68,7 +72,8 @@ export default function TransactionsScreen() {
 
   const daysInMonth = new Date(month.year, month.month, 0).getDate()
   const firstWeekday = new Date(month.year, month.month - 1, 1).getDay()
-  const todayKey = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
   const calendarDays = useMemo(() => {
     const days: Array<{ day: number; dateKey: string } | null> = []
@@ -93,6 +98,21 @@ export default function TransactionsScreen() {
   }, [monthFeed])
 
   const selectedDayItems = selectedDay ? monthFeed.filter((item) => item.date === selectedDay) : []
+
+  const spendByDayFiltered = useMemo(() => {
+    const totals = new Map<string, { net: number; hasReimbursement: boolean }>()
+    for (const item of monthFeed) {
+      const existing = totals.get(item.date) ?? { net: 0, hasReimbursement: false }
+      const hasReimbursement = existing.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome
+      if (item.isReimbursementIncome) {
+        totals.set(item.date, { net: existing.net, hasReimbursement })
+        continue
+      }
+      const net = item.netAmount ?? item.amount
+      totals.set(item.date, { net: existing.net + net, hasReimbursement })
+    }
+    return totals
+  }, [monthFeed])
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -242,14 +262,21 @@ export default function TransactionsScreen() {
         />
       ) : (
         <View className="flex-1 px-5">
+          <View className="mb-2 flex-row">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              <Text key={day} className="text-center font-sansMed text-xs text-textMuted" style={{ width: '14.28%' }}>
+                {day}
+              </Text>
+            ))}
+          </View>
           <View className="mb-4 flex-row flex-wrap">
             {calendarDays.map((cell, index) =>
               cell ? (
                 <View key={cell.dateKey} style={{ width: '14.28%' }}>
                   <CalendarCell
                     day={cell.day}
-                    netAmount={spendByDay.get(cell.dateKey)?.net ?? null}
-                    hasReimbursement={spendByDay.get(cell.dateKey)?.hasReimbursement ?? false}
+                    netAmount={spendByDayFiltered.get(cell.dateKey)?.net ?? null}
+                    hasReimbursement={spendByDayFiltered.get(cell.dateKey)?.hasReimbursement ?? false}
                     isToday={cell.dateKey === todayKey}
                     isSelected={cell.dateKey === selectedDay}
                     onPress={() => setSelectedDay(cell.dateKey === selectedDay ? null : cell.dateKey)}
@@ -271,6 +298,7 @@ export default function TransactionsScreen() {
             <FlatList
               data={selectedDayItems}
               keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingBottom: 96 }}
               renderItem={({ item }) => {
                 const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
                 return (
