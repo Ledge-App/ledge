@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ledge.app",
-      "associatedDomains": ["applinks:ledge-oauth-88792.netlify.app"]
+      "associatedDomains": [
+        "applinks:ledge-oauth-88792.netlify.app"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -31,7 +33,8 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ]
   }
 }
