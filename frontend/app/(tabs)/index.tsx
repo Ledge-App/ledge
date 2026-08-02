@@ -116,7 +116,12 @@ export default function DashboardScreen() {
     }
   }
 
-  const candidateIncomeItems = accountFilteredFeed.filter((item) => item.amount < 0 && item.id !== reimbursementItem?.id)
+  // Sourced from the raw feed, not the account-filtered one: a reimbursement's income leg
+  // usually lands on a different account than the expense. Already-linked income is
+  // excluded so the same payment can't be attached to two expenses.
+  const candidateIncomeItems = feed.filter(
+    (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
+  )
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
