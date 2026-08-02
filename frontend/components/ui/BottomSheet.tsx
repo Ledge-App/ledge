@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal, Pressable, View } from 'react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { borderRadius, colors } from '@/constants/theme'
 
 interface BottomSheetProps {
@@ -13,17 +13,25 @@ interface BottomSheetProps {
 // add/edit manual transaction sheet — built in later sub-projects on top of this).
 export function BottomSheet({ visible, onClose, children }: BottomSheetProps) {
   const translateY = useSharedValue(600)
+  const [isMounted, setIsMounted] = useState(visible)
 
   useEffect(() => {
-    translateY.value = withSpring(visible ? 0 : 600, { damping: 20, stiffness: 180 })
+    if (visible) {
+      setIsMounted(true)
+      translateY.value = withSpring(0, { damping: 20, stiffness: 180 })
+    } else {
+      translateY.value = withSpring(600, { damping: 20, stiffness: 180 }, (finished) => {
+        if (finished) runOnJS(setIsMounted)(false)
+      })
+    }
   }, [visible, translateY])
 
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }))
 
-  if (!visible) return null
+  if (!isMounted) return null
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible={isMounted} animationType="fade" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose} accessibilityLabel="Close">
         <Pressable onPress={() => {}}>
           <Animated.View
