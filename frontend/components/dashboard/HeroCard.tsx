@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Ionicons } from '@expo/vector-icons'
 import { Pressable, Text, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
-import { colors } from '@/constants/theme'
+import { colors, hexToRgba } from '@/constants/theme'
 
 interface HeroCardProps {
   netWorth: number | null
@@ -39,25 +39,25 @@ export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading }:
 
       <View className="mb-6 mt-4">
         {isLoading ? (
-          <View className="h-9 w-40 rounded-md" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }} />
+          <View className="h-9 w-40 rounded-md" style={{ backgroundColor: hexToRgba(colors.textInverse, 0.2) }} />
         ) : (
           <Text className="font-display text-3xl text-textInverse">{formatAmount(netWorth, isMasked)}</Text>
         )}
       </View>
 
       <Svg width="100%" height={24} viewBox="0 0 300 24" style={{ position: 'absolute', bottom: 56, opacity: 0.5 }}>
-        <Path d="M0 12 Q 37.5 0 75 12 T 150 12 T 225 12 T 300 12 V 24 H 0 Z" fill="rgba(15,118,110,0.35)" />
+        <Path d="M0 12 Q 37.5 0 75 12 T 150 12 T 225 12 T 300 12 V 24 H 0 Z" fill={colors.primaryMuted} />
       </Svg>
 
       <View className="flex-row justify-between">
         <View>
-          <Text className="font-sans text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
+          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.7) }}>
             Total Assets
           </Text>
           <Text className="font-sansSemi text-base text-textInverse">{formatAmount(totalAssets, isMasked)}</Text>
         </View>
         <View>
-          <Text className="font-sans text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
+          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.7) }}>
             Total Liabilities
           </Text>
           <Text className="font-sansSemi text-base text-textInverse">{formatAmount(totalLiabilities, isMasked)}</Text>
