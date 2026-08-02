@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, FlatList, Pressable, SectionList, Text, View } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
@@ -25,8 +26,11 @@ import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { ManualTransaction } from '@/types/domain'
 
 export default function TransactionsScreen() {
+  // Budgets navigates here with a categoryId param when a budget card is tapped.
+  const { categoryId: categoryIdParam } = useLocalSearchParams<{ categoryId?: string }>()
   const [month, setMonth] = useState(currentMonth())
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(categoryIdParam ?? null)
   const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
   const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
@@ -50,13 +54,19 @@ export default function TransactionsScreen() {
   )
   const monthFeed = useMemo(() => filterByMonth(accountFilteredFeed, month), [accountFilteredFeed, month])
 
+  // Category filtering is an additional narrowing on top of the account+month filter.
+  const filteredFeed = useMemo(
+    () => (categoryFilter ? monthFeed.filter((item) => item.categoryId === categoryFilter) : monthFeed),
+    [monthFeed, categoryFilter],
+  )
+
   useEffect(() => {
     setSelectedDay(null)
   }, [month])
 
   const sections = useMemo(() => {
     const byDate = new Map<string, FeedItem[]>()
-    for (const item of monthFeed) {
+    for (const item of filteredFeed) {
       const bucket = byDate.get(item.date) ?? []
       bucket.push(item)
       byDate.set(item.date, bucket)
@@ -68,7 +78,7 @@ export default function TransactionsScreen() {
         total: items.reduce((sum, i) => (i.isReimbursementIncome ? sum : sum + (i.netAmount ?? i.amount)), 0),
         data: items,
       }))
-  }, [monthFeed])
+  }, [filteredFeed])
 
   const daysInMonth = new Date(month.year, month.month, 0).getDate()
   const firstWeekday = new Date(month.year, month.month - 1, 1).getDay()
@@ -88,20 +98,20 @@ export default function TransactionsScreen() {
   const monthSummary = useMemo(() => {
     let income = 0
     let expense = 0
-    for (const item of monthFeed) {
+    for (const item of filteredFeed) {
       if (item.isReimbursementIncome) continue
       const net = item.netAmount ?? item.amount
       if (net > 0) expense += net
       else income += Math.abs(net)
     }
     return { income, expense, net: income - expense }
-  }, [monthFeed])
+  }, [filteredFeed])
 
-  const selectedDayItems = selectedDay ? monthFeed.filter((item) => item.date === selectedDay) : []
+  const selectedDayItems = selectedDay ? filteredFeed.filter((item) => item.date === selectedDay) : []
 
   const spendByDayFiltered = useMemo(() => {
     const totals = new Map<string, { net: number; hasReimbursement: boolean }>()
-    for (const item of monthFeed) {
+    for (const item of filteredFeed) {
       const existing = totals.get(item.date) ?? { net: 0, hasReimbursement: false }
       const hasReimbursement = existing.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome
       if (item.isReimbursementIncome) {
@@ -112,7 +122,7 @@ export default function TransactionsScreen() {
       totals.set(item.date, { net: existing.net + net, hasReimbursement })
     }
     return totals
-  }, [monthFeed])
+  }, [filteredFeed])
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -231,6 +241,21 @@ export default function TransactionsScreen() {
           </Pressable>
         </View>
       </View>
+
+      {categoryFilter ? (
+        <View className="flex-row px-5 pb-2">
+          <Pressable
+            onPress={() => setCategoryFilter(null)}
+            accessibilityLabel="Clear category filter"
+            className="flex-row items-center gap-2 self-start rounded-full bg-surface px-3 py-1.5"
+          >
+            <Text className="font-sansMed text-sm text-textPrimary">
+              {categoryById.get(categoryFilter)?.name ?? 'Category'}
+            </Text>
+            <Text className="font-sansMed text-sm text-textMuted">×</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
       {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
