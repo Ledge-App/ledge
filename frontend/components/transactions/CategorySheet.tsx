@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Switch, Text, View } from 'react-native'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
@@ -22,6 +22,15 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
   const [markReimbursed, setMarkReimbursed] = useState(false)
+
+  // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
+  // so local state must be re-derived whenever the sheet is reopened for a different item.
+  useEffect(() => {
+    setCategoryId(item?.categoryId ?? null)
+    setSubcategoryId(item?.subcategoryId ?? null)
+    setApplyToVendor(true)
+    setMarkReimbursed(false)
+  }, [item?.id])
 
   if (!item) return null
 

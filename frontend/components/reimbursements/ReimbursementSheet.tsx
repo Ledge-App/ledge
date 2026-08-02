@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
@@ -17,6 +17,12 @@ interface ReimbursementSheetProps {
 
 export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems, onClose, onSave }: ReimbursementSheetProps) {
   const [linkedIds, setLinkedIds] = useState<string[]>([])
+
+  // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
+  // so links selected for a previous expense must be cleared when a new one is opened.
+  useEffect(() => {
+    setLinkedIds([])
+  }, [expenseItem?.id])
 
   if (!expenseItem) return null
 
@@ -42,7 +48,7 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
           <View className="flex-row items-center gap-2">
             <Ionicons name="arrow-undo" size={16} color={colors.reimbursed} />
             <Text className="font-sans text-base text-textPrimary">{candidate.merchantName}</Text>
-            <Text className="font-mono text-sm text-income">{formatAmount(candidate.amount)}</Text>
+            <Text className="font-mono text-sm text-income">{formatAmount(Math.abs(candidate.amount))}</Text>
           </View>
           <Pressable onPress={() => toggleLink(candidate.id)}>
             <Text className="font-sansMed text-sm text-primary">Link</Text>
@@ -56,7 +62,7 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
           {linkedItems.map((linked) => (
             <View key={linked.id} className="flex-row items-center justify-between py-1">
               <Text className="font-sans text-base text-textPrimary">
-                ✓ {linked.merchantName} {formatAmount(linked.amount)}
+                ✓ {linked.merchantName} {formatAmount(Math.abs(linked.amount))}
               </Text>
               <Pressable onPress={() => toggleLink(linked.id)} hitSlop={8}>
                 <Ionicons name="close" size={18} color={colors.textMuted} />
