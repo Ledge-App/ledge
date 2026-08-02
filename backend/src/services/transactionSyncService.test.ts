@@ -2,57 +2,41 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const credRepoMock = { getDecrypted: vi.fn() }
 const itemRepoMock = { listDecryptedTokens: vi.fn() }
+const transactionRepoMock = { sync: vi.fn() }
 vi.mock('../repositories/plaidCredentialRepository.js', () => ({ plaidCredentialRepository: credRepoMock }))
 vi.mock('../repositories/plaidItemRepository.js', () => ({ plaidItemRepository: itemRepoMock }))
-
-const transactionsSync = vi.fn()
-vi.mock('../lib/plaid/client.js', () => ({
-  createPlaidClient: vi.fn(() => ({ transactionsSync })),
-}))
+vi.mock('../repositories/transactionRepository.js', () => ({ transactionRepository: transactionRepoMock }))
+vi.mock('../lib/plaid/client.js', () => ({ createPlaidClient: vi.fn(() => ({})) }))
 
 describe('transactionSyncService', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('relays added/modified/removed transactions from every linked item without persisting them', async () => {
+  it('isolates a failing item so other items still sync and return data', async () => {
     credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
     itemRepoMock.listDecryptedTokens.mockResolvedValue([
-      { itemId: 'item-1', accessToken: 'access-1', institutionName: 'Chase' },
+      { itemId: 'item-good', accessToken: 'a1', institutionName: 'Chase' },
+      { itemId: 'item-bad', accessToken: 'a2', institutionName: 'Broken Bank' },
     ])
-    transactionsSync.mockResolvedValue({
-      data: {
-        added: [{ transaction_id: 't1', amount: 12.5 }],
-        modified: [],
-        removed: [],
-        next_cursor: 'cursor-2',
-        has_more: false,
-      },
+    transactionRepoMock.sync.mockImplementation(async (_client: unknown, accessToken: string) => {
+      if (accessToken === 'a2') throw new Error('ITEM_LOGIN_REQUIRED')
+      return { added: [{ transaction_id: 't1' }], modified: [], removed: [], next_cursor: 'cursor-good', has_more: false }
     })
 
     const { transactionSyncService } = await import('./transactionSyncService.js')
-    const result = await transactionSyncService.sync('user-1', { 'item-1': 'cursor-1' })
+    const result = await transactionSyncService.sync('user-1', { 'item-good': '', 'item-bad': 'old-cursor' })
 
-    expect(transactionsSync).toHaveBeenCalledWith({ access_token: 'access-1', cursor: 'cursor-1' })
-    expect(result).toEqual({
-      added: [{ transaction_id: 't1', amount: 12.5 }],
-      modified: [],
-      removed: [],
-      cursors: { 'item-1': 'cursor-2' },
-      hasMore: false,
-    })
+    expect(result.added).toEqual([{ transaction_id: 't1' }])
+    expect(result.cursors).toEqual({ 'item-good': 'cursor-good' })
+    expect(result.itemErrors).toEqual([{ itemId: 'item-bad', message: 'ITEM_LOGIN_REQUIRED' }])
   })
 
-  it('defaults to an empty cursor for items not yet synced', async () => {
+  it('returns empty results with no errors when there are no linked items', async () => {
     credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
-    itemRepoMock.listDecryptedTokens.mockResolvedValue([
-      { itemId: 'item-new', accessToken: 'access-new', institutionName: 'Amex' },
-    ])
-    transactionsSync.mockResolvedValue({
-      data: { added: [], modified: [], removed: [], next_cursor: 'cursor-1', has_more: false },
-    })
+    itemRepoMock.listDecryptedTokens.mockResolvedValue([])
 
     const { transactionSyncService } = await import('./transactionSyncService.js')
-    await transactionSyncService.sync('user-1', {})
+    const result = await transactionSyncService.sync('user-1', {})
 
-    expect(transactionsSync).toHaveBeenCalledWith({ access_token: 'access-new', cursor: '' })
+    expect(result).toEqual({ added: [], modified: [], removed: [], cursors: {}, hasMore: false, itemErrors: [] })
   })
 })
