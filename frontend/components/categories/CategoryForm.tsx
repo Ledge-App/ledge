@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
-import { categoryColors } from '@/constants/theme'
+import { categoryColors, colors } from '@/constants/theme'
 import { TextField } from '@/components/ui/TextField'
 import { Button } from '@/components/ui/Button'
 import { PlaidPfcPicker } from './PlaidPfcPicker'
@@ -44,7 +44,7 @@ export function CategoryForm({ category, mappings, categories, isSaving, onSave,
               key={swatch}
               onPress={() => setColor(swatch)}
               className="h-9 w-9 items-center justify-center rounded-full"
-              style={{ backgroundColor: swatch, borderWidth: color === swatch ? 2 : 0, borderColor: '#00000030' }}
+              style={{ backgroundColor: swatch, borderWidth: color === swatch ? 2 : 0, borderColor: colors.textPrimary }}
             />
           ))}
         </View>
