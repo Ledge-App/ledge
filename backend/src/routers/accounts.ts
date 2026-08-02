@@ -15,7 +15,7 @@ export const accountsRouter = router({
     for (const item of items) {
       const accounts = await accountRepository.get(client, item.accessToken)
       for (const account of accounts) {
-        results.push({ ...account, institutionName: item.institutionName })
+        results.push({ ...account, itemId: item.itemId, institutionName: item.institutionName })
       }
     }
     return results

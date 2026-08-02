@@ -27,7 +27,7 @@ describe('accounts router', () => {
 
     expect(accountsGet).toHaveBeenCalledWith({ access_token: 'access-1' })
     expect(result).toEqual([
-      { account_id: 'acc-1', name: 'Sapphire', balances: { current: 4821 }, institutionName: 'Chase' },
+      { account_id: 'acc-1', name: 'Sapphire', balances: { current: 4821 }, institutionName: 'Chase', itemId: 'item-1' },
     ])
   })
 })
