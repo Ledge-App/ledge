@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCategory } from './resolveFeed'
-import type { TransactionOverride, VendorMapping } from '@/types/domain'
+import { resolveCategory, mergeFeed } from './resolveFeed'
+import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -35,5 +35,49 @@ describe('resolveCategory', () => {
   it('falls back to uncategorized when merchantName is null', () => {
     const result = resolveCategory({ transactionId: 'txn-null-merchant', merchantName: null }, overrides, vendorMappings)
     expect(result).toEqual({ categoryId: null, subcategoryId: null, categorySource: 'uncategorized' })
+  })
+})
+
+describe('mergeFeed', () => {
+  const plaidTxns = [
+    {
+      transaction_id: 'p1',
+      account_id: 'acc-1',
+      amount: 35.5,
+      date: '2026-06-21',
+      name: 'PANDA EXPRESS #123',
+      merchant_name: 'Panda Express',
+      pending: false,
+      personal_finance_category: { primary: 'FOOD_AND_DRINK', detailed: 'FOOD_AND_DRINK_FAST_FOOD', confidence_level: 'HIGH' },
+    },
+  ] as unknown as PlaidTransaction[]
+
+  const manualTxns = [
+    { id: 'm1', amount: '5.00', type: 'expense', categoryId: 'cat-food', subcategoryId: null, date: '2026-06-20', note: 'Street food' },
+    { id: 'm2', amount: '30.00', type: 'income', categoryId: null, subcategoryId: null, date: '2026-06-19', note: 'Zelle from Alice' },
+  ] as ManualTransaction[]
+
+  it('merges Plaid and manual transactions into one array, sorted by date descending', () => {
+    const feed = mergeFeed(plaidTxns, manualTxns, [], [])
+    expect(feed.map((item) => item.id)).toEqual(['p1', 'm1', 'm2'])
+  })
+
+  it('tags each item with its source and resolves Plaid category via resolveCategory', () => {
+    const vendorMappings = [{ id: 'v1', vendorName: 'Panda Express', categoryId: 'cat-food', subcategoryId: null, source: 'plaid_auto' as const }]
+    const feed = mergeFeed(plaidTxns, [], [], vendorMappings)
+    expect(feed[0]).toMatchObject({ source: 'plaid', categoryId: 'cat-food', categorySource: 'plaid_auto', merchantName: 'Panda Express' })
+  })
+
+  it('gives manual expenses a positive amount and manual income a negative amount, matching Plaid convention', () => {
+    const feed = mergeFeed([], manualTxns, [], [])
+    const expense = feed.find((item) => item.id === 'm1')!
+    const income = feed.find((item) => item.id === 'm2')!
+    expect(expense.amount).toBe(5)
+    expect(income.amount).toBe(-30)
+  })
+
+  it('uses the manual transaction note as its display merchant name', () => {
+    const feed = mergeFeed([], manualTxns, [], [])
+    expect(feed.find((item) => item.id === 'm1')!.merchantName).toBe('Street food')
   })
 })

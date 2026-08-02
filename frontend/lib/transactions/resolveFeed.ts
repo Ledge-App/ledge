@@ -1,4 +1,4 @@
-import type { TransactionOverride, VendorMapping } from '@/types/domain'
+import type { ManualTransaction, PlaidTransaction, TransactionOverride, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'uncategorized'
 
@@ -35,4 +35,77 @@ export function resolveCategory(
   }
 
   return { categoryId: null, subcategoryId: null, categorySource: 'uncategorized' }
+}
+
+export interface FeedItem {
+  id: string
+  source: 'plaid' | 'manual'
+  amount: number // Plaid convention: positive = money out (expense), negative = money in (income)
+  date: string
+  merchantName: string
+  categoryId: string | null
+  subcategoryId: string | null
+  categorySource: CategorySource
+  confidenceLevel: string | null
+  accountId: string | null
+  pending: boolean
+  note: string | null
+  reimbursedAmount: number | null
+  netAmount: number | null
+  isReimbursementIncome: boolean
+  reimbursementCategoryId: string | null
+}
+
+export function mergeFeed(
+  plaidTransactions: PlaidTransaction[],
+  manualTransactions: ManualTransaction[],
+  overrides: TransactionOverride[],
+  vendorMappings: VendorMapping[],
+): FeedItem[] {
+  const plaidItems: FeedItem[] = plaidTransactions.map((txn) => {
+    const resolved = resolveCategory(
+      { transactionId: txn.transaction_id, merchantName: txn.merchant_name ?? null },
+      overrides,
+      vendorMappings,
+    )
+    return {
+      id: txn.transaction_id,
+      source: 'plaid',
+      amount: txn.amount,
+      date: txn.date,
+      merchantName: txn.merchant_name ?? txn.name,
+      categoryId: resolved.categoryId,
+      subcategoryId: resolved.subcategoryId,
+      categorySource: resolved.categorySource,
+      confidenceLevel: txn.personal_finance_category?.confidence_level ?? null,
+      accountId: txn.account_id,
+      pending: txn.pending,
+      note: null,
+      reimbursedAmount: null,
+      netAmount: null,
+      isReimbursementIncome: false,
+      reimbursementCategoryId: null,
+    }
+  })
+
+  const manualItems: FeedItem[] = manualTransactions.map((txn) => ({
+    id: txn.id,
+    source: 'manual',
+    amount: txn.type === 'expense' ? Number(txn.amount) : -Number(txn.amount),
+    date: txn.date,
+    merchantName: txn.note ?? (txn.type === 'expense' ? 'Manual expense' : 'Manual income'),
+    categoryId: txn.categoryId,
+    subcategoryId: txn.subcategoryId,
+    categorySource: txn.categoryId ? 'user_defined' : 'uncategorized',
+    confidenceLevel: null,
+    accountId: null,
+    pending: false,
+    note: txn.note,
+    reimbursedAmount: null,
+    netAmount: null,
+    isReimbursementIncome: false,
+    reimbursementCategoryId: null,
+  }))
+
+  return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 }
