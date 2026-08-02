@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from 'react-native'
 import { colors, hexToRgba } from '@/constants/theme'
+import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
 interface TransactionRowProps {
@@ -9,11 +10,6 @@ interface TransactionRowProps {
   categoryIcon: string
   reimbursementCategoryName: string | null
   onPress?: () => void
-}
-
-function formatAmount(amount: number): string {
-  const sign = amount < 0 ? '-' : ''
-  return `${sign}$${Math.abs(amount).toFixed(2)}`
 }
 
 export function TransactionRow({ item, categoryName, categoryColor, categoryIcon, reimbursementCategoryName, onPress }: TransactionRowProps) {
@@ -49,7 +45,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       <View className="items-end gap-0.5">
         {item.reimbursedAmount != null && item.netAmount != null ? (
           <Text className="font-mono text-base" style={{ color: colors.reimbursed }}>
-            [${item.amount.toFixed(2)} → ${item.netAmount.toFixed(2)}]
+            [{formatAmount(item.amount)} → {formatAmount(item.netAmount)}]
           </Text>
         ) : (
           <Text className="font-mono text-base" style={{ color: amountColor }}>

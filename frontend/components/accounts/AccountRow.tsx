@@ -1,5 +1,6 @@
 import { Text, View } from 'react-native'
 import { colors } from '@/constants/theme'
+import { formatAmount } from '@/lib/format/money'
 
 interface AccountRowProps {
   name: string
@@ -21,10 +22,10 @@ export function AccountRow({ name, balance, variant, limit }: AccountRowProps) {
       </View>
       <View className="items-end">
         <Text className="font-mono text-base" style={{ color: balanceColor }}>
-          ${balance.toFixed(2)}
+          {formatAmount(balance)}
         </Text>
         {variant === 'credit' && limit != null ? (
-          <Text className="font-sans text-sm text-textMuted">Limit ${limit.toFixed(2)}</Text>
+          <Text className="font-sans text-sm text-textMuted">Limit {formatAmount(limit)}</Text>
         ) : null}
       </View>
     </View>

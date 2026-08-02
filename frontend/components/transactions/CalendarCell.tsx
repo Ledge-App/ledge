@@ -1,6 +1,7 @@
 import { Pressable, Text } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { colors } from '@/constants/theme'
+import { formatAmount } from '@/lib/format/money'
 
 interface CalendarCellProps {
   day: number
@@ -43,7 +44,8 @@ export function CalendarCell({ day, netAmount, hasReimbursement, isToday, isSele
         </Text>
         {netAmount != null ? (
           <Text className="font-mono text-xs" style={{ color: amountColor }}>
-            {hasReimbursement ? '*' : ''}${Math.abs(netAmount).toFixed(2)}
+            {hasReimbursement ? '*' : ''}
+            {formatAmount(Math.abs(netAmount))}
           </Text>
         ) : null}
       </Pressable>

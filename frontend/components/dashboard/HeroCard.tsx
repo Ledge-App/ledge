@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Pressable, Text, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { colors, hexToRgba } from '@/constants/theme'
+import { formatAmount as formatMoney } from '@/lib/format/money'
 
 interface HeroCardProps {
   netWorth: number | null
@@ -14,7 +15,7 @@ interface HeroCardProps {
 function formatAmount(amount: number | null, isMasked: boolean): string {
   if (isMasked) return '$****'
   if (amount == null) return '—'
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return formatMoney(amount)
 }
 
 // Balances here are fetched live through the backend on each view and never persisted

@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import Svg, { Circle } from 'react-native-svg'
 import Animated, { Easing, useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated'
 import { colors, hexToRgba } from '@/constants/theme'
+import { formatAmount } from '@/lib/format/money'
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
@@ -60,7 +61,9 @@ export function CategoryCard({ name, icon, color, spent, budget, onPress }: Cate
             stroke={colors.border}
             strokeWidth={RING_STROKE}
             fill="none"
-            // Dashed outline when no budget is set (design.md Empty States).
+            // Dashed outline when no budget is set (design.md Empty States). The two ratios are
+            // the dash and gap segment lengths as fractions of the ring circumference (6% dash,
+            // 4% gap), which divides the ring into 10 evenly spaced dashes.
             strokeDasharray={budget ? undefined : `${RING_CIRCUMFERENCE * 0.06} ${RING_CIRCUMFERENCE * 0.04}`}
           />
           {budget ? (
@@ -83,8 +86,8 @@ export function CategoryCard({ name, icon, color, spent, budget, onPress }: Cate
       </View>
 
       <View className="gap-0.5">
-        <Text className="font-display text-lg text-textPrimary">${spent.toFixed(2)}</Text>
-        <Text className="font-sans text-xs text-textMuted">{budget ? `of $${budget.toFixed(2)} budget` : 'Set budget'}</Text>
+        <Text className="font-display text-lg text-textPrimary">{formatAmount(spent)}</Text>
+        <Text className="font-sans text-xs text-textMuted">{budget ? `of ${formatAmount(budget)} budget` : 'Set budget'}</Text>
       </View>
     </Pressable>
   )
