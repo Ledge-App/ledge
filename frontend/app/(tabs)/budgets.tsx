@@ -23,6 +23,7 @@ export default function BudgetsScreen() {
   const [settingCategoryId, setSettingCategoryId] = useState<string | null>(null)
   const [newAmount, setNewAmount] = useState('')
   const [newPeriod, setNewPeriod] = useState<Budget['period']>('monthly')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const { feed, error } = useTransactionFeed()
   const budgets = useBudgets()
@@ -56,15 +57,21 @@ export default function BudgetsScreen() {
     return (categories.data ?? []).filter((c) => !budgetedIds.has(c.id))
   }, [categories.data, budgets.data])
 
-  const totalSpent = Array.from(spendByCategory.values()).reduce((sum, v) => sum + v, 0)
+  const totalSpent = (budgets.data ?? []).reduce((sum, b) => sum + (spendByCategory.get(b.categoryId) ?? 0), 0)
   const totalBudget = (budgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)
   const overallPercent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
 
-  function handleSetBudget() {
-    if (!settingCategoryId || !newAmount) return
-    budgets.create({ categoryId: settingCategoryId, amount: newAmount, period: newPeriod })
-    setSettingCategoryId(null)
-    setNewAmount('')
+  const isValidAmount = /^\d+(\.\d{1,2})?$/.test(newAmount) && Number(newAmount) > 0
+
+  async function handleSetBudget() {
+    if (!settingCategoryId || !isValidAmount) return
+    try {
+      await budgets.create({ categoryId: settingCategoryId, amount: newAmount, period: newPeriod })
+      setSettingCategoryId(null)
+      setNewAmount('')
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this budget. Try again.')
+    }
   }
 
   return (
@@ -76,6 +83,7 @@ export default function BudgetsScreen() {
         </View>
 
         {error ? <ErrorBanner message="Something went wrong loading your budgets." /> : null}
+        {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
         <View className="gap-2">
           <Text className="font-sans text-base text-textSecondary">
@@ -133,7 +141,7 @@ export default function BudgetsScreen() {
           />
         </View>
         <View className="mt-4">
-          <Button label="Save Budget" onPress={handleSetBudget} disabled={!newAmount} />
+          <Button label="Save Budget" onPress={handleSetBudget} disabled={!isValidAmount} />
         </View>
       </BottomSheet>
     </SafeAreaView>

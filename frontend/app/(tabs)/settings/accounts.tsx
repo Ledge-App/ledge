@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
+import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
@@ -13,8 +14,10 @@ import { AccountRow } from '@/components/accounts/AccountRow'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 // Plaid's AccountType enum: 'investment' | 'credit' | 'depository' | 'loan' | 'brokerage' | 'other'.
-function isCreditAccount(account: { type: string }): boolean {
-  return account.type === 'credit'
+// Credit cards AND loans (mortgage, student, auto) are liabilities — they must be subtracted
+// from net worth, never added to assets.
+function isLiabilityAccount(account: { type: string }): boolean {
+  return account.type === 'credit' || account.type === 'loan'
 }
 
 function isInvestmentAccount(account: { type: string }): boolean {
@@ -24,18 +27,20 @@ function isInvestmentAccount(account: { type: string }): boolean {
 export default function AccountsScreen() {
   const [error, setError] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+  const utils = api.useUtils()
   const accounts = useAccounts()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
 
-  const cashAccounts = useMemo(() => (accounts.data ?? []).filter((a) => !isCreditAccount(a)), [accounts.data])
-  const creditAccounts = useMemo(() => (accounts.data ?? []).filter(isCreditAccount), [accounts.data])
+  const cashAccounts = useMemo(() => (accounts.data ?? []).filter((a) => !isLiabilityAccount(a)), [accounts.data])
+  const creditAccounts = useMemo(() => (accounts.data ?? []).filter(isLiabilityAccount), [accounts.data])
 
   const totalAssets = cashAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
   const totalLiabilities = creditAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
 
   async function handleAddAccount() {
     setError(null)
+    if (credentials.isLoading) return
     if (!credentials.data) {
       router.push('/(tabs)/settings/plaid-account')
       return
@@ -54,7 +59,7 @@ export default function AccountsScreen() {
         onSuccess: async (success) => {
           try {
             await exchangeToken({ publicToken: success.publicToken })
-            accounts.data && (await Promise.resolve())
+            await utils.accounts.list.invalidate()
           } catch (err) {
             setError(err instanceof Error ? err.message : 'Could not finish linking this account.')
           } finally {
@@ -74,7 +79,7 @@ export default function AccountsScreen() {
       <ScrollView contentContainerClassName="gap-6 px-5 py-4">
         <View className="flex-row items-center justify-between">
           <Text className="font-sansSemi text-lg text-textPrimary">All Accounts</Text>
-          <Pressable onPress={handleAddAccount} accessibilityLabel="Add account" disabled={isConnecting}>
+          <Pressable onPress={handleAddAccount} accessibilityLabel="Add account" disabled={isConnecting || credentials.isLoading}>
             <Ionicons name="add-circle" size={26} color={colors.primary} />
           </Pressable>
         </View>
