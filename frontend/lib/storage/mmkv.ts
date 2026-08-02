@@ -13,7 +13,14 @@ function cursorKey(itemId: string): string {
 
 export function getCachedTransactions(itemId: string): PlaidTransaction[] {
   const raw = storage.getString(transactionsKey(itemId))
-  return raw ? (JSON.parse(raw) as PlaidTransaction[]) : []
+  if (!raw) return []
+  try {
+    return JSON.parse(raw) as PlaidTransaction[]
+  } catch {
+    // A corrupted cache entry must not crash the feed — treat it as empty and let the
+    // next sync rebuild it from Plaid.
+    return []
+  }
 }
 
 export function setCachedTransactions(itemId: string, transactions: PlaidTransaction[]): void {
