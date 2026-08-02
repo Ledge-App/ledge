@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '@/lib/api/client'
 import { useAccounts } from './useAccounts'
 import { useManualTransactions } from './useManualTransactions'
@@ -26,6 +26,12 @@ export function useTransactionFeed() {
     return map
   }, [accounts.data])
 
+  // Bumped in the sync query's onSuccess handler, after setCursor(...) persists the new
+  // cursors to MMKV, so that `cursors` below re-reads MMKV instead of reusing the stale
+  // value captured when itemIds last changed. Without this, refresh() would resend the
+  // same cursor forever and duplicate transactions could accumulate in the cache.
+  const [cursorVersion, setCursorVersion] = useState(0)
+
   const cursors = useMemo(() => {
     const map: Record<string, string> = {}
     for (const itemId of itemIds) {
@@ -34,7 +40,7 @@ export function useTransactionFeed() {
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemIds])
+  }, [itemIds, cursorVersion])
 
   const sync = api.transactions.sync.useQuery(
     { cursors },
@@ -64,6 +70,7 @@ export function useTransactionFeed() {
 
         for (const [itemId, transactions] of byItem) setCachedTransactions(itemId, transactions)
         for (const [itemId, cursor] of Object.entries(result.cursors)) setCursor(itemId, cursor)
+        setCursorVersion((v) => v + 1)
       },
     },
   )
