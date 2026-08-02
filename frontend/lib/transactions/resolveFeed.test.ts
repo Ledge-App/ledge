@@ -82,24 +82,36 @@ describe('mergeFeed', () => {
   })
 })
 
+// Shared by the applyReimbursements suite and the end-to-end pipeline suite below: the
+// product.md $100 dinner split three ways, in raw Plaid shape rather than pre-built FeedItems.
+const dinnerPlaidTxns = [
+  {
+    transaction_id: 'expense-1', account_id: 'acc-1', amount: 100, date: '2026-06-21', name: 'THE GOOD FORK',
+    merchant_name: 'Dinner', pending: false,
+    personal_finance_category: { primary: 'FOOD_AND_DRINK', detailed: 'FOOD_AND_DRINK_RESTAURANT', confidence_level: 'HIGH' },
+  },
+  {
+    transaction_id: 'income-alice', account_id: 'acc-1', amount: -30, date: '2026-06-19', name: 'ZELLE FROM ALICE',
+    merchant_name: 'Zelle from Alice', pending: false,
+    personal_finance_category: { primary: 'TRANSFER_IN', detailed: 'TRANSFER_IN_ACCOUNT_TRANSFER', confidence_level: 'HIGH' },
+  },
+  {
+    transaction_id: 'income-bob', account_id: 'acc-1', amount: -30, date: '2026-06-20', name: 'ZELLE FROM BOB',
+    merchant_name: 'Zelle from Bob', pending: false,
+    personal_finance_category: { primary: 'TRANSFER_IN', detailed: 'TRANSFER_IN_ACCOUNT_TRANSFER', confidence_level: 'HIGH' },
+  },
+] as unknown as PlaidTransaction[]
+
+const dinnerVendorMappings: VendorMapping[] = [
+  { id: 'vm-dinner', vendorName: 'Dinner', categoryId: 'cat-food', subcategoryId: null, source: 'plaid_auto' },
+  { id: 'vm-alice', vendorName: 'Zelle from Alice', categoryId: 'cat-transfers-in', subcategoryId: null, source: 'plaid_auto' },
+  { id: 'vm-bob', vendorName: 'Zelle from Bob', categoryId: 'cat-transfers-in', subcategoryId: null, source: 'plaid_auto' },
+]
+
 describe('applyReimbursements', () => {
-  const baseFeed = [
-    {
-      id: 'expense-1', source: 'plaid', amount: 100, date: '2026-06-21', merchantName: 'Dinner', categoryId: 'cat-food',
-      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
-      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
-    },
-    {
-      id: 'income-alice', source: 'plaid', amount: -30, date: '2026-06-19', merchantName: 'Zelle from Alice', categoryId: 'cat-transfers-in',
-      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
-      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
-    },
-    {
-      id: 'income-bob', source: 'plaid', amount: -30, date: '2026-06-20', merchantName: 'Zelle from Bob', categoryId: 'cat-transfers-in',
-      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
-      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
-    },
-  ] as unknown as ReturnType<typeof mergeFeed>
+  // Built by actually running mergeFeed, so a FeedItem shape change breaks these tests
+  // instead of silently passing behind a cast.
+  const baseFeed = mergeFeed(dinnerPlaidTxns, [], [], dinnerVendorMappings)
 
   const reimbursements: Reimbursement[] = [
     { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
@@ -131,5 +143,69 @@ describe('applyReimbursements', () => {
   it('leaves unrelated feed items unchanged', () => {
     const result = applyReimbursements(baseFeed, [])
     expect(result).toEqual(baseFeed)
+  })
+})
+
+// End-to-end: resolveCategory -> mergeFeed -> applyReimbursements chained on one realistic
+// dataset, starting from raw Plaid/manual shapes rather than hand-built FeedItems. This is
+// the product.md $100 dinner / $30 Alice / $30 Bob / $40 net scenario.
+describe('resolveFeed pipeline', () => {
+  const pipelineOverrides: TransactionOverride[] = [
+    // User re-categorized the dinner away from its plaid_auto mapping.
+    { id: 'o-dinner', plaidTransactionId: 'expense-1', categoryId: 'cat-dining-out', subcategoryId: 'sub-restaurants' },
+  ]
+
+  const manualTxns = [
+    { id: 'm-coffee', amount: '4.75', type: 'expense', categoryId: 'cat-food', subcategoryId: null, date: '2026-06-22', note: 'Coffee cart' },
+  ] as ManualTransaction[]
+
+  const pipelineReimbursements: Reimbursement[] = [
+    { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
+    { id: 'r2', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
+  ]
+
+  function runPipeline() {
+    const merged = mergeFeed(dinnerPlaidTxns, manualTxns, pipelineOverrides, dinnerVendorMappings)
+    return applyReimbursements(merged, pipelineReimbursements)
+  }
+
+  it('sorts the merged Plaid + manual feed by date descending', () => {
+    expect(runPipeline().map((item) => item.id)).toEqual(['m-coffee', 'expense-1', 'income-bob', 'income-alice'])
+  })
+
+  it('resolves categories through the full precedence chain before reimbursements are applied', () => {
+    const result = runPipeline()
+    const dinner = result.find((item) => item.id === 'expense-1')!
+    const alice = result.find((item) => item.id === 'income-alice')!
+    const coffee = result.find((item) => item.id === 'm-coffee')!
+
+    expect(dinner).toMatchObject({ categoryId: 'cat-dining-out', subcategoryId: 'sub-restaurants', categorySource: 'override' })
+    expect(alice).toMatchObject({ categoryId: 'cat-transfers-in', categorySource: 'plaid_auto' })
+    expect(coffee).toMatchObject({ source: 'manual', categoryId: 'cat-food', categorySource: 'user_defined', amount: 4.75 })
+  })
+
+  it('nets the $100 expense down to $40 after two $30 reimbursements', () => {
+    const dinner = runPipeline().find((item) => item.id === 'expense-1')!
+    expect(dinner.amount).toBe(100)
+    expect(dinner.reimbursedAmount).toBe(60)
+    expect(dinner.netAmount).toBe(40)
+  })
+
+  it('tags both income rows as reimbursements carrying the overridden expense category', () => {
+    const result = runPipeline()
+    for (const id of ['income-alice', 'income-bob']) {
+      const income = result.find((item) => item.id === id)!
+      expect(income.amount).toBe(-30)
+      expect(income.isReimbursementIncome).toBe(true)
+      // The override, not the vendor mapping, is what propagates to the income rows.
+      expect(income.reimbursementCategoryId).toBe('cat-dining-out')
+    }
+  })
+
+  it('leaves the unrelated manual expense untouched by reimbursement math', () => {
+    const coffee = runPipeline().find((item) => item.id === 'm-coffee')!
+    expect(coffee.reimbursedAmount).toBeNull()
+    expect(coffee.netAmount).toBeNull()
+    expect(coffee.isReimbursementIncome).toBe(false)
   })
 })
