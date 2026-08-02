@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pressable, SectionList, Text, View } from 'react-native'
+import { Alert, Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
@@ -30,6 +30,7 @@ export default function TransactionsScreen() {
   const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManualId, setEditingManualId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
@@ -57,59 +58,97 @@ export default function TransactionsScreen() {
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([date, items]) => ({
         title: date,
-        total: items.reduce((sum, i) => sum + (i.netAmount ?? i.amount), 0),
+        total: items.reduce((sum, i) => (i.isReimbursementIncome ? sum : sum + (i.netAmount ?? i.amount)), 0),
         data: items,
       }))
   }, [monthFeed])
 
-  function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
+  async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
-    overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-    if (input.applyToVendor) {
-      vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+    try {
+      await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      if (input.applyToVendor) {
+        await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      }
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
     }
-    setActiveSheetItem(null)
   }
 
-  function handleOpenReimbursement(input: { categoryId: string; subcategoryId: string | null }) {
+  async function handleOpenReimbursement(input: { categoryId: string; subcategoryId: string | null }) {
     if (!activeSheetItem) return
-    overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-    setReimbursementItem(activeSheetItem)
-    setActiveSheetItem(null)
+    const item = activeSheetItem
+    try {
+      await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      setReimbursementItem(item)
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
   }
 
-  function handleSaveReimbursement(linkedIncomeIds: string[]) {
+  async function handleSaveReimbursement(linkedIncomeIds: string[]) {
     if (!reimbursementItem) return
-    for (const incomeId of linkedIncomeIds) {
-      const incomeItem = feed.find((i) => i.id === incomeId)
-      if (!incomeItem) continue
-      reimbursements.create({
-        expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
-        expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
-        incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
-        incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
-        amount: Math.abs(incomeItem.amount).toFixed(2),
-        note: null,
-      })
+    try {
+      for (const incomeId of linkedIncomeIds) {
+        const incomeItem = feed.find((i) => i.id === incomeId)
+        if (!incomeItem) continue
+        await reimbursements.create({
+          expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
+          expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
+          incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
+          incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
+          amount: Math.abs(incomeItem.amount).toFixed(2),
+          note: null,
+        })
+      }
+      setReimbursementItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this reimbursement. Try again.')
     }
-    setReimbursementItem(null)
   }
 
-  function handleSaveManual(input: { amount: string; type: 'expense' | 'income'; categoryId: string | null; subcategoryId: string | null; date: string; note: string | null }) {
-    if (editingManualId) {
-      manualTransactions.update({ id: editingManualId, ...input })
-    } else {
-      manualTransactions.create(input)
+  async function handleSaveManual(input: { amount: string; type: 'expense' | 'income'; categoryId: string | null; subcategoryId: string | null; date: string; note: string | null }) {
+    try {
+      if (editingManualId) {
+        await manualTransactions.update({ id: editingManualId, ...input })
+      } else {
+        await manualTransactions.create(input)
+      }
+      setManualSheetOpen(false)
+      setEditingManualId(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this transaction. Try again.')
     }
-    setManualSheetOpen(false)
-    setEditingManualId(null)
   }
 
   function handleDeleteManual() {
     if (!editingManualId) return
-    manualTransactions.delete({ id: editingManualId })
-    setManualSheetOpen(false)
-    setEditingManualId(null)
+    const id = editingManualId
+    const feedItem = feed.find((item) => item.id === id)
+    const isReimbursed = feedItem?.reimbursedAmount != null || feedItem?.isReimbursementIncome === true
+
+    Alert.alert(
+      isReimbursed ? 'This transaction is part of a reimbursement. Delete anyway?' : 'Delete this transaction?',
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await manualTransactions.delete({ id })
+              setManualSheetOpen(false)
+              setEditingManualId(null)
+            } catch (err) {
+              setSaveError(err instanceof Error ? err.message : 'Could not delete this transaction. Try again.')
+            }
+          },
+        },
+      ],
+    )
   }
 
   function handleRowPress(item: FeedItem) {
@@ -136,6 +175,7 @@ export default function TransactionsScreen() {
       </View>
 
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
+      {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
       <SectionList
         sections={sections}
