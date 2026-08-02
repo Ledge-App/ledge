@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
@@ -31,6 +31,7 @@ export default function DashboardScreen() {
   const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
   const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
   const [pendingReimbursementMeta, setPendingReimbursementMeta] = useState<{ categoryId: string; subcategoryId: string | null } | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
@@ -62,14 +63,14 @@ export default function DashboardScreen() {
   const incomeTotals = useMemo(() => {
     const totals = new Map<string, number>()
     for (const item of monthFeed) {
-      if (item.amount >= 0 || !item.categoryId) continue
+      if (item.amount >= 0 || !item.categoryId || item.isReimbursementIncome) continue
       totals.set(item.categoryId, (totals.get(item.categoryId) ?? 0) + Math.abs(item.amount))
     }
     return totals
   }, [monthFeed])
   const totalIncome = Array.from(incomeTotals.values()).reduce((sum, v) => sum + v, 0)
 
-  const recentTransactions = feed.slice(0, 5)
+  const recentTransactions = accountFilteredFeed.slice(0, 5)
 
   const budgetHealthCards = useMemo(() => {
     if (!budgets.data) return []
@@ -83,42 +84,55 @@ export default function DashboardScreen() {
       .sort((a, b) => b.percent - a.percent)
   }, [budgets.data, spendByCategory])
 
-  function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
+  async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
-    overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-    if (input.applyToVendor) {
-      vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+    try {
+      await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      if (input.applyToVendor) {
+        await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      }
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
     }
-    setActiveSheetItem(null)
   }
 
-  function handleOpenReimbursement(input: { categoryId: string; subcategoryId: string | null }) {
+  async function handleOpenReimbursement(input: { categoryId: string; subcategoryId: string | null }) {
     if (!activeSheetItem) return
-    overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-    setPendingReimbursementMeta(input)
-    setReimbursementItem(activeSheetItem)
-    setActiveSheetItem(null)
+    const item = activeSheetItem
+    try {
+      await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      setPendingReimbursementMeta(input)
+      setReimbursementItem(item)
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
   }
 
-  function handleSaveReimbursement(linkedIncomeIds: string[]) {
+  async function handleSaveReimbursement(linkedIncomeIds: string[]) {
     if (!reimbursementItem) return
-    for (const incomeId of linkedIncomeIds) {
-      const incomeItem = feed.find((i) => i.id === incomeId)
-      if (!incomeItem) continue
-      reimbursements.create({
-        expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
-        expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
-        incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
-        incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
-        amount: Math.abs(incomeItem.amount).toFixed(2),
-        note: null,
-      })
+    try {
+      for (const incomeId of linkedIncomeIds) {
+        const incomeItem = feed.find((i) => i.id === incomeId)
+        if (!incomeItem) continue
+        await reimbursements.create({
+          expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
+          expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
+          incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
+          incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
+          amount: Math.abs(incomeItem.amount).toFixed(2),
+          note: null,
+        })
+      }
+      setReimbursementItem(null)
+      setPendingReimbursementMeta(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this reimbursement. Try again.')
     }
-    setReimbursementItem(null)
-    setPendingReimbursementMeta(null)
   }
 
-  const candidateIncomeItems = feed.filter((item) => item.amount < 0 && item.id !== reimbursementItem?.id)
+  const candidateIncomeItems = accountFilteredFeed.filter((item) => item.amount < 0 && item.id !== reimbursementItem?.id)
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
@@ -130,28 +144,26 @@ export default function DashboardScreen() {
         </View>
 
         {error ? <ErrorBanner message="Something went wrong loading your data." /> : null}
+        {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
         <Pressable onPress={() => setExpensesOpen((v) => !v)} className="flex-row items-center gap-2">
           <Text className="font-sansSemi text-lg text-expense">Expenses {formatAmount(totalExpenses)}</Text>
           <Ionicons name={expensesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.expense} />
         </Pressable>
         {expensesOpen ? (
-          <FlatList
-            data={categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []}
-            numColumns={2}
-            columnWrapperStyle={{ gap: 12 }}
-            contentContainerStyle={{ gap: 12 }}
-            keyExtractor={(c) => c.id}
-            renderItem={({ item: category }) => (
-              <CategoryCard
-                name={category.name}
-                icon={category.icon}
-                color={category.color}
-                spent={spendByCategory.get(category.id) ?? 0}
-                budget={budgets.data?.find((b) => b.categoryId === category.id) ? Number(budgets.data.find((b) => b.categoryId === category.id)!.amount) : null}
-              />
-            )}
-          />
+          <View className="flex-row flex-wrap gap-3">
+            {(categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []).map((category) => (
+              <View key={category.id} className="w-[48%]">
+                <CategoryCard
+                  name={category.name}
+                  icon={category.icon}
+                  color={category.color}
+                  spent={spendByCategory.get(category.id) ?? 0}
+                  budget={budgets.data?.find((b) => b.categoryId === category.id) ? Number(budgets.data.find((b) => b.categoryId === category.id)!.amount) : null}
+                />
+              </View>
+            ))}
+          </View>
         ) : null}
 
         <Pressable onPress={() => setIncomeOpen((v) => !v)} className="flex-row items-center gap-2">
@@ -159,16 +171,13 @@ export default function DashboardScreen() {
           <Ionicons name={incomeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.income} />
         </Pressable>
         {incomeOpen ? (
-          <FlatList
-            data={categories.data?.filter((c) => incomeTotals.has(c.id)) ?? []}
-            numColumns={2}
-            columnWrapperStyle={{ gap: 12 }}
-            contentContainerStyle={{ gap: 12 }}
-            keyExtractor={(c) => c.id}
-            renderItem={({ item: category }) => (
-              <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeTotals.get(category.id) ?? 0} budget={null} />
-            )}
-          />
+          <View className="flex-row flex-wrap gap-3">
+            {(categories.data?.filter((c) => incomeTotals.has(c.id)) ?? []).map((category) => (
+              <View key={category.id} className="w-[48%]">
+                <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeTotals.get(category.id) ?? 0} budget={null} />
+              </View>
+            ))}
+          </View>
         ) : null}
 
         {budgetHealthCards.length > 0 ? (
@@ -201,7 +210,11 @@ export default function DashboardScreen() {
                 categoryColor={category?.color ?? colors.textMuted}
                 categoryIcon={category?.icon ?? '❓'}
                 reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                onPress={() => setActiveSheetItem(item)}
+                onPress={
+                  item.source === 'plaid'
+                    ? () => setActiveSheetItem(item)
+                    : undefined
+                }
               />
             )
           })}
