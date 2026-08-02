@@ -121,8 +121,12 @@ export function useTransactionFeed() {
     const totals = new Map<string, { net: number; hasReimbursement: boolean }>()
     for (const item of feed) {
       const existing = totals.get(item.date) ?? { net: 0, hasReimbursement: false }
-      const net = item.netAmount ?? item.amount
       const hasReimbursement = existing.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome
+      if (item.isReimbursementIncome) {
+        totals.set(item.date, { net: existing.net, hasReimbursement })
+        continue
+      }
+      const net = item.netAmount ?? item.amount
       totals.set(item.date, { net: existing.net + net, hasReimbursement })
     }
     return totals
