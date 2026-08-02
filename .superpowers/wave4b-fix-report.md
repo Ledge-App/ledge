@@ -63,4 +63,4 @@ Added `contentContainerStyle={{ paddingBottom: 96 }}` to the calendar view's sel
 ## Commit
 
 Single commit containing all 5 fixes to `frontend/app/(tabs)/transactions.tsx`.
-Commit hash: (see `git log -1 --format=%H` after commit below)
+Commit hash: d690483
