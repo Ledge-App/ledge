@@ -1,4 +1,4 @@
-import type { ManualTransaction, PlaidTransaction, TransactionOverride, VendorMapping } from '@/types/domain'
+import type { ManualTransaction, PlaidTransaction, Reimbursement, TransactionOverride, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'uncategorized'
 
@@ -108,4 +108,37 @@ export function mergeFeed(
   }))
 
   return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+}
+
+export function applyReimbursements(feed: FeedItem[], reimbursements: Reimbursement[]): FeedItem[] {
+  const reimbursementsByExpenseId = new Map<string, Reimbursement[]>()
+  for (const r of reimbursements) {
+    const expenseId = r.expensePlaidTransactionId ?? r.expenseManualTransactionId
+    if (!expenseId) continue
+    const list = reimbursementsByExpenseId.get(expenseId) ?? []
+    list.push(r)
+    reimbursementsByExpenseId.set(expenseId, list)
+  }
+
+  const categoryByFeedId = new Map(feed.map((item) => [item.id, item.categoryId]))
+  const incomeIdToExpenseCategoryId = new Map<string, string | null>()
+  for (const r of reimbursements) {
+    const incomeId = r.incomePlaidTransactionId ?? r.incomeManualTransactionId
+    if (!incomeId) continue
+    const expenseId = r.expensePlaidTransactionId ?? r.expenseManualTransactionId
+    incomeIdToExpenseCategoryId.set(incomeId, expenseId ? categoryByFeedId.get(expenseId) ?? null : null)
+  }
+
+  return feed.map((item) => {
+    const linked = reimbursementsByExpenseId.get(item.id)
+    if (linked) {
+      const reimbursedAmount = linked.reduce((sum, r) => sum + Number(r.amount), 0)
+      const netAmount = Math.max(0, item.amount - reimbursedAmount)
+      return { ...item, reimbursedAmount, netAmount }
+    }
+    if (incomeIdToExpenseCategoryId.has(item.id)) {
+      return { ...item, isReimbursementIncome: true, reimbursementCategoryId: incomeIdToExpenseCategoryId.get(item.id) ?? null }
+    }
+    return item
+  })
 }

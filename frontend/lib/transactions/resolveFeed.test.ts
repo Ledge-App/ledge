@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCategory, mergeFeed } from './resolveFeed'
-import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction } from '@/types/domain'
+import { resolveCategory, mergeFeed, applyReimbursements } from './resolveFeed'
+import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -79,5 +79,57 @@ describe('mergeFeed', () => {
   it('uses the manual transaction note as its display merchant name', () => {
     const feed = mergeFeed([], manualTxns, [], [])
     expect(feed.find((item) => item.id === 'm1')!.merchantName).toBe('Street food')
+  })
+})
+
+describe('applyReimbursements', () => {
+  const baseFeed = [
+    {
+      id: 'expense-1', source: 'plaid', amount: 100, date: '2026-06-21', merchantName: 'Dinner', categoryId: 'cat-food',
+      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
+      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
+    },
+    {
+      id: 'income-alice', source: 'plaid', amount: -30, date: '2026-06-19', merchantName: 'Zelle from Alice', categoryId: 'cat-transfers-in',
+      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
+      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
+    },
+    {
+      id: 'income-bob', source: 'plaid', amount: -30, date: '2026-06-20', merchantName: 'Zelle from Bob', categoryId: 'cat-transfers-in',
+      subcategoryId: null, categorySource: 'plaid_auto', confidenceLevel: 'HIGH', accountId: 'acc-1', pending: false,
+      note: null, reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
+    },
+  ] as unknown as ReturnType<typeof mergeFeed>
+
+  const reimbursements: Reimbursement[] = [
+    { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
+    { id: 'r2', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
+  ]
+
+  it('computes net expense as original minus the sum of all linked reimbursements', () => {
+    const result = applyReimbursements(baseFeed, reimbursements)
+    const expense = result.find((item) => item.id === 'expense-1')!
+    expect(expense.reimbursedAmount).toBe(60)
+    expect(expense.netAmount).toBe(40)
+  })
+
+  it('tags each linked income row as a reimbursement, carrying the expense category', () => {
+    const result = applyReimbursements(baseFeed, reimbursements)
+    const alice = result.find((item) => item.id === 'income-alice')!
+    expect(alice.isReimbursementIncome).toBe(true)
+    expect(alice.reimbursementCategoryId).toBe('cat-food')
+  })
+
+  it('never lets net expense go negative when reimbursements exceed the original amount', () => {
+    const overReimbursed: Reimbursement[] = [
+      { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '150.00', note: null },
+    ]
+    const result = applyReimbursements(baseFeed, overReimbursed)
+    expect(result.find((item) => item.id === 'expense-1')!.netAmount).toBe(0)
+  })
+
+  it('leaves unrelated feed items unchanged', () => {
+    const result = applyReimbursements(baseFeed, [])
+    expect(result).toEqual(baseFeed)
   })
 })
