@@ -31,6 +31,8 @@ async function start() {
   await server.listen({ port, host: '0.0.0.0' })
 }
 
-if (process.env.NODE_ENV !== 'test') {
+// Vercel imports buildServer() into a serverless handler (see api/index.ts) rather
+// than running this file directly — it must never call .listen() itself there.
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   start()
 }

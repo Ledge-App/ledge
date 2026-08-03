@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import jwt from 'jsonwebtoken'
+import { SignJWT } from 'jose'
 import { generateKeyPairSync } from 'node:crypto'
 
 describe('verifyJwt — HS256 (legacy shared secret)', () => {
   const secret = 'test-supabase-jwt-secret'
+  const secretKey = new TextEncoder().encode(secret)
 
   beforeEach(() => {
     vi.resetModules()
@@ -13,19 +14,29 @@ describe('verifyJwt — HS256 (legacy shared secret)', () => {
 
   it('extracts the user id from a valid Supabase JWT', async () => {
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-abc-123', role: 'authenticated' }, secret, { algorithm: 'HS256' })
+    const token = await new SignJWT({ role: 'authenticated' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-abc-123')
+      .sign(secretKey)
     await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-abc-123' })
   })
 
   it('rejects on an invalid signature', async () => {
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-abc-123' }, 'wrong-secret', { algorithm: 'HS256' })
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-abc-123')
+      .sign(new TextEncoder().encode('wrong-secret'))
     await expect(verifyJwt(token)).rejects.toThrow()
   })
 
   it('rejects on an expired token', async () => {
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-abc-123' }, secret, { algorithm: 'HS256', expiresIn: -10 })
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-abc-123')
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 10)
+      .sign(secretKey)
     await expect(verifyJwt(token)).rejects.toThrow()
   })
 })
@@ -33,42 +44,49 @@ describe('verifyJwt — HS256 (legacy shared secret)', () => {
 describe('verifyJwt — ES256 (JWKS signing keys)', () => {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
   const kid = 'test-kid-1'
-  const jwk = publicKey.export({ format: 'jwk' })
 
   beforeEach(() => {
     vi.resetModules()
-    vi.doMock('jwks-rsa', () => ({
-      default: () => ({
-        getSigningKey: (requestedKid: string, callback: (err: Error | null, key?: { getPublicKey: () => string }) => void) => {
-          if (requestedKid !== kid) {
-            callback(new Error('unknown kid'))
-            return
+    process.env.SUPABASE_URL = 'https://project-ref.supabase.co'
+    vi.doMock('jose', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('jose')>()
+      return {
+        ...actual,
+        createRemoteJWKSet: () => async (header: { kid?: string }) => {
+          if (header.kid !== kid) {
+            throw new Error('unknown kid')
           }
-          callback(null, { getPublicKey: () => publicKey.export({ type: 'spki', format: 'pem' }) as string })
+          return publicKey
         },
-      }),
-    }))
+      }
+    })
   })
 
   it('extracts the user id from a JWT signed with an ES256 signing key resolved via JWKS', async () => {
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-es256-1' }, privateKey, { algorithm: 'ES256', keyid: kid })
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256', kid })
+      .setSubject('user-es256-1')
+      .sign(privateKey)
     await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-es256-1' })
   })
 
   it('rejects a token signed with a key not found in the JWKS', async () => {
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-es256-2' }, privateKey, { algorithm: 'ES256', keyid: 'some-other-kid' })
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256', kid: 'some-other-kid' })
+      .setSubject('user-es256-2')
+      .sign(privateKey)
     await expect(verifyJwt(token)).rejects.toThrow()
   })
 
   it('rejects an ES256 token whose signature does not match the resolved public key', async () => {
-    const { publicKey: otherPublicKey, privateKey: otherPrivateKey } = generateKeyPairSync('ec', {
-      namedCurve: 'prime256v1',
-    })
-    void otherPublicKey
+    const { privateKey: otherPrivateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
     const { verifyJwt } = await import('./requireAuth.js')
-    const token = jwt.sign({ sub: 'user-es256-3' }, otherPrivateKey, { algorithm: 'ES256', keyid: kid })
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256', kid })
+      .setSubject('user-es256-3')
+      .sign(otherPrivateKey)
     await expect(verifyJwt(token)).rejects.toThrow()
   })
 })

@@ -36,6 +36,19 @@
       "expo-status-bar",
       "expo-secure-store",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/96613371-347c-470f-9fee-122140c33376"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "96613371-347c-470f-9fee-122140c33376"
+      }
+    },
+    "owner": "qihongw08"
   }
 }

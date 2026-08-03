@@ -3,16 +3,26 @@ import {
   check,
   date,
   numeric,
+  pgSchema,
   pgTable,
   text,
   timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core'
-// Supabase's own auth.users reference, imported (never declared) here — declaring it
-// ourselves makes drizzle-kit think it owns the table and emit CREATE TABLE "auth"."users",
-// which fails with "permission denied for schema auth" since Supabase owns that schema.
-import { authUsers } from 'drizzle-orm/supabase'
+
+// Supabase's auth.users, referenced for FKs only — never written to by this app.
+// Declared locally (rather than imported from drizzle-orm/supabase) so every table
+// in this file resolves PgColumn/PgTable types from the exact same 'drizzle-orm/pg-core'
+// module graph; mixing that import with a second subpath ('drizzle-orm/supabase') triggers
+// a TypeScript nodenext dual-resolution identity split in some build environments (seen on
+// Vercel, not reproducible locally even with matching Node version + a forced clean install).
+// Running `npm run db:generate` after schema changes may re-emit a CREATE TABLE for this
+// table — strip that statement by hand before applying, since Supabase owns that schema.
+const authSchema = pgSchema('auth')
+const authUsers = authSchema.table('users', {
+  id: uuid('id').primaryKey(),
+})
 
 export const plaidCredentials = pgTable('plaid_credentials', {
   id: uuid('id').primaryKey().defaultRandom(),
