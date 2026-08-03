@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Returning to Ledge…</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        background: #0a0a0a;
+        color: #f2f2f2;
+        font-family: -apple-system, system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        text-align: center;
+        padding: 24px;
+      }
+      a {
+        color: #0f766e;
+        text-decoration: none;
+        font-weight: 600;
+        margin-top: 16px;
+        display: inline-block;
+      }
+    </style>
+    <script>
+      (function () {
+        var deepLink = 'ledge://oauth-callback' + window.location.search;
+        window.location.href = deepLink;
+      })();
+    </script>
+  </head>
+  <body>
+    <div>
+      <p>Returning to Ledge…</p>
+      <p><a href="ledge://oauth-callback">Tap here if the app doesn't open automatically</a></p>
+    </div>
+  </body>
+</html>

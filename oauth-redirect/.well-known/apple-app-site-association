@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["Y9JWKB249L.com.ledge.app"],
+        "paths": ["/oauth-callback"]
+      }
+    ]
+  }
+}
