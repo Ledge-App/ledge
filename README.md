@@ -1,0 +1,75 @@
+# Ledge
+
+A personal budgeting app for iOS that connects to bank, credit card, and investment accounts via Plaid. Users categorize transactions, set budgets, and track reimbursements — built for a small, closed group of friends rather than the general public.
+
+Each user connects Plaid with their **own** Plaid developer credentials (BYOK — bring your own key), entered in-app after signup. This keeps everyone's linked-account usage isolated under their own free Plaid account instead of sharing one app-wide key.
+
+Raw financial data (transactions, balances, account numbers) **never persists on the backend** — it's fetched live from Plaid on each request and relayed straight to the device. Only user-defined metadata (categories, budgets, vendor mappings, reimbursement links) is stored server-side.
+
+See `docs/product.md`, `docs/architecture.md`, and `docs/design.md` for the full spec.
+
+## Stack
+
+|                 |                                         |
+| --------------- | --------------------------------------- |
+| Mobile          | React Native (Expo Router) + NativeWind |
+| Backend         | Node.js + Fastify + tRPC + Drizzle ORM  |
+| Database / Auth | Supabase (Postgres + Auth)              |
+| Financial data  | Plaid API (BYOK, server-side only)      |
+
+## Prerequisites
+
+- Node.js and npm
+- A [Supabase](https://supabase.com) project (Postgres + Auth)
+- Xcode + an Apple Developer account, for running the iOS app on a simulator or device
+- Your own free [Plaid](https://dashboard.plaid.com/signup) developer account (added per-user, in-app — not a project-level secret)
+
+## Backend
+
+```bash
+cd backend
+cp .env.example .env   # fill in the values below
+npm install
+npm run db:migrate     # applies the Drizzle schema to your Supabase Postgres
+npm run dev            # starts the Fastify server on :3000
+```
+
+`.env` values:
+
+| Variable                      | Where to get it                                                          |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `DATABASE_URL`                | Supabase → Settings → Database → Connection string                       |
+| `SUPABASE_URL`                | Supabase → Settings → API → Project URL                                  |
+| `SUPABASE_ANON_KEY`           | Supabase → Settings → API Keys → Publishable key                         |
+| `SUPABASE_SERVICE_ROLE_KEY`   | Supabase → Settings → API Keys → Secret key                              |
+| `SUPABASE_JWT_SECRET`         | Supabase → Settings → API → JWT Secret                                   |
+| `ACCESS_TOKEN_ENCRYPTION_KEY` | Generate: `openssl rand -hex 32`                                         |
+| `PLAID_REDIRECT_URI`          | Only needed for Plaid OAuth institutions (Chase, BofA, etc.) — see below |
+| `PORT`                        | Defaults to `3000`                                                       |
+
+Run the test suite with `npm test`.
+
+## Frontend
+
+```bash
+cd frontend
+cp .env.example .env   # fill in the values below
+npm install
+npm run ios            # builds and launches on the iOS Simulator (or --device for a physical phone)
+```
+
+`.env` values:
+
+| Variable                        | Where to get it                                                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_SUPABASE_URL`      | Same Supabase Project URL as the backend                                                                                                                                      |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Same Publishable key as the backend                                                                                                                                           |
+| `EXPO_PUBLIC_API_URL`           | Your backend's URL — `http://localhost:3000` for the simulator; your Mac's LAN IP, or a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`), for a physical device |
+
+Run the test suite with `npm test`.
+
+### Notes on native builds
+
+- **Plaid Link is a native module** (`react-native-plaid-link-sdk`) and does not run in Expo Go — `npm run ios`/`npm run android` build a real dev client via `expo prebuild`, which needs Xcode/CocoaPods installed.
+- **Plaid OAuth institutions** (Chase, Bank of America, etc.) require a universal link, which needs: a paid Apple Developer Program membership, the **Associated Domains** capability with an explicit (non-wildcard) App ID registered on the Apple Developer portal, an `apple-app-site-association` file hosted at your redirect domain, that same URL registered in the Plaid Dashboard's Allowed redirect URIs, and `PLAID_REDIRECT_URI` set on the backend. Non-OAuth Sandbox institutions (e.g. "Platypus Bank", `user_good`/`pass_good`) work without any of this.
+- **Real/live institutions require Plaid Production keys**, entered by each user in Settings → Plaid Developer Account with Environment set to Production. Sandbox keys only work against Plaid's fake test institutions — linking a real bank always needs the user's own Production `client_id`/`secret` from their Plaid dashboard.
