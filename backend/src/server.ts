@@ -6,7 +6,12 @@ import { appRouter } from './trpc/router.js'
 import { createContext } from './trpc/context.js'
 
 export function buildServer() {
-  const server = Fastify({ logger: true })
+  // tRPC's httpBatchLink joins every batched procedure name into one comma-separated
+  // path segment (e.g. "accounts.list,manualTransactions.list,..."). Fastify's default
+  // maxParamLength (100) is meant for normal dynamic route params, not this — a handful
+  // of batched queries easily exceeds it, causing find-my-way to reject the route and
+  // Fastify to return its generic 404 instead of ever reaching the tRPC handler.
+  const server = Fastify({ logger: true, maxParamLength: 5000 })
 
   server.register(cors, { origin: true })
 
