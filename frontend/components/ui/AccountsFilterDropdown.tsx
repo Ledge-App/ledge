@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useState } from 'react'
-import { Pressable, Text } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { colors } from '@/constants/theme'
-import { BottomSheet } from './BottomSheet'
+import { SlideUpSheet } from './SlideUpSheet'
 import type { Account } from '@/types/domain'
 
 interface AccountsFilterDropdownProps {
@@ -14,43 +14,55 @@ interface AccountsFilterDropdownProps {
 export function AccountsFilterDropdown({ accounts, selectedAccountId, onSelect }: AccountsFilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const selectedName = selectedAccountId
-    ? accounts.find((a) => a.account_id === selectedAccountId)?.name ?? 'All Accounts'
-    : 'All Accounts'
+    ? accounts.find((a) => a.account_id === selectedAccountId)?.name ?? 'All'
+    : 'All'
 
   return (
     <>
       <Pressable onPress={() => setIsOpen(true)} className="flex-row items-center gap-1">
-        <Text className="font-sansSemi text-base text-textPrimary">{selectedName}</Text>
-        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+        <Text className="font-sansSemi text-base text-primary">{selectedName.length > 8 ? selectedName.slice(0, 8) + '…' : selectedName}</Text>
+        <Ionicons name="chevron-down" size={14} color={colors.primary} />
       </Pressable>
 
-      <BottomSheet visible={isOpen} onClose={() => setIsOpen(false)}>
-        <Pressable
-          onPress={() => {
-            onSelect(null)
-            setIsOpen(false)
-          }}
-          className="flex-row items-center justify-between py-3"
-        >
-          <Text className="font-sansMed text-base text-textPrimary">All Accounts</Text>
-          {selectedAccountId === null ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
-        </Pressable>
-        {accounts.map((account) => (
+      <SlideUpSheet visible={isOpen} onClose={() => setIsOpen(false)}>
+        <View className="flex-row items-center justify-between px-5 py-3">
+          <Pressable onPress={() => setIsOpen(false)} hitSlop={8}>
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Text className="font-display text-md text-textPrimary">Select Account</Text>
+          <View style={{ width: 22 }} />
+        </View>
+
+        <ScrollView className="px-5">
           <Pressable
-            key={account.account_id}
             onPress={() => {
-              onSelect(account.account_id)
+              onSelect(null)
               setIsOpen(false)
             }}
-            className="flex-row items-center justify-between py-3"
+            className="flex-row items-center justify-between py-4 border-b"
+            style={{ borderColor: colors.border }}
           >
-            <Text className="font-sansMed text-base text-textPrimary">{account.name}</Text>
-            {selectedAccountId === account.account_id ? (
-              <Ionicons name="checkmark" size={18} color={colors.primary} />
-            ) : null}
+            <Text className="font-sansMed text-base text-textPrimary">All</Text>
+            {selectedAccountId === null ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
           </Pressable>
-        ))}
-      </BottomSheet>
+          {accounts.map((account) => (
+            <Pressable
+              key={account.account_id}
+              onPress={() => {
+                onSelect(account.account_id)
+                setIsOpen(false)
+              }}
+              className="flex-row items-center justify-between py-4 border-b"
+              style={{ borderColor: colors.border }}
+            >
+              <Text className="font-sansMed text-base text-textPrimary">{account.name}</Text>
+              {selectedAccountId === account.account_id ? (
+                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              ) : null}
+            </Pressable>
+          ))}
+        </ScrollView>
+      </SlideUpSheet>
     </>
   )
 }

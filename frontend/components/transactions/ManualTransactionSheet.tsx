@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { Ionicons } from '@expo/vector-icons'
+import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { TextField } from '@/components/ui/TextField'
@@ -71,11 +72,18 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
-      <ScrollView>
-        <Text className="mb-4 font-sansSemi text-lg text-textPrimary">
+    <SlideUpSheet visible={visible} onClose={onClose}>
+      <View className="flex-row items-center justify-between px-5 py-3">
+        <Pressable onPress={onClose} hitSlop={8}>
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
+        </Pressable>
+        <Text className="font-display text-md text-textPrimary">
           {transaction ? 'Edit Transaction' : 'Add Transaction'}
         </Text>
+        <View style={{ width: 22 }} />
+      </View>
+
+      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
 
         <SegmentedControl
           options={[{ label: 'Expense', value: 'expense' as const }, { label: 'Income', value: 'income' as const }]}
@@ -157,6 +165,6 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
           {onDelete ? <Button label="Delete Transaction" variant="ghost" onPress={onDelete} /> : null}
         </View>
       </ScrollView>
-    </BottomSheet>
+    </SlideUpSheet>
   )
 }

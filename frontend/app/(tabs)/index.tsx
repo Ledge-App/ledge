@@ -12,8 +12,6 @@ import { useTransactionOverrides } from '@/hooks/useTransactionOverrides'
 import { useVendorMappings } from '@/hooks/useVendorMappings'
 import { useReimbursements } from '@/hooks/useReimbursements'
 import { CategoryCard } from '@/components/categories/CategoryCard'
-import { TransactionRow } from '@/components/transactions/TransactionRow'
-import { BudgetCard } from '@/components/budgets/BudgetCard'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import { CategorySheet } from '@/components/transactions/CategorySheet'
@@ -55,20 +53,6 @@ export default function DashboardScreen() {
     () => aggregateMonth(monthFeed),
     [monthFeed],
   )
-
-  const recentTransactions = accountFilteredFeed.slice(0, 5)
-
-  const budgetHealthCards = useMemo(() => {
-    if (!budgets.data) return []
-    return budgets.data
-      .map((budget) => {
-        const spent = spendByCategory.get(budget.categoryId) ?? 0
-        const percent = Number(budget.amount) > 0 ? (spent / Number(budget.amount)) * 100 : 0
-        return { budget, spent, percent }
-      })
-      .filter(({ percent }) => percent >= 80)
-      .sort((a, b) => b.percent - a.percent)
-  }, [budgets.data, spendByCategory])
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -118,16 +102,12 @@ export default function DashboardScreen() {
     }
   }
 
-  // Sourced from the raw feed, not the account-filtered one: a reimbursement's income leg
-  // usually lands on a different account than the expense. Already-linked income is
-  // excluded so the same payment can't be attached to two expenses.
   const candidateIncomeItems = feed.filter(
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
   )
 
   const hasNoAccounts = !accounts.isLoading && (accounts.data?.length ?? 0) === 0
 
-  // Every hook above must run before these early returns (rules of hooks).
   if (isLoading) return <LoadingScreen />
 
   if (hasNoAccounts) {
@@ -138,26 +118,33 @@ export default function DashboardScreen() {
     )
   }
 
+  const expenseCategories = categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []
+  const incomeCategories = categories.data?.filter((c) => incomeByCategory.has(c.id)) ?? []
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <ScrollView contentContainerClassName="gap-6 px-5 py-4">
-        <View className="flex-row items-center justify-between">
-          <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
+      <ScrollView contentContainerClassName="gap-5 px-5 py-4">
+        <View className="flex-row items-center">
+          <View className="flex-1 flex-row">
+            <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
+          </View>
           <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
-          <Ionicons name="paw" size={22} color={colors.textMuted} style={{ opacity: 0.4 }} />
+          <View className="flex-1 items-end">
+            <Ionicons name="paw" size={22} color={colors.textMuted} style={{ opacity: 0.4 }} />
+          </View>
         </View>
 
         {error ? <ErrorBanner message="Something went wrong loading your data." /> : null}
         {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-        <Pressable onPress={() => setExpensesOpen((v) => !v)} className="flex-row items-center gap-2">
-          <Text className="font-sansSemi text-lg text-expense">Expenses {formatAmount(totalExpense)}</Text>
-          <Ionicons name={expensesOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.expense} />
+        <Pressable onPress={() => setExpensesOpen((v) => !v)} className="flex-row items-center justify-center gap-2">
+          <Text className="font-sansSemi text-base text-textPrimary">Expenses {formatAmount(totalExpense)}</Text>
+          <Ionicons name={expensesOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
         </Pressable>
         {expensesOpen ? (
-          <View className="flex-row flex-wrap gap-3">
-            {(categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []).map((category) => (
-              <View key={category.id} className="w-[48%]">
+          <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+            {expenseCategories.map((category) => (
+              <View key={category.id} style={{ width: '31%' }}>
                 <CategoryCard
                   name={category.name}
                   icon={category.icon}
@@ -170,59 +157,19 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <Pressable onPress={() => setIncomeOpen((v) => !v)} className="flex-row items-center gap-2">
-          <Text className="font-sansSemi text-lg text-income">Income {formatAmount(totalIncome)}</Text>
-          <Ionicons name={incomeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.income} />
+        <Pressable onPress={() => setIncomeOpen((v) => !v)} className="flex-row items-center justify-center gap-2">
+          <Text className="font-sansSemi text-base text-textPrimary">Income {formatAmount(totalIncome)}</Text>
+          <Ionicons name={incomeOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
         </Pressable>
         {incomeOpen ? (
-          <View className="flex-row flex-wrap gap-3">
-            {(categories.data?.filter((c) => incomeByCategory.has(c.id)) ?? []).map((category) => (
-              <View key={category.id} className="w-[48%]">
+          <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+            {incomeCategories.map((category) => (
+              <View key={category.id} style={{ width: '31%' }}>
                 <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeByCategory.get(category.id) ?? 0} budget={null} />
               </View>
             ))}
           </View>
         ) : null}
-
-        {budgetHealthCards.length > 0 ? (
-          <View className="gap-2">
-            <Text className="font-sansSemi text-base text-textPrimary">Budget Health</Text>
-            {budgetHealthCards.map(({ budget, spent }) => {
-              const category = categoryById.get(budget.categoryId)
-              return (
-                <BudgetCard
-                  key={budget.id}
-                  categoryName={category?.name ?? 'Unknown'}
-                  categoryIcon={category?.icon ?? '❓'}
-                  spent={spent}
-                  budget={Number(budget.amount)}
-                />
-              )
-            })}
-          </View>
-        ) : null}
-
-        <View className="gap-2">
-          <Text className="font-sansSemi text-base text-textPrimary">Recent Transactions</Text>
-          {recentTransactions.map((item) => {
-            const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
-            return (
-              <TransactionRow
-                key={item.id}
-                item={item}
-                categoryName={category?.name ?? 'Uncategorized'}
-                categoryColor={category?.color ?? colors.textMuted}
-                categoryIcon={category?.icon ?? '❓'}
-                reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                onPress={
-                  item.source === 'plaid'
-                    ? () => setActiveSheetItem(item)
-                    : undefined
-                }
-              />
-            )
-          })}
-        </View>
       </ScrollView>
 
       <CategorySheet

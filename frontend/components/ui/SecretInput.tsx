@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
-import { colors } from '@/constants/theme'
+import { colors, fontFamily, fontSize } from '@/constants/theme'
 
 interface SecretInputProps {
   value: string
@@ -34,12 +34,19 @@ export function SecretInput({ value, onChangeText, error, placeholder }: SecretI
             setIsFocused(false)
             setIsRevealed(false)
           }}
-          secureTextEntry={!showPlaintext}
+          secureTextEntry={!showPlaintext && value.length > 0}
+          textContentType="none"
+          autoComplete="off"
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
-          className="flex-1 font-mono text-base text-textPrimary"
+          style={{
+            flex: 1,
+            fontFamily: fontFamily.mono,
+            fontSize: fontSize.base,
+            color: colors.textPrimary,
+          }}
         />
         <Pressable
           onPress={() => setIsRevealed((prev) => !prev)}

@@ -12,6 +12,15 @@ interface PlaidTransactionLike {
 
 export const onboardingService = {
   async seedCategories(jwt: string, userId: string): Promise<{ categoryIdsByLedgeName: Record<string, string> }> {
+    const existing = await categoryRepository.list(jwt)
+    if (existing.length > 0) {
+      const categoryIdsByLedgeName: Record<string, string> = {}
+      for (const cat of existing) {
+        categoryIdsByLedgeName[cat.name] = cat.id
+      }
+      return { categoryIdsByLedgeName }
+    }
+
     const categoryIdsByLedgeName: Record<string, string> = {}
 
     for (const entry of DEFAULT_PFC_MAPPING) {
@@ -26,8 +35,6 @@ export const onboardingService = {
         await subcategoryRepository.create(jwt, userId, { categoryId: category.id, name: subcategoryName })
       }
 
-      // One row per detailed PFC code — matches architecture.md's "detailed overrides primary" rule
-      // by only ever writing detailed-level rows during default seeding (no primary-only fallback row).
       for (const detailedCode of entry.detailedCodes) {
         await plaidCategoryMappingRepository.create(jwt, userId, {
           plaidPfcPrimary: entry.primary,

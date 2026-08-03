@@ -2,8 +2,8 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["Y9JWKB249L.com.ledge.app"],
-        "paths": ["/oauth-callback"]
+        "appIDs": ["Y9JWKB249L.com.qihongw08.ledge"],
+        "paths": ["/oauth-callback*"]
       }
     ]
   }

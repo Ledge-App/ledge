@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useState } from 'react'
-import { Linking, Pressable, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { usePlaidCredentials, type PlaidEnvironment } from '@/hooks/usePlaidCredentials'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
-import { SavedSecretPlaceholder, SecretInput } from '@/components/ui/SecretInput'
+import { SecretInput } from '@/components/ui/SecretInput'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
 import { colors } from '@/constants/theme'
 
 interface PlaidCredentialsFormProps {
@@ -18,14 +19,13 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
   const { data: existing, isLoading, test, isTesting, save, isSaving } = usePlaidCredentials()
 
   const [isHowToOpen, setIsHowToOpen] = useState(false)
-  const [isReplacing, setIsReplacing] = useState(false)
+  const [replaceOpen, setReplaceOpen] = useState(false)
   const [environment, setEnvironment] = useState<PlaidEnvironment>('sandbox')
   const [clientId, setClientId] = useState('')
   const [secret, setSecret] = useState('')
   const [testResult, setTestResult] = useState<TestResult>({ status: 'idle' })
 
-  const hasExisting = !!existing && !isReplacing
-  const canEditSecret = !hasExisting
+  const isNewSetup = !existing
 
   async function handleTest() {
     setTestResult({ status: 'idle' })
@@ -44,7 +44,8 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
   async function handleSave() {
     const result = await save({ clientId, secret, environment })
     if (result.ok) {
-      setIsReplacing(false)
+      setReplaceOpen(false)
+      setClientId('')
       setSecret('')
       setTestResult({ status: 'idle' })
       onSaved?.()
@@ -53,44 +54,20 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
     }
   }
 
+  function handleCloseReplace() {
+    setReplaceOpen(false)
+    setClientId('')
+    setSecret('')
+    setTestResult({ status: 'idle' })
+  }
+
   if (isLoading) return null
 
   const canTest = clientId.trim().length > 0 && secret.trim().length > 0
   const canSave = canTest && testResult.status === 'success' && !isSaving
 
-  return (
-    <View className="gap-6">
-      <View className="gap-2">
-        <Text className="font-sansSemi text-lg text-textPrimary">Plaid Developer Account</Text>
-        <Text className="font-sans text-sm leading-5 text-textSecondary">
-          Ledge uses your own free Plaid developer account so your linked banks stay under your own
-          usage.
-        </Text>
-      </View>
-
-      <Pressable onPress={() => setIsHowToOpen((prev) => !prev)} className="flex-row items-center gap-1">
-        <Text className={`font-sansMed text-sm ${isHowToOpen ? 'text-primary' : 'text-textMuted'}`}>
-          How do I get these?
-        </Text>
-        <Ionicons
-          name={isHowToOpen ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={isHowToOpen ? colors.primary : colors.textMuted}
-        />
-      </Pressable>
-      {isHowToOpen ? (
-        <View className="gap-2 rounded-md bg-surface p-4">
-          <Text className="font-sans text-sm leading-5 text-textSecondary">
-            1. Create a free Plaid account at dashboard.plaid.com/signup{'\n'}
-            2. Find your Client ID and Secret under Developers → Keys{'\n'}
-            3. For real bank data, request the free Trial plan or Production access
-          </Text>
-          <Pressable onPress={() => Linking.openURL('https://dashboard.plaid.com/signup')}>
-            <Text className="font-sansMed text-sm text-primary">Open dashboard.plaid.com/signup</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
+  const formFields = (
+    <>
       <View className="gap-2">
         <Text className="font-sansMed text-sm text-textSecondary">Environment</Text>
         <SegmentedControl
@@ -103,24 +80,16 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
         />
       </View>
 
-      {hasExisting ? (
-        <TextField label="Client ID" value={existing.clientId} editable={false} mono />
-      ) : (
-        <TextField
-          label="Client ID"
-          value={clientId}
-          onChangeText={setClientId}
-          autoCapitalize="none"
-          autoCorrect={false}
-          mono
-        />
-      )}
+      <TextField
+        label="Client ID"
+        value={clientId}
+        onChangeText={setClientId}
+        autoCapitalize="none"
+        autoCorrect={false}
+        mono
+      />
 
-      {canEditSecret ? (
-        <SecretInput value={secret} onChangeText={setSecret} />
-      ) : (
-        <SavedSecretPlaceholder onReplace={() => setIsReplacing(true)} />
-      )}
+      <SecretInput value={secret} onChangeText={setSecret} />
 
       {testResult.status === 'success' ? (
         <View className="flex-row items-center gap-2">
@@ -135,13 +104,91 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
         </View>
       ) : null}
 
-      {canEditSecret ? (
-        <Button label="Test Connection" variant="secondary" onPress={handleTest} loading={isTesting} disabled={!canTest} />
-      ) : null}
+      <Button label="Test Connection" variant="secondary" onPress={handleTest} loading={isTesting} disabled={!canTest} />
+      <Button label="Save" onPress={handleSave} disabled={!canSave} loading={isSaving} />
+    </>
+  )
 
-      {canEditSecret ? (
-        <Button label="Save" onPress={handleSave} disabled={!canSave} loading={isSaving} />
-      ) : null}
+  // New setup: show form inline (onboarding flow)
+  if (isNewSetup) {
+    return (
+      <View className="gap-6">
+        <View className="gap-2">
+          <Text className="font-sansSemi text-lg text-textPrimary">Plaid Developer Account</Text>
+          <Text className="font-sans text-sm leading-5 text-textSecondary">
+            Ledge uses your own free Plaid developer account so your linked banks stay under your own
+            usage.
+          </Text>
+        </View>
+
+        <Pressable onPress={() => setIsHowToOpen((prev) => !prev)} className="flex-row items-center gap-1">
+          <Text className={`font-sansMed text-sm ${isHowToOpen ? 'text-primary' : 'text-textMuted'}`}>
+            How do I get these?
+          </Text>
+          <Ionicons
+            name={isHowToOpen ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={isHowToOpen ? colors.primary : colors.textMuted}
+          />
+        </Pressable>
+        {isHowToOpen ? (
+          <View className="gap-2 rounded-md bg-surface p-4">
+            <Text className="font-sans text-sm leading-5 text-textSecondary">
+              1. Create a free Plaid account at dashboard.plaid.com/signup{'\n'}
+              2. Find your Client ID and Secret under Developers → Keys{'\n'}
+              3. For real bank data, request the free Trial plan or Production access
+            </Text>
+            <Pressable onPress={() => Linking.openURL('https://dashboard.plaid.com/signup')}>
+              <Text className="font-sansMed text-sm text-primary">Open dashboard.plaid.com/signup</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {formFields}
+      </View>
+    )
+  }
+
+  // Existing credentials: show read-only summary + Replace button that opens a modal
+  return (
+    <View className="gap-6">
+      <View className="gap-2">
+        <Text className="font-sansSemi text-lg text-textPrimary">Plaid Developer Account</Text>
+        <Text className="font-sans text-sm leading-5 text-textSecondary">
+          Your Plaid developer account is connected.
+        </Text>
+      </View>
+
+      <View className="gap-4 rounded-xl bg-surface p-4">
+        <View className="gap-1">
+          <Text className="font-sansMed text-sm text-textMuted">Client ID</Text>
+          <Text className="font-mono text-base text-textPrimary">{existing.clientId}</Text>
+        </View>
+        <View className="gap-1">
+          <Text className="font-sansMed text-sm text-textMuted">Secret</Text>
+          <Text className="font-mono text-base text-textMuted">••••••••••••••••</Text>
+        </View>
+        <View className="gap-1">
+          <Text className="font-sansMed text-sm text-textMuted">Environment</Text>
+          <Text className="font-sansMed text-base text-textPrimary capitalize">{existing.environment}</Text>
+        </View>
+      </View>
+
+      <Button label="Replace Keys" variant="secondary" onPress={() => setReplaceOpen(true)} />
+
+      <SlideUpSheet visible={replaceOpen} onClose={handleCloseReplace}>
+        <View className="flex-row items-center justify-between px-5 py-3">
+          <Pressable onPress={handleCloseReplace} hitSlop={8}>
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Text className="font-display text-md text-textPrimary">Replace Keys</Text>
+          <View style={{ width: 22 }} />
+        </View>
+
+        <ScrollView className="px-5" contentContainerClassName="gap-6 pb-10" keyboardShouldPersistTaps="handled">
+          {formFields}
+        </ScrollView>
+      </SlideUpSheet>
     </View>
   )
 }

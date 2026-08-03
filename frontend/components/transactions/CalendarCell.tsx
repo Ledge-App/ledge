@@ -1,54 +1,50 @@
 import { Pressable, Text } from 'react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { colors } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 
 interface CalendarCellProps {
   day: number
-  netAmount: number | null // positive = net expense, negative = net income, null = no activity
+  netAmount: number | null
   hasReimbursement: boolean
   isToday: boolean
   isSelected: boolean
   onPress: () => void
 }
 
-export function CalendarCell({ day, netAmount, hasReimbursement, isToday, isSelected, onPress }: CalendarCellProps) {
-  const scale = useSharedValue(1)
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
-
-  function handlePress() {
-    scale.value = withSpring(0.95, { duration: 100 }, () => {
-      scale.value = withSpring(1, { duration: 100 })
-    })
-    onPress()
-  }
-
+export function CalendarCell({ day, netAmount, isToday, isSelected, onPress }: CalendarCellProps) {
   const amountColor = netAmount == null ? colors.textMuted : netAmount < 0 ? colors.income : colors.expense
-  const dateColor = isToday ? colors.primary : netAmount != null ? colors.textPrimary : colors.textMuted
+  const dateColor = isToday ? colors.textInverse : colors.textPrimary
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityState={{ selected: isSelected }}
-        className="aspect-square items-center justify-center rounded-md"
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      className="items-center justify-center py-2"
+      style={{
+        backgroundColor: isSelected ? colors.surfaceRaised : 'transparent',
+      }}
+    >
+      <Text
+        className="font-sansMed text-sm"
         style={{
-          backgroundColor: isToday ? colors.primaryMuted : isSelected ? colors.surfaceRaised : 'transparent',
-          borderWidth: isSelected ? 1 : 0,
-          borderColor: colors.primary,
+          color: dateColor,
+          backgroundColor: isToday ? colors.expense : 'transparent',
+          borderRadius: 12,
+          overflow: 'hidden',
+          width: 24,
+          height: 24,
+          lineHeight: 24,
+          textAlign: 'center',
         }}
       >
-        <Text className="font-sansMed text-sm" style={{ color: dateColor }}>
-          {day}
+        {day}
+      </Text>
+      {netAmount != null ? (
+        <Text className="font-sans" style={{ color: amountColor, fontSize: 9, marginTop: 2 }}>
+          ${Math.abs(netAmount).toFixed(netAmount > 999 ? 0 : 2)}
         </Text>
-        {netAmount != null ? (
-          <Text className="font-mono text-xs" style={{ color: amountColor }}>
-            {hasReimbursement ? '*' : ''}
-            {formatAmount(Math.abs(netAmount))}
-          </Text>
-        ) : null}
-      </Pressable>
-    </Animated.View>
+      ) : null}
+    </Pressable>
   )
 }

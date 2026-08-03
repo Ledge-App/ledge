@@ -49,7 +49,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
           </Text>
         ) : (
           <Text className="font-mono text-base" style={{ color: amountColor }}>
-            {formatAmount(item.amount)}
+            {isIncome ? '+' : '-'}{formatAmount(Math.abs(item.amount))}
           </Text>
         )}
         {item.confidenceLevel === 'MEDIUM' ? <Text style={{ fontSize: 11 }}>❓</Text> : null}

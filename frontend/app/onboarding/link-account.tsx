@@ -18,10 +18,14 @@ export default function LinkAccountScreen() {
     try {
       const { linkToken } = await createLinkToken()
 
+      console.log('[PlaidLink] link token received, creating session…')
       const session = await createPlaidLinkSession({
         token: linkToken,
-        onEvent: () => {},
+        onEvent: (event) => {
+          console.log('[PlaidLink] event:', JSON.stringify(event))
+        },
         onExit: (exit) => {
+          console.log('[PlaidLink] exit:', JSON.stringify(exit))
           setIsConnecting(false)
           if (exit.error) {
             setError(exit.error.errorMessage ?? 'Bank connection was cancelled.')
@@ -39,8 +43,11 @@ export default function LinkAccountScreen() {
         },
       })
 
+      console.log('[PlaidLink] opening session…')
       await session.open()
+      console.log('[PlaidLink] session opened')
     } catch (err) {
+      console.log('[PlaidLink] error:', err)
       setIsConnecting(false)
       setError(err instanceof Error ? err.message : 'Could not open Plaid Link. Try again.')
     }

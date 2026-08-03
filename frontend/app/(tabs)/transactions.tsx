@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, FlatList, Pressable, SectionList, Text, View } from 'react-native'
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -29,7 +29,6 @@ import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { ManualTransaction } from '@/types/domain'
 
 export default function TransactionsScreen() {
-  // Budgets navigates here with a categoryId param when a budget card is tapped.
   const { categoryId: categoryIdParam } = useLocalSearchParams<{ categoryId?: string }>()
   const [month, setMonth] = useState(currentMonth())
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
@@ -39,8 +38,6 @@ export default function TransactionsScreen() {
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManualId, setEditingManualId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
@@ -57,15 +54,10 @@ export default function TransactionsScreen() {
   )
   const monthFeed = useMemo(() => filterByMonth(accountFilteredFeed, month), [accountFilteredFeed, month])
 
-  // Category filtering is an additional narrowing on top of the account+month filter.
   const filteredFeed = useMemo(
     () => (categoryFilter ? monthFeed.filter((item) => item.categoryId === categoryFilter) : monthFeed),
     [monthFeed, categoryFilter],
   )
-
-  useEffect(() => {
-    setSelectedDay(null)
-  }, [month])
 
   useEffect(() => {
     setCategoryFilter(categoryIdParam ?? null)
@@ -80,11 +72,7 @@ export default function TransactionsScreen() {
     }
     return Array.from(byDate.entries())
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([date, items]) => ({
-        title: date,
-        total: items.reduce((sum, i) => (i.isReimbursementIncome ? sum : sum + (i.netAmount ?? i.amount)), 0),
-        data: items,
-      }))
+      .map(([date, items]) => ({ title: date, data: items }))
   }, [filteredFeed])
 
   const daysInMonth = new Date(month.year, month.month, 0).getDate()
@@ -103,8 +91,6 @@ export default function TransactionsScreen() {
   }, [month, daysInMonth, firstWeekday])
 
   const { spendByDay, totalExpense, totalIncome } = useMemo(() => aggregateMonth(filteredFeed), [filteredFeed])
-
-  const selectedDayItems = selectedDay ? filteredFeed.filter((item) => item.date === selectedDay) : []
 
   async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -207,27 +193,28 @@ export default function TransactionsScreen() {
     ? manualTransactions.data?.find((m) => m.id === editingManualId)
     : undefined
 
-  // Sourced from the raw feed, not the account-filtered one: a reimbursement's income leg
-  // usually lands on a different account than the expense. Already-linked income is
-  // excluded so the same payment can't be attached to two expenses.
   const candidateIncomeItems = feed.filter(
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
   )
 
-  // Every hook above must run before this early return (rules of hooks).
   if (isLoading) return <LoadingScreen />
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <View className="flex-row items-center justify-between px-5 py-3">
-        <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
+      <View className="flex-row items-center px-5 py-3">
+        <View className="flex-1 flex-row">
+          <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
+        </View>
         <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
-        <View className="flex-row gap-3">
-          <Pressable onPress={() => setViewMode('list')} accessibilityLabel="List view">
-            <Ionicons name="list" size={20} color={viewMode === 'list' ? colors.primary : colors.textMuted} />
-          </Pressable>
-          <Pressable onPress={() => setViewMode('calendar')} accessibilityLabel="Calendar view">
-            <Ionicons name="calendar" size={20} color={viewMode === 'calendar' ? colors.primary : colors.textMuted} />
+        <View className="flex-1 items-end">
+          <Pressable
+            onPress={() => {
+              setEditingManualId(null)
+              setManualSheetOpen(true)
+            }}
+            accessibilityLabel="Add Transaction"
+          >
+            <Ionicons name="add-circle-outline" size={24} color={colors.textPrimary} />
           </Pressable>
         </View>
       </View>
@@ -250,43 +237,17 @@ export default function TransactionsScreen() {
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
       {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-      {filteredFeed.length === 0 ? (
-        <EmptyState message="No transactions this month" />
-      ) : viewMode === 'list' ? (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 96 }}
-          renderSectionHeader={({ section }) => (
-            <View className="flex-row items-center justify-between bg-background py-2">
-              <Text className="font-sansSemi text-sm text-textSecondary">{section.title}</Text>
-              <Text className="font-mono text-sm text-textSecondary">{formatAmount(section.total)}</Text>
-            </View>
-          )}
-          renderItem={({ item }) => {
-            const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
-            return (
-              <TransactionRow
-                item={item}
-                categoryName={category?.name ?? 'Uncategorized'}
-                categoryColor={category?.color ?? colors.textMuted}
-                categoryIcon={category?.icon ?? '❓'}
-                reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                onPress={() => handleRowPress(item)}
-              />
-            )
-          }}
-        />
-      ) : (
-        <View className="flex-1 px-5">
-          <View className="mb-2 flex-row">
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Calendar */}
+        <View className="mx-5 mb-4 rounded-xl bg-surface p-3">
+          <View className="mb-1 flex-row">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
               <Text key={day} className="text-center font-sansMed text-xs text-textMuted" style={{ width: '14.28%' }}>
                 {day}
               </Text>
             ))}
           </View>
-          <View className="mb-4 flex-row flex-wrap">
+          <View className="flex-row flex-wrap">
             {calendarDays.map((cell, index) =>
               cell ? (
                 <View key={cell.dateKey} style={{ width: '14.28%' }}>
@@ -295,8 +256,8 @@ export default function TransactionsScreen() {
                     netAmount={spendByDay.get(cell.dateKey)?.net ?? null}
                     hasReimbursement={spendByDay.get(cell.dateKey)?.hasReimbursement ?? false}
                     isToday={cell.dateKey === todayKey}
-                    isSelected={cell.dateKey === selectedDay}
-                    onPress={() => setSelectedDay(cell.dateKey === selectedDay ? null : cell.dateKey)}
+                    isSelected={false}
+                    onPress={() => {}}
                   />
                 </View>
               ) : (
@@ -305,46 +266,65 @@ export default function TransactionsScreen() {
             )}
           </View>
 
-          <View className="mb-4 flex-row justify-between rounded-md bg-surface p-4">
-            <Text className="font-mono text-sm text-income">Income {formatAmount(totalIncome)}</Text>
-            <Text className="font-mono text-sm text-expense">Expenses {formatAmount(totalExpense)}</Text>
-            <Text className="font-mono text-sm text-textPrimary">Net {formatAmount(totalIncome - totalExpense)}</Text>
+          <View className="mt-3 flex-row justify-between border-t px-2 pt-3" style={{ borderColor: colors.border }}>
+            <View className="items-start">
+              <Text className="font-sans text-xs text-textMuted">Income</Text>
+              <Text className="font-display text-md text-income">{formatAmount(totalIncome)}</Text>
+            </View>
+            <View className="items-center">
+              <Text className="font-sans text-xs text-textMuted">Expenses</Text>
+              <Text className="font-display text-md text-expense">{formatAmount(totalExpense)}</Text>
+            </View>
+            <View className="items-end">
+              <Text className="font-sans text-xs text-textMuted">Balance</Text>
+              <Text className="font-display text-md text-textPrimary">{formatAmount(totalIncome - totalExpense)}</Text>
+            </View>
           </View>
-
-          {selectedDay ? (
-            <FlatList
-              data={selectedDayItems}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingBottom: 96 }}
-              renderItem={({ item }) => {
-                const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
-                return (
-                  <TransactionRow
-                    item={item}
-                    categoryName={category?.name ?? 'Uncategorized'}
-                    categoryColor={category?.color ?? colors.textMuted}
-                    categoryIcon={category?.icon ?? '❓'}
-                    reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                    onPress={() => handleRowPress(item)}
-                  />
-                )
-              }}
-            />
-          ) : null}
         </View>
-      )}
 
-      <Pressable
-        onPress={() => {
-          setEditingManualId(null)
-          setManualSheetOpen(true)
-        }}
-        accessibilityLabel="Add Transaction"
-        className="absolute bottom-6 right-6 h-14 w-14 items-center justify-center rounded-full bg-primary"
-        style={{ shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } }}
-      >
-        <Ionicons name="add" size={28} color={colors.textInverse} />
-      </Pressable>
+        {/* Transaction list grouped by date */}
+        {filteredFeed.length === 0 ? (
+          <View className="px-5 py-8">
+            <Text className="text-center font-sans text-sm text-textMuted">No transactions this month</Text>
+          </View>
+        ) : (
+          sections.map((section) => {
+            const date = new Date(section.title + 'T00:00:00')
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            const dayOfWeek = dayNames[date.getDay()]
+            const monthDay = `${date.getMonth() + 1}/${date.getDate()}`
+            const incomeTotal = section.data.filter((i) => i.amount < 0 && !i.isReimbursementIncome).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
+            const expenseTotal = section.data.filter((i) => i.amount > 0).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
+
+            return (
+              <View key={section.title} className="mx-5 mb-3 rounded-xl bg-surface px-4">
+                <View className="flex-row items-center justify-between py-3">
+                  <Text className="font-sansSemi text-sm text-textPrimary">{monthDay} {dayOfWeek}</Text>
+                  <View className="flex-row gap-3">
+                    {incomeTotal > 0 ? <Text className="font-sans text-xs text-income">IN {formatAmount(incomeTotal)}</Text> : null}
+                    {expenseTotal > 0 ? <Text className="font-sans text-xs text-expense">OUT {formatAmount(expenseTotal)}</Text> : null}
+                  </View>
+                </View>
+                {section.data.map((item) => {
+                  const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
+                  return (
+                    <View key={item.id} className="border-t" style={{ borderColor: colors.border }}>
+                      <TransactionRow
+                        item={item}
+                        categoryName={category?.name ?? 'Uncategorized'}
+                        categoryColor={category?.color ?? colors.textMuted}
+                        categoryIcon={category?.icon ?? '❓'}
+                        reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
+                        onPress={() => handleRowPress(item)}
+                      />
+                    </View>
+                  )
+                })}
+              </View>
+            )
+          })
+        )}
+      </ScrollView>
 
       <CategorySheet
         visible={activeSheetItem != null}

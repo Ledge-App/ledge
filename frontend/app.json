@@ -11,7 +11,7 @@
     "backgroundColor": "#FAFAF8",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ledge.app",
+      "bundleIdentifier": "com.qihongw08.ledge",
       "associatedDomains": [
         "applinks:ledge-oauth-88792.netlify.app"
       ]

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Switch, Text, View } from 'react-native'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
+import { colors } from '@/constants/theme'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Category, Subcategory } from '@/types/domain'
 
@@ -46,45 +48,54 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
-      <Text className="font-sansSemi text-lg text-textPrimary">{item.merchantName}</Text>
-      <Text className="mb-4 font-sans text-sm text-textSecondary">
-        {item.date} · {formatAmount(item.amount)}
-      </Text>
+    <SlideUpSheet visible={visible} onClose={onClose}>
+      <View className="flex-row items-center justify-between px-5 py-3">
+        <Pressable onPress={onClose} hitSlop={8}>
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
+        </Pressable>
+        <Text className="font-display text-md text-textPrimary">{item.merchantName}</Text>
+        <View style={{ width: 22 }} />
+      </View>
 
-      <Text className="mb-2 font-sansMed text-sm text-textSecondary">Category</Text>
-      <CategoryPicker categories={categories} selectedCategoryId={categoryId} onSelect={(id) => {
-        setCategoryId(id)
-        setSubcategoryId(null)
-      }} />
+      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
+        <Text className="font-sans text-sm text-textSecondary">
+          {item.date} · {formatAmount(item.amount)}
+        </Text>
 
-      {availableSubcategories.length > 0 ? (
-        <View className="mt-4 flex-row flex-wrap gap-2">
-          {availableSubcategories.map((sub) => (
-            <Text
-              key={sub.id}
-              onPress={() => setSubcategoryId(sub.id)}
-              className={`rounded-full border px-3 py-2 font-sansMed text-sm ${
-                subcategoryId === sub.id ? 'border-primary bg-primaryMuted text-primary' : 'border-border text-textSecondary'
-              }`}
-            >
-              {sub.name}
-            </Text>
-          ))}
+        <Text className="font-sansMed text-sm text-textSecondary">Category</Text>
+        <CategoryPicker categories={categories} selectedCategoryId={categoryId} onSelect={(id) => {
+          setCategoryId(id)
+          setSubcategoryId(null)
+        }} />
+
+        {availableSubcategories.length > 0 ? (
+          <View className="flex-row flex-wrap gap-2">
+            {availableSubcategories.map((sub) => (
+              <Text
+                key={sub.id}
+                onPress={() => setSubcategoryId(sub.id)}
+                className={`rounded-full border px-3 py-2 font-sansMed text-sm ${
+                  subcategoryId === sub.id ? 'border-primary bg-primaryMuted text-primary' : 'border-border text-textSecondary'
+                }`}
+              >
+                {sub.name}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        <View className="flex-row items-center justify-between py-3">
+          <Text className="font-sans text-base text-textPrimary">Apply to all future {item.merchantName}?</Text>
+          <Switch value={applyToVendor} onValueChange={setApplyToVendor} />
         </View>
-      ) : null}
 
-      <View className="mt-4 flex-row items-center justify-between py-3">
-        <Text className="font-sans text-base text-textPrimary">Apply to all future {item.merchantName}?</Text>
-        <Switch value={applyToVendor} onValueChange={setApplyToVendor} />
-      </View>
+        <View className="flex-row items-center justify-between py-3">
+          <Text className="font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
+          <Switch value={markReimbursed} onValueChange={setMarkReimbursed} />
+        </View>
 
-      <View className="flex-row items-center justify-between py-3">
-        <Text className="font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
-        <Switch value={markReimbursed} onValueChange={setMarkReimbursed} />
-      </View>
-
-      <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />
-    </BottomSheet>
+        <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />
+      </ScrollView>
+    </SlideUpSheet>
   )
 }

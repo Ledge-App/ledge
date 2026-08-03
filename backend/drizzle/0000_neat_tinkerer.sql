@@ -1,7 +1,3 @@
-CREATE TABLE IF NOT EXISTS "auth"."users" (
-	"id" uuid PRIMARY KEY NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "budgets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -91,7 +87,8 @@ CREATE TABLE IF NOT EXISTS "transaction_overrides" (
 	"plaid_transaction_id" text NOT NULL,
 	"category_id" uuid,
 	"subcategory_id" uuid,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "transaction_overrides_user_id_plaid_transaction_id_unique" UNIQUE("user_id","plaid_transaction_id")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "vendor_mappings" (

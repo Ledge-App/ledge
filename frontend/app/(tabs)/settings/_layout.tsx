@@ -9,6 +9,7 @@ export default function SettingsLayout() {
         headerTintColor: colors.textPrimary,
         headerShadowVisible: false,
         headerTitleStyle: { fontFamily: 'Inter_600SemiBold' },
+        headerBackButtonDisplayMode: 'minimal',
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Settings' }} />
@@ -16,6 +17,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="plaid-account" options={{ title: 'Plaid Developer Account' }} />
       <Stack.Screen name="categories" options={{ title: 'Categories' }} />
       <Stack.Screen name="category-form" options={{ title: 'Category' }} />
+      <Stack.Screen name="institutions" options={{ title: 'Linked Institutions' }} />
     </Stack>
   )
 }

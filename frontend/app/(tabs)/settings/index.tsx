@@ -24,6 +24,7 @@ export default function SettingsIndexScreen() {
         <Text className="px-4 font-sansMed text-sm text-textMuted">Accounts</Text>
         <View className="gap-1 rounded-md bg-surface">
           <SettingsRow icon="card" label="Accounts" onPress={() => router.push('/(tabs)/settings/accounts')} />
+          <SettingsRow icon="link" label="Linked Institutions" onPress={() => router.push('/(tabs)/settings/institutions')} />
           <SettingsRow
             icon="key"
             label="Plaid Developer Account"

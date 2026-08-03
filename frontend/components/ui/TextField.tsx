@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Text, TextInput, View, type TextInputProps } from 'react-native'
-import { colors } from '@/constants/theme'
+import { colors, fontFamily, fontSize, borderRadius } from '@/constants/theme'
 
 interface TextFieldProps extends TextInputProps {
   label: string
@@ -26,11 +26,20 @@ export function TextField({ label, error, mono, ...inputProps }: TextFieldProps)
           setIsFocused(false)
           inputProps.onBlur?.(event)
         }}
+        textContentType="none"
+        autoComplete="off"
         placeholderTextColor={colors.textMuted}
-        style={{ borderColor }}
-        className={`h-[52px] rounded-md border bg-surface px-4 text-base text-textPrimary ${
-          mono ? 'font-mono' : 'font-sans'
-        }`}
+        style={{
+          height: 52,
+          borderRadius: borderRadius.sm,
+          borderWidth: 1,
+          borderColor,
+          backgroundColor: colors.surface,
+          paddingHorizontal: 16,
+          fontSize: fontSize.base,
+          color: colors.textPrimary,
+          fontFamily: mono ? fontFamily.mono : fontFamily.sans,
+        }}
       />
       {error ? <Text className="font-sans text-sm text-expense">{error}</Text> : null}
     </View>

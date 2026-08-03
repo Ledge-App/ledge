@@ -1,7 +1,9 @@
 # Ledge — Design System & UI Spec
 > Agent context document. Read before writing any component code. Pairs with `product.md` (features) and `architecture.md` (backend/data layer).
 
-Reference app: 记账本 (Chinese budgeting app). Ledge takes the same structural ideas — pastel category cards, teal brand hero, calendar transaction view — and adapts them to a **dark-mode-first, premium fintech aesthetic** for a young urban audience.
+Reference app: 记账本 (Chinese budgeting app). Ledge takes the same structural ideas — pastel category cards, teal brand hero, calendar transaction view — and adapts them to a **light-mode-first, premium fintech aesthetic** for a young urban audience.
+
+> **2026-08 update:** pivoted from an earlier dark-mode-first draft of this spec to light-mode-first, moving closer to 记账本's actual light aesthetic per direct reference screenshots — warm near-white surfaces, fully-saturated pastel category cards (not a subtle dark-card tint), and AA-contrast-safe deep shades for semantic text colors. Structure, typography, and layout are unchanged; this was a color-token-level pivot. See `.impeccable.md` for the full design-context note.
 
 ---
 
@@ -23,48 +25,50 @@ All values map 1:1 to `constants/theme.ts`. No hex values should appear anywhere
 ### Base Palette
 
 ```
-background       #0A0A0A    App background (near-black)
-surface          #141414    Cards, sheets, bottom sheets
-surfaceRaised    #1E1E1E    Elevated elements, dropdowns, modals
-border           #272727    Dividers, input borders
-borderStrong     #333333    Stronger dividers, focused inputs
+background       #FAFAF8    App background (warm near-white, never pure #FFF)
+surface          #FFFFFF    Cards, sheets, bottom sheets
+surfaceRaised    #F3F3EF    Elevated elements, dropdowns, modals, pressed states
+border           #E8E8E2    Dividers, input borders
+borderStrong     #D3D3CA    Stronger dividers, focused inputs
 ```
 
 ### Brand
 
 ```
-primary          #2DD4BF    Teal — brand color, active states, CTAs, income ring
-primaryDim       #1A7A70    Darker teal — pressed states
-primaryMuted     rgba(45,212,191,0.12)   Teal tint surface (hero card wave, highlights)
+primary          #0F766E    Teal — brand color, active states, CTAs, links (AA-safe as text on background/surface)
+primaryDim       #0B5C56    Darker teal — pressed states
+primaryMuted     rgba(15,118,110,0.10)   Teal tint surface (hero card wave, highlights, selected segment bg)
 ```
 
 ### Semantic
 
+These double as both icon color and text color throughout the codebase (error text, status labels, amounts) — each is a deep, AA-contrast-safe shade against `background`/`surface`, not the brighter tone you'd reach for on a dark card.
+
 ```
-income           #34D399    Emerald — income amounts, positive deltas, reimbursement rows
-expense          #FB7185    Rose — expense amounts, over-budget states
-warning          #FBBF24    Amber — approaching budget (70–90%)
-reimbursed       #A78BFA    Violet — reimbursement badge, partial reimbursement indicator
+income           #059669    Emerald — income amounts, positive deltas, reimbursement rows
+expense          #E11D48    Rose — expense amounts, over-budget states
+warning          #B45309    Amber — approaching budget (70–90%)
+reimbursed       #7C3AED    Violet — reimbursement badge, partial reimbursement indicator
 ```
 
 ### Text
 
 ```
-textPrimary      #F2F2F2    Primary text
-textSecondary    #9A9A9A    Secondary labels, metadata
-textMuted        #5A5A5A    Placeholder, disabled text
-textInverse      #0A0A0A    Text on light/teal backgrounds
+textPrimary      #1C1C18    Primary text (warm near-black, never pure #000)
+textSecondary    #6E6E64    Secondary labels, metadata
+textMuted        #A8A89C    Placeholder, disabled text
+textInverse      #FFFFFF    Text on filled teal/dark surfaces (buttons, hero card)
 ```
 
 ### Category Card Tints
 
-Each category has a `color` stored in the DB (user-defined hex). The card surface and icon ring are derived from it at render time:
+Each category has a `color` stored in the DB (user-defined hex). The card surface and icon ring are derived from it at render time — pastel fills should read as genuinely colored cards (like the 记账本 reference), not a near-invisible tint on a dark card:
 
 ```ts
 // Given category.color = '#F97316' (orange):
-cardSurface  = hexToRgba(category.color, 0.10)   // very subtle tinted bg
+cardSurface  = hexToRgba(category.color, 0.16)   // saturated pastel bg — the card's defining color
 iconRing     = category.color                      // full color ring around icon
-iconBg       = hexToRgba(category.color, 0.18)    // slightly stronger tint inside ring
+iconBg       = hexToRgba(category.color, 0.28)    // more-saturated inner circle behind the icon (two-tone badge)
 ```
 
 Default category colors (seeded on onboarding):
@@ -155,13 +159,13 @@ borderRadius = {
 
 ## Shadows
 
-Dark mode shadows use a colored tint rather than pure black for depth:
+On light surfaces, shadows should read as soft elevation, not heavy drop-shadows — low opacity, black for ordinary cards, a teal tint reserved for the hero card's subtle glow:
 
 ```ts
 shadow = {
-  sm: { shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity:0.3, shadowRadius:6, elevation:3 },
-  md: { shadowColor: '#000', shadowOffset: {width:0, height:6}, shadowOpacity:0.4, shadowRadius:14, elevation:8 },
-  card: { shadowColor: '#2DD4BF', shadowOffset: {width:0, height:4}, shadowOpacity:0.08, shadowRadius:20, elevation:6 },
+  sm: { shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity:0.06, shadowRadius:6, elevation:2 },
+  md: { shadowColor: '#000', shadowOffset: {width:0, height:6}, shadowOpacity:0.1, shadowRadius:14, elevation:4 },
+  card: { shadowColor: '#0F766E', shadowOffset: {width:0, height:4}, shadowOpacity:0.1, shadowRadius:20, elevation:3 },
 }
 ```
 

@@ -1,28 +1,9 @@
 {
-  "id": "3515de41-92dc-41a8-b87c-bcecefecedb7",
+  "id": "3150722d-cb81-4860-8704-f9f5803cc50a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "auth.users": {
-      "name": "users",
-      "schema": "auth",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.budgets": {
       "name": "budgets",
       "schema": "",
@@ -799,7 +780,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "transaction_overrides_user_id_plaid_transaction_id_unique": {
+          "name": "transaction_overrides_user_id_plaid_transaction_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "plaid_transaction_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -25,40 +25,43 @@ export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading }:
   const [isMasked, setIsMasked] = useState(false)
 
   return (
-    <View className="overflow-hidden rounded-xl p-5" style={{ backgroundColor: colors.primaryDim }}>
+    <View className="overflow-hidden rounded-2xl p-5" style={{ backgroundColor: colors.primaryDim }}>
       <View className="flex-row items-center justify-between">
         <Pressable
           onPress={() => setIsMasked((m) => !m)}
           accessibilityLabel={isMasked ? 'Show amounts' : 'Hide amounts'}
           className="flex-row items-center gap-2"
         >
-          <Ionicons name={isMasked ? 'eye-off' : 'eye'} size={18} color={colors.textInverse} />
-          <Text className="font-sansMed text-sm text-textInverse">Net Worth</Text>
+          <Ionicons name={isMasked ? 'eye-off' : 'eye'} size={16} color={hexToRgba(colors.textInverse, 0.6)} />
         </Pressable>
+        <Text className="font-sansMed text-sm text-textInverse" style={{ opacity: 0.9 }}>Net Worth</Text>
         <Ionicons name="trending-up" size={18} color={colors.textInverse} style={{ opacity: 0.5 }} />
       </View>
 
-      <View className="mb-6 mt-4">
+      <View className="my-5 items-center">
         {isLoading ? (
-          <View className="h-9 w-40 rounded-md" style={{ backgroundColor: hexToRgba(colors.textInverse, 0.2) }} />
+          <View className="h-10 w-40 rounded-md" style={{ backgroundColor: hexToRgba(colors.textInverse, 0.2) }} />
         ) : (
           <Text className="font-display text-3xl text-textInverse">{formatAmount(netWorth, isMasked)}</Text>
         )}
       </View>
 
-      <Svg width="100%" height={24} viewBox="0 0 300 24" style={{ position: 'absolute', bottom: 56, opacity: 0.5 }}>
-        <Path d="M0 12 Q 37.5 0 75 12 T 150 12 T 225 12 T 300 12 V 24 H 0 Z" fill={colors.primaryMuted} />
+      <Svg width="100%" height={30} viewBox="0 0 300 30" preserveAspectRatio="none" style={{ position: 'absolute', bottom: 48, left: 0, right: 0, opacity: 0.3 }}>
+        <Path d="M0 15 Q 50 0 100 15 T 200 15 T 300 15 V 30 H 0 Z" fill={colors.textInverse} />
+      </Svg>
+      <Svg width="100%" height={24} viewBox="0 0 300 24" preserveAspectRatio="none" style={{ position: 'absolute', bottom: 44, left: 0, right: 0, opacity: 0.15 }}>
+        <Path d="M0 8 Q 75 24 150 8 T 300 8 V 24 H 0 Z" fill={colors.textInverse} />
       </Svg>
 
       <View className="flex-row justify-between">
         <View>
-          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.7) }}>
+          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.6) }}>
             Total Assets
           </Text>
           <Text className="font-sansSemi text-base text-textInverse">{formatAmount(totalAssets, isMasked)}</Text>
         </View>
-        <View>
-          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.7) }}>
+        <View className="items-end">
+          <Text className="font-sans text-xs" style={{ color: hexToRgba(colors.textInverse, 0.6) }}>
             Total Liabilities
           </Text>
           <Text className="font-sansSemi text-base text-textInverse">{formatAmount(totalLiabilities, isMasked)}</Text>

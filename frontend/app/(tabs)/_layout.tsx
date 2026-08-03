@@ -27,17 +27,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="accounts"
         options={{
-          title: 'Transactions',
-          tabBarIcon: ({ color, size }) => <Ionicons name="receipt" color={color} size={size} />,
+          title: 'Accounts',
+          tabBarIcon: ({ color, size }) => <Ionicons name="card" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="budgets"
+        name="transactions"
         options={{
-          title: 'Budgets',
-          tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart" color={color} size={size} />,
+          title: 'Details',
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -46,6 +46,10 @@ export default function TabsLayout() {
           title: 'Settings',
           tabBarIcon: ({ color, size }) => <Ionicons name="settings" color={color} size={size} />,
         }}
+      />
+      <Tabs.Screen
+        name="budgets"
+        options={{ href: null }}
       />
     </Tabs>
   )

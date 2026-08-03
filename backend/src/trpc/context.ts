@@ -1,7 +1,7 @@
 import type { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { verifyJwt } from '../middleware/requireAuth.js'
 
-export function createContext({ req }: CreateFastifyContextOptions) {
+export async function createContext({ req }: CreateFastifyContextOptions) {
   const header = req.headers.authorization
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null
 
@@ -10,11 +10,11 @@ export function createContext({ req }: CreateFastifyContextOptions) {
   }
 
   try {
-    const { userId } = verifyJwt(token)
+    const { userId } = await verifyJwt(token)
     return { userId, jwt: token }
   } catch {
     return { userId: null, jwt: null }
   }
 }
 
-export type Context = ReturnType<typeof createContext>
+export type Context = Awaited<ReturnType<typeof createContext>>

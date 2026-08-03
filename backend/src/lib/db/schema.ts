@@ -3,19 +3,16 @@ import {
   check,
   date,
   numeric,
-  pgSchema,
   pgTable,
   text,
   timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core'
-
-// Supabase's auth.users table, referenced for FKs only — never written to by this app.
-const authSchema = pgSchema('auth')
-export const authUsers = authSchema.table('users', {
-  id: uuid('id').primaryKey(),
-})
+// Supabase's own auth.users reference, imported (never declared) here — declaring it
+// ourselves makes drizzle-kit think it owns the table and emit CREATE TABLE "auth"."users",
+// which fails with "permission denied for schema auth" since Supabase owns that schema.
+import { authUsers } from 'drizzle-orm/supabase'
 
 export const plaidCredentials = pgTable('plaid_credentials', {
   id: uuid('id').primaryKey().defaultRandom(),
