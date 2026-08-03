@@ -36,7 +36,7 @@ export default function TransactionsScreen() {
   const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
   const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
-  const [editingManualId, setEditingManualId] = useState<string | null>(null)
+  const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
@@ -140,21 +140,21 @@ export default function TransactionsScreen() {
 
   async function handleSaveManual(input: { amount: string; type: 'expense' | 'income'; categoryId: string | null; subcategoryId: string | null; date: string; note: string | null }) {
     try {
-      if (editingManualId) {
-        await manualTransactions.update({ id: editingManualId, ...input })
+      if (editingManual) {
+        await manualTransactions.update({ id: editingManual.id, ...input })
       } else {
         await manualTransactions.create(input)
       }
       setManualSheetOpen(false)
-      setEditingManualId(null)
+      setEditingManual(null)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save this transaction. Try again.')
     }
   }
 
   function handleDeleteManual() {
-    if (!editingManualId) return
-    const id = editingManualId
+    if (!editingManual) return
+    const id = editingManual.id
     const feedItem = feed.find((item) => item.id === id)
     const isReimbursed = feedItem?.reimbursedAmount != null || feedItem?.isReimbursementIncome === true
 
@@ -170,7 +170,7 @@ export default function TransactionsScreen() {
             try {
               await manualTransactions.delete({ id })
               setManualSheetOpen(false)
-              setEditingManualId(null)
+              setEditingManual(null)
             } catch (err) {
               setSaveError(err instanceof Error ? err.message : 'Could not delete this transaction. Try again.')
             }
@@ -182,16 +182,20 @@ export default function TransactionsScreen() {
 
   function handleRowPress(item: FeedItem) {
     if (item.source === 'manual') {
-      setEditingManualId(item.id)
+      setEditingManual({
+        id: item.id,
+        amount: Math.abs(item.amount).toFixed(2),
+        type: item.amount < 0 ? 'income' : 'expense',
+        categoryId: item.categoryId,
+        subcategoryId: item.subcategoryId,
+        date: item.date,
+        note: item.note,
+      })
       setManualSheetOpen(true)
     } else {
       setActiveSheetItem(item)
     }
   }
-
-  const editingManual: ManualTransaction | undefined = editingManualId
-    ? manualTransactions.data?.find((m) => m.id === editingManualId)
-    : undefined
 
   const candidateIncomeItems = feed.filter(
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
@@ -209,7 +213,7 @@ export default function TransactionsScreen() {
         <View className="flex-1 items-end">
           <Pressable
             onPress={() => {
-              setEditingManualId(null)
+              setEditingManual(null)
               setManualSheetOpen(true)
             }}
             accessibilityLabel="Add Transaction"
@@ -344,16 +348,16 @@ export default function TransactionsScreen() {
       />
       <ManualTransactionSheet
         visible={manualSheetOpen}
-        transaction={editingManual}
+        transaction={editingManual ?? undefined}
         categories={categories.data ?? []}
         subcategories={subcategories.data ?? []}
         isSaving={manualTransactions.isLoading}
         onClose={() => {
           setManualSheetOpen(false)
-          setEditingManualId(null)
+          setEditingManual(null)
         }}
         onSave={handleSaveManual}
-        onDelete={editingManualId ? handleDeleteManual : undefined}
+        onDelete={editingManual ? handleDeleteManual : undefined}
       />
     </SafeAreaView>
   )
