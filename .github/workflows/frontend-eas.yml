@@ -10,6 +10,11 @@ on:
           - build
           - update
         required: true
+      submit_to_testflight:
+        description: "Submit to TestFlight after building"
+        required: true
+        default: false
+        type: boolean
       message:
         description: "Update message (only used for the 'update' action)"
         type: string
@@ -44,59 +49,89 @@ jobs:
   build:
     if: ${{ inputs.action == 'build' }}
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: macos-15
+    timeout-minutes: 90
     environment: production
     defaults:
       run:
         working-directory: frontend
+
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_LOCAL_BUILD_ARTIFACTS_DIR: ./builds
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci
-      - run: npx eas-cli whoami --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: EAS Build (iOS, cloud)
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli build --platform ios --profile production --non-interactive --wait
-
-      - name: Write App Store Connect API key
-        env:
-          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+      - name: Install iOS build tooling
         run: |
-          mkdir -p "$RUNNER_TEMP/asc"
-          echo "$ASC_API_KEY_P8_BASE64" | base64 -d > "$RUNNER_TEMP/asc/AuthKey.p8"
+          brew list fastlane >/dev/null 2>&1 || brew install fastlane
+          brew list cocoapods >/dev/null 2>&1 || brew install cocoapods
 
-      - name: Inject App Store Connect submit config
+      - name: Build local iOS IPA
+        run: |
+          mkdir -p "$EAS_LOCAL_BUILD_ARTIFACTS_DIR"
+          npx eas-cli build \
+            --platform ios \
+            --profile production \
+            --local \
+            --non-interactive
+
+      - name: Find IPA
+        id: ipa
+        run: |
+          ipa_path="$(ls -t builds/*.ipa | head -n 1)"
+          test -n "$ipa_path"
+          echo "path=$ipa_path" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$ipa_path")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ipa.outputs.name }}
+          path: frontend/${{ steps.ipa.outputs.path }}
+          if-no-files-found: error
+
+      - name: Submit to TestFlight
+        if: ${{ inputs.submit_to_testflight }}
         env:
           ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
         run: |
-          node -e "
-            const fs = require('fs');
-            const path = 'eas.json';
-            const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            config.submit = config.submit || {};
-            config.submit.production = {
-              ios: {
-                ascAppId: process.env.ASC_APP_ID,
-                ascApiKeyId: process.env.ASC_API_KEY_ID,
-                ascApiKeyIssuerId: process.env.ASC_API_KEY_ISSUER_ID,
-                ascApiKeyPath: '${{ runner.temp }}/asc/AuthKey.p8',
-              },
+          test -n "$ASC_APP_ID"
+          test -n "$ASC_API_KEY_ID"
+          test -n "$ASC_API_KEY_ISSUER_ID"
+          test -n "$ASC_API_KEY_P8_BASE64"
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const keyId = process.env.ASC_API_KEY_ID;
+            const issuerId = process.env.ASC_API_KEY_ISSUER_ID;
+            const keyPath = path.join(process.env.RUNNER_TEMP, "AuthKey_" + keyId + ".p8");
+            fs.writeFileSync(keyPath, Buffer.from(process.env.ASC_API_KEY_P8_BASE64, "base64"));
+            const eas = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            eas.submit = eas.submit || {};
+            eas.submit.production = eas.submit.production || {};
+            eas.submit.production.ios = {
+              ascAppId: process.env.ASC_APP_ID,
+              ascApiKeyId: keyId,
+              ascApiKeyIssuerId: issuerId,
+              ascApiKeyPath: keyPath,
             };
-            fs.writeFileSync(path, JSON.stringify(config, null, 2));
-          "
-
-      - name: Submit to TestFlight
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli submit --platform ios --profile production --latest --non-interactive
+            fs.writeFileSync("eas.json", JSON.stringify(eas, null, 2) + "\n");
+          '
+          npx eas-cli submit \
+            --platform ios \
+            --profile production \
+            --path "${{ steps.ipa.outputs.path }}" \
+            --no-wait \
+            --non-interactive
 
   update:
     if: ${{ inputs.action == 'update' }}
