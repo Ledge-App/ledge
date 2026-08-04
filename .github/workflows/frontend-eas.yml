@@ -67,6 +67,11 @@ jobs:
           node-version: 22
       - run: npm ci
 
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
       - name: Install iOS build tooling
         run: |
           brew list fastlane >/dev/null 2>&1 || brew install fastlane
