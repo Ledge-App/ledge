@@ -46,6 +46,42 @@ Even though the backend is a single API surface that owns all data access, Postg
 - **Ordinary CRUD** (categories, budgets, vendor mappings, manual transactions, reimbursements, overrides): the backend uses a **per-request Supabase client re-authenticated with that same user JWT**, so RLS (`auth.uid() = user_id`) enforces the boundary at the database layer.
 - **Privileged operations** (decrypting `plaid_credentials.encrypted_secret`, decrypting `plaid_items.encrypted_access_token`): the backend uses a **service-role Drizzle connection**, since decryption logic can't be expressed by RLS. These are the only code paths that bypass RLS — narrow, explicit, and limited to two repositories.
 
+### Where RLS actually comes from
+
+Migration `backend/drizzle/0001_enable_rls_user_scoped_tables.sql` is what establishes it. That migration enables RLS and creates one policy per user-scoped table:
+
+```sql
+CREATE POLICY <table>_owner ON public.<table> FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+```
+
+`USING` governs which existing rows a statement can see, which is what scopes reads and simultaneously stops an `update`/`delete` that matches only on `id` from touching another user's row. `WITH CHECK` governs rows being written, which is what stops a user from inserting or re-assigning a row under someone else's `user_id`. Both clauses are required; `USING` alone leaves the write path open.
+
+Two properties of Postgres make this the load-bearing layer rather than a redundant one, and make its absence silent:
+
+1. **RLS is opt-in per table.** A table with RLS disabled applies no filtering whatsoever — it does not fail closed. Supabase separately grants the `authenticated` role table-level CRUD on `public` tables by default, so a table that is missing its policy is readable and writable by *every* signed-in user. This is not hypothetical: tables were created in migration 0000 with no policies, and the deployed database was confirmed to have `relrowsecurity = false` and zero policies on all eleven of its public tables — every user could read and modify every other user's rows until 0001 was applied.
+
+   Note the eleventh: `manual_accounts` exists in the deployed database but in neither `schema.ts` nor any migration. Migration 0001 covers it explicitly and skips tables that aren't present, but the drift itself is unresolved — anything generated from `schema.ts` is blind to that table.
+2. **The repositories have no `user_id` predicate of their own.** They issue bare `select`/`update`/`delete` calls (see `manualTransactionRepository.list`) and rely entirely on the policy to narrow the result. There is currently no second layer in application code, so a missing policy is an immediate data leak, not a degraded defense.
+
+**Any new user-scoped table therefore needs its policy added in the same migration that creates it.** Verify the live state with:
+
+```sql
+select tablename, policyname, qual from pg_policies where schemaname = 'public';
+select relname, relrowsecurity from pg_class
+  where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity;
+```
+
+The second query must return zero rows. Note that policies are *permissive* and OR together, so an extra hand-added policy on a table widens access rather than narrowing it — audit `qual` rather than just counting policies.
+
+### The on-device boundary
+
+RLS only governs data crossing the network. The mobile app holds a **single `QueryClient` created once in `app/_layout.tsx`**, which outlives any individual session, so cross-user leakage is possible entirely on-device: sign out, sign in as someone else without restarting the app, and the previous user's cached query results render for the new one. No request reaches Postgres on that path, so no database policy can prevent it.
+
+`useResetCacheOnUserChange` (wired in `app/_layout.tsx`) closes this by emptying the cache whenever the signed-in user changes. It subscribes to `onAuthStateChange` rather than hooking the Sign Out button, so it also covers sessions that end without the user tapping anything — refresh-token failure, expiry. The decision rule is pure and unit-tested in `lib/auth/shouldResetCache.ts`: it deliberately ignores the first event after mount (the cache is empty, and clearing would discard the session's first fetch) and events that leave the user id unchanged (`TOKEN_REFRESHED` fires on a timer all session long).
+
+**Any future client-side store holding user data needs the same treatment.** The MMKV transaction cache (`lib/storage/mmkv.ts`) is currently safe by construction rather than by reset: it keys on Plaid `item_id`, and `plaidItemRepository` scopes items to the calling user, so one user never requests another's keys. It does, however, retain a signed-out user's transactions on disk until those keys are overwritten.
+
 ---
 
 ## Data Flow
@@ -425,16 +461,17 @@ Note: `PLAID_CLIENT_ID` / `PLAID_SECRET` no longer exist as global env vars — 
 ## Key Engineering Constraints
 
 1. **Strict layering** — see Architecture Layers above. A component that imports a repository/service directly, or a router that queries the DB directly, is a bug.
-2. **Drizzle is the schema source of truth** — all table definitions live in `backend/src/lib/db/schema.ts`. Never write raw `CREATE TABLE` SQL by hand; always use Drizzle Kit migrations generated from the schema.
+2. **Drizzle is the schema source of truth** — all table definitions live in `backend/src/lib/db/schema.ts`. Never write raw `CREATE TABLE` SQL by hand; always use Drizzle Kit migrations generated from the schema. *Exception:* RLS policies are not expressible in the schema file at the pinned `drizzle-orm` version, so they live in a hand-written migration authored via `npx drizzle-kit generate --custom` (which creates the journal entry and snapshot for you). `0001_enable_rls_user_scoped_tables.sql` is that migration — it is not a violation of this rule.
 3. **All Plaid calls happen in the backend**, using the calling user's decrypted `client_id`/`secret` from `plaid_credentials`. The mobile app never talks to `*.plaid.com` directly except through the on-device Link SDK's bank-auth handshake.
 4. **Transaction IDs only** are stored server-side (in `reimbursements` and `transaction_overrides`). Never store amounts, merchant names, or account details server-side, except where explicitly noted below.
 5. **Reimbursement amounts** are the one exception to constraint 4 — stored in the `reimbursements` table because they're user-entered, not pulled from Plaid.
-6. **Row-Level Security (RLS)** is enabled on every table. Ordinary CRUD goes through a per-request user-scoped Supabase client so RLS enforces `auth.uid() = user_id`; only the `plaidCredentialRepository` and `plaidItemRepository` use a service-role connection, and only to decrypt/encrypt secrets.
-7. **Design tokens are the only source of truth** — all colors, font sizes, spacing, and radii come from `constants/theme.ts` on mobile. Hardcoded values like `#fff`, `16`, or `'Inter'` anywhere outside that file are a bug.
-8. **NativeWind** requires the Babel plugin. Use `className` props as in web Tailwind, driven by the same token file (see `tailwind.config.js` derivation in `design.md`).
-9. **No `<form>` tags** — use controlled inputs with `onChangeText` / `onPress` handlers throughout.
-10. **Never persist raw Plaid transaction/balance data server-side.** Sync and accounts endpoints are stateless relays.
-11. **BYOK is mandatory, not optional.** There is no fallback shared Plaid key; the UI must gate Plaid Link behind the existence of a `plaid_credentials` row for the current user.
+6. **Row-Level Security (RLS)** is enabled on every table by migration `0001_enable_rls_user_scoped_tables.sql`, and **a new user-scoped table is not finished until its policy ships in the same migration that creates it** — RLS is opt-in per table and fails *open*, so a forgotten policy exposes the table to every signed-in user. Ordinary CRUD goes through a per-request user-scoped Supabase client so RLS enforces `auth.uid() = user_id`; only the `plaidCredentialRepository` and `plaidItemRepository` use a service-role connection, and only to decrypt/encrypt secrets. See "Where RLS actually comes from" above for the policy shape and the audit queries.
+7. **The user boundary is enforced on-device too, not only by RLS.** The `QueryClient` is a single long-lived instance, so any client-side store holding user data must be dropped when the signed-in user changes (`useResetCacheOnUserChange`) — otherwise an account switch renders the previous user's data with no request ever reaching Postgres. See "The on-device boundary" above.
+8. **Design tokens are the only source of truth** — all colors, font sizes, spacing, and radii come from `constants/theme.ts` on mobile. Hardcoded values like `#fff`, `16`, or `'Inter'` anywhere outside that file are a bug.
+9. **NativeWind** requires the Babel plugin. Use `className` props as in web Tailwind, driven by the same token file (see `tailwind.config.js` derivation in `design.md`).
+10. **No `<form>` tags** — use controlled inputs with `onChangeText` / `onPress` handlers throughout.
+11. **Never persist raw Plaid transaction/balance data server-side.** Sync and accounts endpoints are stateless relays.
+12. **BYOK is mandatory, not optional.** There is no fallback shared Plaid key; the UI must gate Plaid Link behind the existence of a `plaid_credentials` row for the current user.
 
 ---
 

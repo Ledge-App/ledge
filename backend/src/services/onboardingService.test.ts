@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const categoryRepoMock = { create: vi.fn() }
+const categoryRepoMock = { create: vi.fn(), list: vi.fn() }
 const subcategoryRepoMock = { create: vi.fn() }
 const pfcMappingRepoMock = { create: vi.fn(), list: vi.fn() }
 const vendorMappingRepoMock = { upsert: vi.fn() }
@@ -14,6 +14,7 @@ describe('onboardingService.seedCategories', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('creates one category per DEFAULT_PFC_MAPPING entry, plus its subcategories and PFC mappings', async () => {
+    categoryRepoMock.list.mockResolvedValue([])
     let categoryCounter = 0
     categoryRepoMock.create.mockImplementation(async (_jwt: string, _userId: string, input: { name: string }) => ({
       id: `cat-${++categoryCounter}`,
@@ -36,6 +37,26 @@ describe('onboardingService.seedCategories', () => {
       categoryId: 'cat-1',
     })
     expect(result.categoryIdsByLedgeName['Food & Drink']).toBe('cat-1')
+  })
+
+  // Seeding is re-entered whenever the onboarding gate sees no categories for the user, so
+  // this early return is the only thing standing between a re-run and a duplicate set.
+  it('creates nothing and maps the existing rows when the user already has categories', async () => {
+    categoryRepoMock.list.mockResolvedValue([
+      { id: 'cat-existing-1', name: 'Food & Drink', color: '#F97316', icon: '🍽' },
+      { id: 'cat-existing-2', name: 'Transport', color: '#0EA5E9', icon: '🚗' },
+    ])
+
+    const { onboardingService } = await import('./onboardingService.js')
+    const result = await onboardingService.seedCategories('jwt-1', 'user-1')
+
+    expect(categoryRepoMock.create).not.toHaveBeenCalled()
+    expect(subcategoryRepoMock.create).not.toHaveBeenCalled()
+    expect(pfcMappingRepoMock.create).not.toHaveBeenCalled()
+    expect(result.categoryIdsByLedgeName).toEqual({
+      'Food & Drink': 'cat-existing-1',
+      Transport: 'cat-existing-2',
+    })
   })
 })
 
