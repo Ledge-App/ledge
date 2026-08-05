@@ -24,13 +24,13 @@ export function AccountRow({ name, balance, variant, limit, isMasked, onPress }:
 
   return (
     <Pressable onPress={onPress} className="flex-row items-center justify-between py-3.5">
-      <View className="flex-row items-center gap-3">
+      <View className="flex-1 flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-surfaceRaised">
           <Ionicons name={icon.name as any} size={18} color={icon.color} />
         </View>
-        <Text className="font-sansMed text-base text-textPrimary">{name}</Text>
+        <Text className="flex-shrink font-sansMed text-base text-textPrimary" numberOfLines={1}>{name}</Text>
       </View>
-      <View className="items-end">
+      <View className="ml-3 items-end">
         <Text className="font-mono text-base" style={{ color: balanceColor }}>
           {isMasked ? '$****' : formatAmount(balance)}
         </Text>
