@@ -63,7 +63,7 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
-        <Text className="font-display text-md text-textPrimary">{account.name}</Text>
+        <Text className="flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>{account.name}</Text>
         <View style={{ width: 22 }} />
       </View>
 

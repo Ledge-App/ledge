@@ -122,10 +122,10 @@ export default function AccountsTab() {
 
         {cashAccounts.length > 0 ? (
           <View className="rounded-xl bg-surface px-4">
-            <Pressable onPress={() => setCashOpen((v) => !v)} className="flex-row items-center justify-between py-4">
+            <Pressable onPress={() => setCashOpen((v) => !v)} className="flex-row items-center justify-between gap-3 py-4">
               <Text className="font-sansSemi text-sm text-primary">Cash Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-textSecondary">Balance {formatAmount(totalAssets)}</Text>
+                <Text className="font-sansMed text-sm text-textSecondary" numberOfLines={1}>Balance {formatAmount(totalAssets)}</Text>
                 <Ionicons name={cashOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>
@@ -148,10 +148,10 @@ export default function AccountsTab() {
 
         {creditAccounts.length > 0 ? (
           <View className="rounded-xl bg-surface px-4">
-            <Pressable onPress={() => setCreditOpen((v) => !v)} className="flex-row items-center justify-between py-4">
+            <Pressable onPress={() => setCreditOpen((v) => !v)} className="flex-row items-center justify-between gap-3 py-4">
               <Text className="font-sansSemi text-sm text-expense">Credit Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-expense">Owed {formatAmount(totalLiabilities)}</Text>
+                <Text className="font-sansMed text-sm text-expense" numberOfLines={1}>Owed {formatAmount(totalLiabilities)}</Text>
                 <Ionicons name={creditOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>

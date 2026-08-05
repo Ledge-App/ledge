@@ -42,7 +42,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
         </Text>
       </View>
 
-      <View className="items-end gap-0.5">
+      <View className="ml-3 items-end gap-0.5">
         {item.reimbursedAmount != null && item.netAmount != null ? (
           <Text className="font-mono text-base" style={{ color: colors.reimbursed }}>
             [{formatAmount(item.amount)} → {formatAmount(item.netAmount)}]
