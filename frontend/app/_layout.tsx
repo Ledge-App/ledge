@@ -17,6 +17,7 @@ import { Stack } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { useResetCacheOnUserChange } from '@/hooks/useResetCacheOnUserChange'
 import { api, createApiClient } from '@/lib/api/client'
 import { colors } from '@/constants/theme'
 
@@ -30,6 +31,10 @@ export default function RootLayout() {
 
   const [queryClient] = useState(() => new QueryClient())
   const [trpcClient] = useState(() => createApiClient())
+
+  // The cache outlives any one session — drop it when the signed-in user changes so one
+  // user's data can never render for the next.
+  useResetCacheOnUserChange(queryClient)
 
   useEffect(() => {
     if (fontsLoaded) {
