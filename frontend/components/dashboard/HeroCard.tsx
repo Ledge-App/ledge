@@ -1,34 +1,34 @@
-import { useState } from 'react'
 import { Ionicons } from '@expo/vector-icons'
 import { Pressable, Text, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { colors, hexToRgba } from '@/constants/theme'
-import { formatAmount as formatMoney } from '@/lib/format/money'
+import { MASKED_AMOUNT, formatAmount as formatMoney } from '@/lib/format/money'
 
 interface HeroCardProps {
   netWorth: number | null
   totalAssets: number | null
   totalLiabilities: number | null
   isLoading: boolean
+  isMasked: boolean
+  onToggleMask: () => void
 }
 
 function formatAmount(amount: number | null, isMasked: boolean): string {
-  if (isMasked) return '$****'
+  if (isMasked) return MASKED_AMOUNT
   if (amount == null) return '—'
   return formatMoney(amount)
 }
 
 // Balances here are fetched live through the backend on each view and never persisted
 // server-side (architecture.md) — this card carries its own loading skeleton, independent
-// of the rest of the Accounts screen.
-export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading }: HeroCardProps) {
-  const [isMasked, setIsMasked] = useState(false)
-
+// of the rest of the Accounts screen. Masking is owned by the screen so the eye toggle
+// also hides the per-account balances below the card.
+export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading, isMasked, onToggleMask }: HeroCardProps) {
   return (
     <View className="overflow-hidden rounded-2xl p-5" style={{ backgroundColor: colors.primaryDim }}>
       <View className="flex-row items-center justify-between">
         <Pressable
-          onPress={() => setIsMasked((m) => !m)}
+          onPress={onToggleMask}
           accessibilityLabel={isMasked ? 'Show amounts' : 'Hide amounts'}
           className="flex-row items-center gap-2"
         >
