@@ -65,7 +65,9 @@ export default function DashboardScreen() {
     return monthFeed
       .filter((item) => {
         if (item.isReimbursementIncome) return false
-        if (item.categoryId !== detailState.segment.categoryId) return false
+        const isUncategorized = detailState.segment.categoryId === '__uncategorized__'
+        if (isUncategorized ? item.categoryId !== null : item.categoryId !== detailState.segment.categoryId)
+          return false
         const net = item.netAmount ?? item.amount
         return detailState.mode === 'expense' ? net > 0 : net < 0
       })
