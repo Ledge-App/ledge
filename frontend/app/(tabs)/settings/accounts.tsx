@@ -7,6 +7,7 @@ import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
 import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
 import { HeroCard } from '@/components/dashboard/HeroCard'
@@ -30,6 +31,7 @@ export default function AccountsScreen() {
   const [isConnecting, setIsConnecting] = useState(false)
   const utils = api.useUtils()
   const accounts = useAccounts()
+  const { isMasked, toggleMask } = useAmountsMasked()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
 
@@ -115,6 +117,8 @@ export default function AccountsScreen() {
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
+          isMasked={isMasked}
+          onToggleMask={toggleMask}
         />
 
         {cashAccounts.length > 0 ? (
@@ -126,6 +130,7 @@ export default function AccountsScreen() {
                 name={account.name}
                 balance={account.balances?.current ?? 0}
                 variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+                isMasked={isMasked}
               />
             ))}
           </View>
@@ -141,6 +146,7 @@ export default function AccountsScreen() {
                 balance={account.balances?.current ?? 0}
                 variant="credit"
                 limit={account.balances?.limit ?? null}
+                isMasked={isMasked}
               />
             ))}
           </View>

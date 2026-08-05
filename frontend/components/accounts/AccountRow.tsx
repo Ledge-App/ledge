@@ -1,14 +1,14 @@
 import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
-import { formatAmount } from '@/lib/format/money'
+import { formatMaskableAmount } from '@/lib/format/money'
 
 interface AccountRowProps {
   name: string
   balance: number
   variant: 'cash' | 'credit' | 'investment'
   limit?: number | null
-  isMasked?: boolean
+  isMasked: boolean
   onPress?: () => void
 }
 
@@ -32,10 +32,10 @@ export function AccountRow({ name, balance, variant, limit, isMasked, onPress }:
       </View>
       <View className="items-end">
         <Text className="font-mono text-base" style={{ color: balanceColor }}>
-          {isMasked ? '$****' : formatAmount(balance)}
+          {formatMaskableAmount(balance, isMasked)}
         </Text>
         {variant === 'credit' && limit != null ? (
-          <Text className="font-sans text-xs text-textMuted">Limit {isMasked ? '$****' : formatAmount(limit)}</Text>
+          <Text className="font-sans text-xs text-textMuted">Limit {formatMaskableAmount(limit, isMasked)}</Text>
         ) : null}
       </View>
     </Pressable>

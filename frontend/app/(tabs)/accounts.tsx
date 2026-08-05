@@ -7,6 +7,7 @@ import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
 import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
@@ -15,7 +16,7 @@ import { AccountRow } from '@/components/accounts/AccountRow'
 import { AccountDetailSheet } from '@/components/accounts/AccountDetailSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatAmount } from '@/lib/format/money'
+import { formatMaskableAmount } from '@/lib/format/money'
 import type { Account } from '@/types/domain'
 
 function isLiabilityAccount(account: { type: string }): boolean {
@@ -34,6 +35,7 @@ export default function AccountsTab() {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
   const utils = api.useUtils()
   const accounts = useAccounts()
+  const { isMasked, toggleMask } = useAmountsMasked()
   const { feed, categoryById } = useTransactionFeed()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
@@ -118,6 +120,8 @@ export default function AccountsTab() {
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
+          isMasked={isMasked}
+          onToggleMask={toggleMask}
         />
 
         {cashAccounts.length > 0 ? (
@@ -125,7 +129,7 @@ export default function AccountsTab() {
             <Pressable onPress={() => setCashOpen((v) => !v)} className="flex-row items-center justify-between py-4">
               <Text className="font-sansSemi text-sm text-primary">Cash Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-textSecondary">Balance {formatAmount(totalAssets)}</Text>
+                <Text className="font-sansMed text-sm text-textSecondary">Balance {formatMaskableAmount(totalAssets, isMasked)}</Text>
                 <Ionicons name={cashOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>
@@ -137,6 +141,7 @@ export default function AccountsTab() {
                       name={account.name}
                       balance={account.balances?.current ?? 0}
                       variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+                      isMasked={isMasked}
                       onPress={() => setSelectedAccount(account)}
                     />
                   </View>
@@ -151,7 +156,7 @@ export default function AccountsTab() {
             <Pressable onPress={() => setCreditOpen((v) => !v)} className="flex-row items-center justify-between py-4">
               <Text className="font-sansSemi text-sm text-expense">Credit Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-expense">Owed {formatAmount(totalLiabilities)}</Text>
+                <Text className="font-sansMed text-sm text-expense">Owed {formatMaskableAmount(totalLiabilities, isMasked)}</Text>
                 <Ionicons name={creditOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>
@@ -164,6 +169,7 @@ export default function AccountsTab() {
                       balance={account.balances?.current ?? 0}
                       variant="credit"
                       limit={account.balances?.limit ?? null}
+                      isMasked={isMasked}
                       onPress={() => setSelectedAccount(account)}
                     />
                   </View>
