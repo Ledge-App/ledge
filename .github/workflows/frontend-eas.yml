@@ -153,6 +153,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - name: Install backend deps (needed for AppRouter type import)
+        run: npm ci --prefix ../backend
 
       - name: EAS Update
         env:
