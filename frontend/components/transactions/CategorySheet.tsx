@@ -53,7 +53,9 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
-        <Text className="font-display text-md text-textPrimary">{item.merchantName}</Text>
+        <Text className="mx-3 flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>
+          {item.merchantName}
+        </Text>
         <View style={{ width: 22 }} />
       </View>
 
@@ -85,12 +87,14 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
         ) : null}
 
         <View className="flex-row items-center justify-between py-3">
-          <Text className="font-sans text-base text-textPrimary">Apply to all future {item.merchantName}?</Text>
+          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary" numberOfLines={2}>
+            Apply to all future {item.merchantName}?
+          </Text>
           <Switch value={applyToVendor} onValueChange={setApplyToVendor} />
         </View>
 
         <View className="flex-row items-center justify-between py-3">
-          <Text className="font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
+          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
           <Switch value={markReimbursed} onValueChange={setMarkReimbursed} />
         </View>
 
