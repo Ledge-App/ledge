@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -38,6 +38,10 @@ export default function TransactionsScreen() {
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  const scrollRef = useRef<ScrollView>(null)
+  const sectionOffsets = useRef(new Map<string, number>())
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
@@ -74,6 +78,28 @@ export default function TransactionsScreen() {
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([date, items]) => ({ title: date, data: items }))
   }, [filteredFeed])
+
+  // Drop offsets for dates that no longer have a section. Sections that survive keep theirs —
+  // onLayout only re-fires when a view actually moves, so clearing the whole map would strand
+  // any section whose position happened not to change.
+  useEffect(() => {
+    const liveDates = new Set(sections.map((section) => section.title))
+    for (const date of sectionOffsets.current.keys()) {
+      if (!liveDates.has(date)) sectionOffsets.current.delete(date)
+    }
+  }, [sections])
+
+  // The selected day belongs to the month it was tapped in.
+  useEffect(() => {
+    setSelectedDate(null)
+  }, [month])
+
+  const handleDatePress = useCallback((dateKey: string) => {
+    setSelectedDate(dateKey)
+    const y = sectionOffsets.current.get(dateKey)
+    if (y == null) return
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true })
+  }, [])
 
   const daysInMonth = new Date(month.year, month.month, 0).getDate()
   const firstWeekday = new Date(month.year, month.month - 1, 1).getDay()
@@ -241,7 +267,7 @@ export default function TransactionsScreen() {
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
       {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Calendar */}
         <View className="mx-5 mb-4 rounded-xl bg-surface p-3">
           <View className="mb-1 flex-row">
@@ -260,8 +286,8 @@ export default function TransactionsScreen() {
                     netAmount={spendByDay.get(cell.dateKey)?.net ?? null}
                     hasReimbursement={spendByDay.get(cell.dateKey)?.hasReimbursement ?? false}
                     isToday={cell.dateKey === todayKey}
-                    isSelected={false}
-                    onPress={() => {}}
+                    isSelected={cell.dateKey === selectedDate}
+                    onPress={() => handleDatePress(cell.dateKey)}
                   />
                 </View>
               ) : (
@@ -301,7 +327,13 @@ export default function TransactionsScreen() {
             const expenseTotal = section.data.filter((i) => i.amount > 0).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
 
             return (
-              <View key={section.title} className="mx-5 mb-3 rounded-xl bg-surface px-4">
+              <View
+                key={section.title}
+                className="mx-5 mb-3 rounded-xl bg-surface px-4"
+                onLayout={(event) => {
+                  sectionOffsets.current.set(section.title, event.nativeEvent.layout.y)
+                }}
+              >
                 <View className="flex-row items-center justify-between py-3">
                   <Text className="font-sansSemi text-sm text-textPrimary">{monthDay} {dayOfWeek}</Text>
                   <View className="flex-row gap-3">
