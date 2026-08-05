@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
-import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -36,7 +36,7 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
   }
 
   return (
-    <SlideUpSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -87,6 +87,6 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
 
         <Button label="Save Reimbursement" onPress={() => onSave(linkedIds)} disabled={linkedIds.length === 0} />
       </ScrollView>
-    </SlideUpSheet>
+    </BottomSheet>
   )
 }

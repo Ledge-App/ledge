@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
@@ -48,7 +48,7 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
   }
 
   return (
-    <SlideUpSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -96,6 +96,6 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
 
         <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />
       </ScrollView>
-    </SlideUpSheet>
+    </BottomSheet>
   )
 }

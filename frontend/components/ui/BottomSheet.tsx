@@ -1,51 +1,77 @@
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, View } from 'react-native'
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
+import { Dimensions, Modal, Pressable, View } from 'react-native'
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { borderRadius, colors } from '@/constants/theme'
+
+const SCREEN_HEIGHT = Dimensions.get('window').height
 
 interface BottomSheetProps {
   visible: boolean
   onClose: () => void
   children: React.ReactNode
+  topOffset?: number
 }
 
-// Base primitive for every bottom sheet in the app (category picker, reimbursement sheet,
-// add/edit manual transaction sheet — built in later sub-projects on top of this).
-export function BottomSheet({ visible, onClose, children }: BottomSheetProps) {
-  const translateY = useSharedValue(600)
-  const [isMounted, setIsMounted] = useState(visible)
+export function BottomSheet({ visible, onClose, children, topOffset }: BottomSheetProps) {
+  const insets = useSafeAreaInsets()
+  const translateY = useSharedValue(SCREEN_HEIGHT)
+  const backdropOpacity = useSharedValue(0)
+  const [isMounted, setIsMounted] = useState(false)
+
+  const sheetTop = topOffset ?? insets.top + 60
 
   useEffect(() => {
     if (visible) {
       setIsMounted(true)
-      translateY.value = withSpring(0, { damping: 20, stiffness: 180 })
+      translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) })
+      backdropOpacity.value = withTiming(1, { duration: 300 })
     } else {
-      translateY.value = withSpring(600, { damping: 20, stiffness: 180 }, (finished) => {
+      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300, easing: Easing.in(Easing.cubic) }, (finished) => {
         if (finished) runOnJS(setIsMounted)(false)
       })
+      backdropOpacity.value = withTiming(0, { duration: 250 })
     }
-  }, [visible, translateY])
+  }, [visible, translateY, backdropOpacity])
 
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }))
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }))
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }))
 
   if (!isMounted) return null
 
   return (
-    <Modal transparent visible={isMounted} animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose} accessibilityLabel="Close">
-        <Pressable onPress={() => {}}>
-          <Animated.View
-            style={[
-              { backgroundColor: colors.surface, borderTopLeftRadius: borderRadius.xl, borderTopRightRadius: borderRadius.xl },
-              animatedStyle,
-            ]}
-            className="max-h-[85%] px-5 pb-8 pt-3"
-          >
-            <View className="mb-4 h-1 w-10 self-center rounded-full bg-border" />
-            {children}
-          </Animated.View>
-        </Pressable>
-      </Pressable>
+    <Modal transparent visible={isMounted} statusBarTranslucent onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }, backdropStyle]}>
+          <Pressable style={{ flex: 1 }} onPress={onClose} />
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              top: sheetTop,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: borderRadius.xl,
+              borderTopRightRadius: borderRadius.xl,
+            },
+            sheetStyle,
+          ]}
+        >
+          <View className="items-center pt-3 pb-1">
+            <View className="h-1 w-10 rounded-full bg-border" />
+          </View>
+          {children}
+        </Animated.View>
+      </View>
     </Modal>
   )
 }

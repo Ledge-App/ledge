@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Ionicons } from '@expo/vector-icons'
-import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { TextField } from '@/components/ui/TextField'
@@ -72,7 +72,7 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
   }
 
   return (
-    <SlideUpSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -165,6 +165,6 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
           {onDelete ? <Button label="Delete Transaction" variant="ghost" onPress={onDelete} /> : null}
         </View>
       </ScrollView>
-    </SlideUpSheet>
+    </BottomSheet>
   )
 }

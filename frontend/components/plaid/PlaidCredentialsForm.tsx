@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { SecretInput } from '@/components/ui/SecretInput'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { colors } from '@/constants/theme'
 
 interface PlaidCredentialsFormProps {
@@ -176,7 +176,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
 
       <Button label="Replace Keys" variant="secondary" onPress={() => setReplaceOpen(true)} />
 
-      <SlideUpSheet visible={replaceOpen} onClose={handleCloseReplace}>
+      <BottomSheet visible={replaceOpen} onClose={handleCloseReplace}>
         <View className="flex-row items-center justify-between px-5 py-3">
           <Pressable onPress={handleCloseReplace} hitSlop={8}>
             <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -188,7 +188,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
         <ScrollView className="px-5" contentContainerClassName="gap-6 pb-10" keyboardShouldPersistTaps="handled">
           {formFields}
         </ScrollView>
-      </SlideUpSheet>
+      </BottomSheet>
     </View>
   )
 }

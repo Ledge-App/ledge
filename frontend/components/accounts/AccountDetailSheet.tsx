@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
-import { SlideUpSheet } from '@/components/ui/SlideUpSheet'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account, Category } from '@/types/domain'
@@ -58,7 +58,7 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
   const balanceColor = variant === 'credit' ? colors.expense : colors.textPrimary
 
   return (
-    <SlideUpSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -116,6 +116,6 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
           <Text className="py-8 text-center font-sans text-sm text-textMuted">No transactions for this account</Text>
         }
       />
-    </SlideUpSheet>
+    </BottomSheet>
   )
 }

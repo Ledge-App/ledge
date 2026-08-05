@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { colors } from '@/constants/theme'
-import { SlideUpSheet } from './SlideUpSheet'
+import { BottomSheet } from './BottomSheet'
 import type { Account } from '@/types/domain'
 
 interface AccountsFilterDropdownProps {
@@ -24,7 +24,7 @@ export function AccountsFilterDropdown({ accounts, selectedAccountId, onSelect }
         <Ionicons name="chevron-down" size={14} color={colors.primary} />
       </Pressable>
 
-      <SlideUpSheet visible={isOpen} onClose={() => setIsOpen(false)}>
+      <BottomSheet visible={isOpen} onClose={() => setIsOpen(false)}>
         <View className="flex-row items-center justify-between px-5 py-3">
           <Pressable onPress={() => setIsOpen(false)} hitSlop={8}>
             <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -62,7 +62,7 @@ export function AccountsFilterDropdown({ accounts, selectedAccountId, onSelect }
             </Pressable>
           ))}
         </ScrollView>
-      </SlideUpSheet>
+      </BottomSheet>
     </>
   )
 }
