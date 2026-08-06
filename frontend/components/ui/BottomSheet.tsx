@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Dimensions, Modal, PanResponder, Pressable, View } from 'react-native'
+import { Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, View } from 'react-native'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { borderRadius, colors } from '@/constants/theme'
@@ -107,10 +107,16 @@ export function BottomSheet({ visible, onClose, children, topOffset }: BottomShe
           ]}
           {...panResponder.panHandlers}
         >
-          <View className="items-center pt-3 pb-3">
-            <View className="h-1 w-10 rounded-full bg-border" />
-          </View>
-          {children}
+          {/* The sheet is pinned to the bottom of the screen, so an open keyboard sits on top of
+              its lowest fields — the note input on the transaction form, for one. Shrinking the
+              sheet by the keyboard's overlap keeps every field inside a scrollable, visible area.
+              Android resizes the window itself, where 'height' measures no overlap and no-ops. */}
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View className="items-center pt-3 pb-3">
+              <View className="h-1 w-10 rounded-full bg-border" />
+            </View>
+            {children}
+          </KeyboardAvoidingView>
         </Animated.View>
       </View>
     </Modal>

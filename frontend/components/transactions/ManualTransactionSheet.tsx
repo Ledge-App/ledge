@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Ionicons } from '@expo/vector-icons'
 import { BottomSheet } from '@/components/ui/BottomSheet'
@@ -44,6 +44,25 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
   const [date, setDate] = useState(transaction?.date ?? toDateKey(new Date()))
   const [note, setNote] = useState(transaction?.note ?? '')
   const [showAndroidPicker, setShowAndroidPicker] = useState(false)
+  const [isNoteFocused, setIsNoteFocused] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+
+  // BottomSheet shrinks by the keyboard's height, which pushes the note — the last field in the
+  // form — below the fold just as the user starts typing in it. Scrolling on keyboardDidShow
+  // rather than on focus means the shrink has already been laid out, so scrollToEnd lands on the
+  // real bottom instead of the pre-keyboard one.
+  useEffect(() => {
+    if (!isNoteFocused) return
+    const subscription = Keyboard.addListener('keyboardDidShow', () => scrollRef.current?.scrollToEnd({ animated: true }))
+    return () => subscription.remove()
+  }, [isNoteFocused])
+
+  function handleNoteFocus() {
+    setIsNoteFocused(true)
+    // Moving from the amount field to the note keeps the keyboard up, so keyboardDidShow never
+    // fires and this focus handler is the only chance to scroll.
+    scrollRef.current?.scrollToEnd({ animated: true })
+  }
 
   // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
   // so local state must be re-derived whenever it's reopened for a different transaction —
@@ -83,7 +102,7 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
 
         <SegmentedControl
           options={[{ label: 'Expense', value: 'expense' as const }, { label: 'Income', value: 'income' as const }]}
@@ -158,7 +177,14 @@ export function ManualTransactionSheet({ visible, transaction, categories, subca
           )}
         </View>
 
-        <TextField label="Note (optional)" value={note} onChangeText={setNote} placeholder="e.g. Street food, cash" />
+        <TextField
+          label="Note (optional)"
+          value={note}
+          onChangeText={setNote}
+          placeholder="e.g. Street food, cash"
+          onFocus={handleNoteFocus}
+          onBlur={() => setIsNoteFocused(false)}
+        />
 
         <View className="mt-4 gap-2">
           <Button label="Save Transaction" onPress={handleSave} disabled={!isValidAmount} loading={isSaving} />
