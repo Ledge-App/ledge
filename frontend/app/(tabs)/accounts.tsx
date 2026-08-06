@@ -224,6 +224,7 @@ export default function AccountsTab() {
         balance={detail?.balance ?? 0}
         variant={detail?.variant ?? 'cash'}
         items={detail?.items ?? []}
+        feed={feed}
         emptyLabel={detail?.emptyLabel}
         isMasked={isMasked}
         categoryById={categoryById}

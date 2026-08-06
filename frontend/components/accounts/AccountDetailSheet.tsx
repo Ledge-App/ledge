@@ -4,8 +4,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount, formatMaskableAmount } from '@/lib/format/money'
+import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { BottomSheet } from '@/components/ui/BottomSheet'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
+import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Category } from '@/types/domain'
 
@@ -18,11 +21,15 @@ interface AccountDetailSheetProps {
   title: string
   balance: number
   variant: AccountDetailVariant
+  /** The rows to display — this row's slice of the feed, whichever way the caller sliced it. */
   items: FeedItem[]
+  /** The whole feed. Editing needs context the displayed slice doesn't carry: reimbursement
+   *  candidates can sit on any account, and the delete warning has to know whether a
+   *  transaction is part of a reimbursement. */
+  feed: FeedItem[]
   categoryById: Map<string, Category>
   isMasked: boolean
   onClose: () => void
-  onTransactionPress?: (item: FeedItem) => void
   emptyLabel?: string
 }
 
@@ -41,13 +48,17 @@ export function AccountDetailSheet({
   balance,
   variant,
   items,
+  feed,
   categoryById,
   isMasked,
   onClose,
-  onTransactionPress,
   emptyLabel = 'No transactions for this account',
 }: AccountDetailSheetProps) {
   const insets = useSafeAreaInsets()
+  // Wired here rather than by the caller so every row this sheet shows is editable — a linked
+  // account's Plaid rows open the category sheet, the built-in Cash row's manual rows open the
+  // manual sheet — without each call site having to opt in.
+  const editor = useTransactionEditor(feed)
 
   // The caller clears its selection the moment it closes the sheet, which would blank the
   // content out mid-animation. Holding the last open values keeps the exit readable.
@@ -89,6 +100,12 @@ export function AccountDetailSheet({
         </Text>
       </View>
 
+      {editor.saveError ? (
+        <View className="px-5">
+          <ErrorBanner message={editor.saveError} onDismiss={editor.dismissSaveError} />
+        </View>
+      ) : null}
+
       <Text className="mb-2 px-5 font-sansSemi text-sm text-textSecondary">Transactions</Text>
 
       <SectionList
@@ -120,7 +137,7 @@ export function AccountDetailSheet({
               categoryColor={category?.color ?? colors.textMuted}
               categoryIcon={category?.icon ?? '❓'}
               reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-              onPress={onTransactionPress ? () => onTransactionPress(item) : undefined}
+              onPress={() => editor.openTransaction(item)}
             />
           )
         }}
@@ -128,6 +145,8 @@ export function AccountDetailSheet({
           <Text className="py-8 text-center font-sans text-sm text-textMuted">{shown.emptyLabel}</Text>
         }
       />
+
+      <TransactionEditSheets editor={editor} />
     </BottomSheet>
   )
 }
