@@ -1,30 +1,48 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useAccounts } from '@/hooks/useAccounts'
-import { useTransactionEditor } from '@/hooks/useTransactionEditor'
+import { useCategories } from '@/hooks/useCategories'
+import { useSubcategories } from '@/hooks/useSubcategories'
+import { useTransactionOverrides } from '@/hooks/useTransactionOverrides'
+import { useVendorMappings } from '@/hooks/useVendorMappings'
+import { useReimbursements } from '@/hooks/useReimbursements'
+import { useTransfers } from '@/hooks/useTransfers'
+import { useManualTransactions } from '@/hooks/useManualTransactions'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
-import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
+import { CategorySheet } from '@/components/transactions/CategorySheet'
+import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
+import { TransferSheet } from '@/components/transfers/TransferSheet'
+import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
+import { countsTowardTotals } from '@/lib/transactions/totals'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
+import type { ManualTransactionInput } from '@/components/transactions/ManualTransactionSheet'
+import type { ManualTransaction, TransferKind } from '@/types/domain'
 
 export default function TransactionsScreen() {
   const { categoryId: categoryIdParam } = useLocalSearchParams<{ categoryId?: string }>()
   const [month, setMonth] = useState(currentMonth())
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(categoryIdParam ?? null)
+  const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
+  const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
+  const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
+  const [manualSheetOpen, setManualSheetOpen] = useState(false)
+  const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const scrollRef = useRef<ScrollView>(null)
@@ -32,7 +50,13 @@ export default function TransactionsScreen() {
 
   const { feed, categoryById, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
-  const editor = useTransactionEditor(feed)
+  const categories = useCategories()
+  const subcategories = useSubcategories()
+  const overrides = useTransactionOverrides()
+  const vendorMappings = useVendorMappings()
+  const reimbursements = useReimbursements()
+  const transfers = useTransfers()
+  const manualTransactions = useManualTransactions()
 
   const accountFilteredFeed = useMemo(
     () => (selectedAccountId ? feed.filter((item) => item.accountId === selectedAccountId) : feed),
@@ -100,6 +124,181 @@ export default function TransactionsScreen() {
 
   const { spendByDay, totalExpense, totalIncome } = useMemo(() => aggregateMonth(filteredFeed), [filteredFeed])
 
+  async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
+    if (!activeSheetItem) return
+    try {
+      await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      if (input.applyToVendor) {
+        await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      }
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
+  }
+
+  async function handleOpenReimbursement(input: { categoryId: string; subcategoryId: string | null }) {
+    if (!activeSheetItem) return
+    const item = activeSheetItem
+    try {
+      await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      setReimbursementItem(item)
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
+  }
+
+  async function handleSaveReimbursement(linkedIncomeIds: string[]) {
+    if (!reimbursementItem) return
+    try {
+      for (const incomeId of linkedIncomeIds) {
+        const incomeItem = feed.find((i) => i.id === incomeId)
+        if (!incomeItem) continue
+        await reimbursements.create({
+          expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
+          expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
+          incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
+          incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
+          amount: Math.abs(incomeItem.amount).toFixed(2),
+          note: null,
+        })
+      }
+      setReimbursementItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this reimbursement. Try again.')
+    }
+  }
+
+  async function handleOpenTransfer(input: { categoryId: string; subcategoryId: string | null }) {
+    if (!activeSheetItem) return
+    const item = activeSheetItem
+    try {
+      await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      setTransferItem(item)
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
+  }
+
+  async function handleSaveTransfer({ kind, incomeItemId }: { kind: TransferKind; incomeItemId: string | null }) {
+    if (!transferItem) return
+    const incomeItem = incomeItemId ? feed.find((i) => i.id === incomeItemId) ?? null : null
+    try {
+      await transfers.create({
+        kind,
+        expensePlaidTransactionId: transferItem.source === 'plaid' ? transferItem.id : null,
+        expenseManualTransactionId: transferItem.source === 'manual' ? transferItem.id : null,
+        incomePlaidTransactionId: incomeItem?.source === 'plaid' ? incomeItem.id : null,
+        incomeManualTransactionId: incomeItem?.source === 'manual' ? incomeItem.id : null,
+        amount: Math.abs(transferItem.amount).toFixed(2),
+        note: null,
+      })
+      setTransferItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this transfer. Try again.')
+    }
+  }
+
+  async function handleUnmarkTransfer(item: FeedItem) {
+    if (!item.transferId) return
+    try {
+      await transfers.delete({ id: item.transferId })
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
+    }
+  }
+
+  async function handleSaveManual(input: ManualTransactionInput) {
+    try {
+      if (editingManual) {
+        await manualTransactions.update({ id: editingManual.id, ...input })
+      } else {
+        await manualTransactions.create(input)
+      }
+      setManualSheetOpen(false)
+      setEditingManual(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this transaction. Try again.')
+    }
+  }
+
+  function editedManualAsFeedItem(input: ManualTransactionInput): FeedItem | null {
+    if (!editingManual) return null
+    const existing = feed.find((item) => item.id === editingManual.id)
+    if (!existing) return null
+    return { ...existing, amount: Number(input.amount), date: input.date }
+  }
+
+  async function handleSaveManualAndMarkTransfer(input: ManualTransactionInput) {
+    const expenseItem = editedManualAsFeedItem(input)
+    await handleSaveManual(input)
+    if (expenseItem) setTransferItem(expenseItem)
+  }
+
+  async function handleSaveManualAndUnmarkTransfer(input: ManualTransactionInput) {
+    const existing = editedManualAsFeedItem(input)
+    await handleSaveManual(input)
+    if (existing) await handleUnmarkTransfer(existing)
+  }
+
+  function handleDeleteManual() {
+    if (!editingManual) return
+    const id = editingManual.id
+    const feedItem = feed.find((item) => item.id === id)
+    const isReimbursed = feedItem?.reimbursedAmount != null || feedItem?.isReimbursementIncome === true
+    const isTransferLeg = feedItem?.transferKind != null
+
+    Alert.alert(
+      isTransferLeg
+        ? 'This transaction is part of a transfer. Deleting it also removes the transfer. Delete anyway?'
+        : isReimbursed
+          ? 'This transaction is part of a reimbursement. Delete anyway?'
+          : 'Delete this transaction?',
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await manualTransactions.delete({ id })
+              setManualSheetOpen(false)
+              setEditingManual(null)
+            } catch (err) {
+              setSaveError(err instanceof Error ? err.message : 'Could not delete this transaction. Try again.')
+            }
+          },
+        },
+      ],
+    )
+  }
+
+  function handleRowPress(item: FeedItem) {
+    if (item.source === 'manual') {
+      setEditingManual({
+        id: item.id,
+        amount: Math.abs(item.amount).toFixed(2),
+        type: item.amount < 0 ? 'income' : 'expense',
+        categoryId: item.categoryId,
+        subcategoryId: item.subcategoryId,
+        date: item.date,
+        note: item.note,
+      })
+      setManualSheetOpen(true)
+    } else {
+      setActiveSheetItem(item)
+    }
+  }
+
+  const candidateIncomeItems = feed.filter(
+    (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
+  )
+
+  const transferCandidateItems = feed.filter((item) => item.amount < 0 && item.transferKind === null)
+
   if (isLoading) return <LoadingScreen />
 
   return (
@@ -110,7 +309,7 @@ export default function TransactionsScreen() {
         </View>
         <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
         <View className="flex-1 items-end">
-          <Pressable onPress={editor.openNewManual} accessibilityLabel="Add Transaction">
+          <Pressable onPress={() => { setEditingManual(null); setManualSheetOpen(true) }} accessibilityLabel="Add Transaction">
             <Ionicons name="add-circle-outline" size={24} color={colors.textPrimary} />
           </Pressable>
         </View>
@@ -132,7 +331,7 @@ export default function TransactionsScreen() {
       ) : null}
 
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
-      {editor.saveError ? <ErrorBanner message={editor.saveError} onDismiss={editor.dismissSaveError} /> : null}
+      {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Calendar */}
@@ -190,8 +389,8 @@ export default function TransactionsScreen() {
             const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
             const dayOfWeek = dayNames[date.getDay()]
             const monthDay = `${date.getMonth() + 1}/${date.getDate()}`
-            const incomeTotal = section.data.filter((i) => i.amount < 0 && !i.isReimbursementIncome).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
-            const expenseTotal = section.data.filter((i) => i.amount > 0).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
+            const incomeTotal = section.data.filter((i) => i.amount < 0 && countsTowardTotals(i)).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
+            const expenseTotal = section.data.filter((i) => i.amount > 0 && countsTowardTotals(i)).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
 
             return (
               <View
@@ -218,7 +417,7 @@ export default function TransactionsScreen() {
                         categoryColor={category?.color ?? colors.textMuted}
                         categoryIcon={category?.icon ?? '❓'}
                         reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                        onPress={() => editor.openTransaction(item)}
+                        onPress={() => handleRowPress(item)}
                       />
                     </View>
                   )
@@ -229,7 +428,53 @@ export default function TransactionsScreen() {
         )}
       </ScrollView>
 
-      <TransactionEditSheets editor={editor} />
+      <CategorySheet
+        visible={activeSheetItem != null}
+        item={activeSheetItem}
+        categories={categories.data ?? []}
+        subcategories={subcategories.data ?? []}
+        onClose={() => setActiveSheetItem(null)}
+        onSave={handleSaveCategory}
+        onOpenReimbursement={handleOpenReimbursement}
+        onOpenTransfer={handleOpenTransfer}
+        onUnmarkTransfer={async () => {
+          if (!activeSheetItem) return
+          await handleUnmarkTransfer(activeSheetItem)
+          setActiveSheetItem(null)
+        }}
+      />
+      <ReimbursementSheet
+        visible={reimbursementItem != null}
+        expenseItem={reimbursementItem}
+        candidateIncomeItems={candidateIncomeItems}
+        onClose={() => setReimbursementItem(null)}
+        onSave={handleSaveReimbursement}
+      />
+      <TransferSheet
+        visible={transferItem != null}
+        expenseItem={transferItem}
+        candidateIncomeItems={transferCandidateItems}
+        accounts={accounts.data ?? []}
+        isSaving={transfers.isSaving}
+        onClose={() => setTransferItem(null)}
+        onSave={handleSaveTransfer}
+      />
+      <ManualTransactionSheet
+        visible={manualSheetOpen}
+        transaction={editingManual ?? undefined}
+        categories={categories.data ?? []}
+        subcategories={subcategories.data ?? []}
+        isSaving={manualTransactions.isLoading}
+        onClose={() => {
+          setManualSheetOpen(false)
+          setEditingManual(null)
+        }}
+        onSave={handleSaveManual}
+        onDelete={editingManual ? handleDeleteManual : undefined}
+        isTransfer={editingManual ? feed.find((item) => item.id === editingManual.id)?.transferKind != null : false}
+        onSaveAndMarkTransfer={handleSaveManualAndMarkTransfer}
+        onSaveAndUnmarkTransfer={handleSaveManualAndUnmarkTransfer}
+      />
     </SafeAreaView>
   )
 }

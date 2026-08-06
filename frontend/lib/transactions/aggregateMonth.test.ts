@@ -19,6 +19,9 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     netAmount: null,
     isReimbursementIncome: false,
     reimbursementCategoryId: null,
+    transferId: null,
+    transferKind: null,
+    transferRole: null,
     ...overrides,
   }
 }
@@ -89,6 +92,42 @@ describe('aggregateMonth', () => {
     expect(result.spendByDay.get('2026-06-01')).toEqual({ net: 15, hasReimbursement: false })
     expect(result.spendByDay.get('2026-06-03')).toEqual({ net: 15, hasReimbursement: false })
     expect(result.spendByDay.has('2026-06-02')).toBe(false)
+  })
+
+  it('excludes both legs of a transfer from every aggregate', () => {
+    const result = aggregateMonth([
+      item({ id: 'a', date: '2026-06-01', amount: 40, categoryId: 'groceries' }),
+      item({ id: 'out', date: '2026-06-02', amount: 500, categoryId: 'transfers-out', transferId: 't1', transferKind: 'account_transfer', transferRole: 'expense' }),
+      item({ id: 'in', date: '2026-06-02', amount: -500, categoryId: 'transfers-in', transferId: 't1', transferKind: 'account_transfer', transferRole: 'income' }),
+    ])
+
+    expect(result.totalExpense).toBe(40)
+    expect(result.totalIncome).toBe(0)
+    expect(result.spendByCategory.has('transfers-out')).toBe(false)
+    expect(result.incomeByCategory.has('transfers-in')).toBe(false)
+    // Unlike a reimbursement income leg, a transfer leaves no trace on the calendar day.
+    expect(result.spendByDay.has('2026-06-02')).toBe(false)
+  })
+
+  it('excludes an unpaired transfer expense, whose destination account is not connected', () => {
+    const result = aggregateMonth([
+      item({ id: 'a', amount: 40, categoryId: 'groceries' }),
+      item({ id: 'out', amount: 500, transferId: 't1', transferKind: 'account_transfer', transferRole: 'expense' }),
+    ])
+
+    expect(result.totalExpense).toBe(40)
+  })
+
+  it('excludes a credit card payment while still counting the rest of the month', () => {
+    const result = aggregateMonth([
+      item({ id: 'a', amount: 40, categoryId: 'groceries' }),
+      item({ id: 'pay', amount: 1200, transferId: 't2', transferKind: 'credit_card_payment', transferRole: 'expense' }),
+      item({ id: 'post', amount: -1200, transferId: 't2', transferKind: 'credit_card_payment', transferRole: 'income' }),
+      item({ id: 'salary', amount: -3000, categoryId: 'salary' }),
+    ])
+
+    expect(result.totalExpense).toBe(40)
+    expect(result.totalIncome).toBe(3000)
   })
 
   it('returns empty aggregates for an empty feed', () => {

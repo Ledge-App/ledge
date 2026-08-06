@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCategory, mergeFeed, applyReimbursements } from './resolveFeed'
-import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement } from '@/types/domain'
+import { resolveCategory, mergeFeed, applyReimbursements, applyTransfers } from './resolveFeed'
+import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement, Transfer } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -207,5 +207,74 @@ describe('resolveFeed pipeline', () => {
     expect(coffee.reimbursedAmount).toBeNull()
     expect(coffee.netAmount).toBeNull()
     expect(coffee.isReimbursementIncome).toBe(false)
+  })
+})
+
+describe('applyTransfers', () => {
+  const plaidTxns = [
+    { transaction_id: 'out', account_id: 'checking', amount: 500, date: '2026-08-10', name: 'TRANSFER TO SAVINGS', merchant_name: null, pending: false },
+    { transaction_id: 'in', account_id: 'savings', amount: -500, date: '2026-08-11', name: 'TRANSFER FROM CHECKING', merchant_name: null, pending: false },
+    { transaction_id: 'lunch', account_id: 'checking', amount: 12, date: '2026-08-10', name: 'DELI', merchant_name: 'Deli', pending: false },
+  ] as unknown as PlaidTransaction[]
+
+  const feed = mergeFeed(plaidTxns, [], [], [])
+
+  function find(items: ReturnType<typeof mergeFeed>, id: string) {
+    return items.find((item) => item.id === id)!
+  }
+
+  it('stamps both legs of a paired transfer with the same id and kind', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out')).toMatchObject({ transferId: 't1', transferKind: 'account_transfer', transferRole: 'expense' })
+    expect(find(result, 'in')).toMatchObject({ transferId: 't1', transferKind: 'account_transfer', transferRole: 'income' })
+  })
+
+  it('stamps only the expense when the transfer is unpaired', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '500.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out').transferRole).toBe('expense')
+    expect(find(result, 'in').transferKind).toBeNull()
+  })
+
+  it('still stamps the expense when the income leg falls outside the loaded window', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'not-loaded', incomeManualTransactionId: null, amount: '500.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out')).toMatchObject({ transferId: 't1', transferRole: 'expense' })
+  })
+
+  it('resolves manual-transaction legs by their uuid', () => {
+    const manualTxns = [
+      { id: 'm-out', amount: '200.00', type: 'expense', categoryId: null, subcategoryId: null, date: '2026-08-10', note: 'Cash to savings' },
+    ] as ManualTransaction[]
+    const withManual = mergeFeed(plaidTxns, manualTxns, [], [])
+    const transfers: Transfer[] = [
+      { id: 't2', kind: 'credit_card_payment', expensePlaidTransactionId: null, expenseManualTransactionId: 'm-out', incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '200.00', note: null },
+    ]
+    const result = applyTransfers(withManual, transfers)
+
+    expect(find(result, 'm-out')).toMatchObject({ transferId: 't2', transferKind: 'credit_card_payment', transferRole: 'expense' })
+  })
+
+  it('leaves unrelated transactions untouched', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'lunch')).toMatchObject({ transferId: null, transferKind: null, transferRole: null })
+  })
+
+  it('returns the feed unchanged when there are no transfers', () => {
+    expect(applyTransfers(feed, [])).toEqual(feed)
   })
 })

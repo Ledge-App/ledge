@@ -1,3 +1,4 @@
+import { countsTowardTotals } from './totals'
 import type { FeedItem } from './resolveFeed'
 import type { YearMonth } from './filterByMonth'
 
@@ -28,7 +29,7 @@ export function computeDonutSegments(
   const countByCategory = new Map<string, number>()
   let uncategorizedCount = 0
   for (const item of feed) {
-    if (item.isReimbursementIncome) continue
+    if (!countsTowardTotals(item)) continue
     const net = item.netAmount ?? item.amount
     const isRelevant = mode === 'expense' ? net > 0 : net < 0
     if (!isRelevant) continue
@@ -85,7 +86,7 @@ export function computeTopMerchants(
 ): MerchantTotal[] {
   const byMerchant = new Map<string, { amount: number; count: number }>()
   for (const item of feed) {
-    if (item.isReimbursementIncome) continue
+    if (!countsTowardTotals(item)) continue
     const net = item.netAmount ?? item.amount
     const isRelevant = mode === 'expense' ? net > 0 : net < 0
     if (!isRelevant) continue
@@ -109,7 +110,7 @@ export function computeDailyPoints(feed: FeedItem[], month: YearMonth, mode: 'ex
 
   const dailyAmounts = new Map<number, number>()
   for (const item of feed) {
-    if (item.isReimbursementIncome) continue
+    if (!countsTowardTotals(item)) continue
     const net = item.netAmount ?? item.amount
     const isRelevant = mode === 'expense' ? net > 0 : net < 0
     if (!isRelevant) continue

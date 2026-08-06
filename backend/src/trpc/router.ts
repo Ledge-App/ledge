@@ -11,6 +11,7 @@ import { manualTransactionsRouter } from '../routers/manualTransactions.js'
 import { transactionOverridesRouter } from '../routers/transactionOverrides.js'
 import { budgetsRouter } from '../routers/budgets.js'
 import { reimbursementsRouter } from '../routers/reimbursements.js'
+import { transfersRouter } from '../routers/transfers.js'
 import { onboardingRouter } from '../routers/onboarding.js'
 
 export const appRouter = router({
@@ -26,6 +27,7 @@ export const appRouter = router({
   transactionOverrides: transactionOverridesRouter,
   budgets: budgetsRouter,
   reimbursements: reimbursementsRouter,
+  transfers: transfersRouter,
   onboarding: onboardingRouter,
 })
 

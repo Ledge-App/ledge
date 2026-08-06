@@ -23,6 +23,7 @@ export const colors = {
   expense: '#E11D48',
   warning: '#B45309',
   reimbursed: '#7C3AED',
+  transfer: '#0E7490',
 
   textPrimary: '#1C1C18',
   textSecondary: '#6E6E64',

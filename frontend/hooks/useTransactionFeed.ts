@@ -6,8 +6,9 @@ import { useTransactionOverrides } from './useTransactionOverrides'
 import { useVendorMappings } from './useVendorMappings'
 import { useCategories } from './useCategories'
 import { useReimbursements } from './useReimbursements'
+import { useTransfers } from './useTransfers'
 import { getCachedTransactions, setCachedTransactions, getCursor, setCursor } from '@/lib/storage/mmkv'
-import { applyReimbursements, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { applyReimbursements, applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { PlaidTransaction } from '@/types/domain'
 
@@ -18,6 +19,7 @@ export function useTransactionFeed() {
   const vendorMappings = useVendorMappings()
   const categories = useCategories()
   const reimbursements = useReimbursements()
+  const transfers = useTransfers()
 
   const itemIds = useMemo(() => Array.from(new Set((accounts.data ?? []).map((a) => a.itemId))), [accounts.data])
 
@@ -101,8 +103,9 @@ export function useTransactionFeed() {
   const feed = useMemo(() => {
     if (!manualTransactions.data || !overrides.data || !vendorMappings.data) return []
     const merged = mergeFeed(rawTransactions, manualTransactions.data, overrides.data, vendorMappings.data)
-    return applyReimbursements(merged, reimbursements.data ?? [])
-  }, [rawTransactions, manualTransactions.data, overrides.data, vendorMappings.data, reimbursements.data])
+    const reimbursed = applyReimbursements(merged, reimbursements.data ?? [])
+    return applyTransfers(reimbursed, transfers.data ?? [])
+  }, [rawTransactions, manualTransactions.data, overrides.data, vendorMappings.data, reimbursements.data, transfers.data])
 
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 

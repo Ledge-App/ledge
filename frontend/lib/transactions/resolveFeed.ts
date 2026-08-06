@@ -1,4 +1,4 @@
-import type { ManualTransaction, PlaidTransaction, Reimbursement, TransactionOverride, VendorMapping } from '@/types/domain'
+import type { ManualTransaction, PlaidTransaction, Reimbursement, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'uncategorized'
 
@@ -54,6 +54,9 @@ export interface FeedItem {
   netAmount: number | null
   isReimbursementIncome: boolean
   reimbursementCategoryId: string | null
+  transferId: string | null
+  transferKind: TransferKind | null
+  transferRole: 'expense' | 'income' | null
 }
 
 export function mergeFeed(
@@ -85,6 +88,9 @@ export function mergeFeed(
       netAmount: null,
       isReimbursementIncome: false,
       reimbursementCategoryId: null,
+      transferId: null,
+      transferKind: null,
+      transferRole: null,
     }
   })
 
@@ -105,6 +111,9 @@ export function mergeFeed(
     netAmount: null,
     isReimbursementIncome: false,
     reimbursementCategoryId: null,
+    transferId: null,
+    transferKind: null,
+    transferRole: null,
   }))
 
   return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
@@ -138,6 +147,31 @@ export function applyReimbursements(feed: FeedItem[], reimbursements: Reimbursem
     }
     if (incomeIdToExpenseCategoryId.has(item.id)) {
       return { ...item, isReimbursementIncome: true, reimbursementCategoryId: incomeIdToExpenseCategoryId.get(item.id) ?? null }
+    }
+    return item
+  })
+}
+
+// Stamps both legs of every transfer so downstream code can badge them and leave them out of
+// totals. A transfer may be unpaired (no income leg), in which case only the expense is stamped.
+export function applyTransfers(feed: FeedItem[], transfers: Transfer[]): FeedItem[] {
+  const byExpenseId = new Map<string, Transfer>()
+  const byIncomeId = new Map<string, Transfer>()
+  for (const transfer of transfers) {
+    const expenseId = transfer.expensePlaidTransactionId ?? transfer.expenseManualTransactionId
+    if (expenseId) byExpenseId.set(expenseId, transfer)
+    const incomeId = transfer.incomePlaidTransactionId ?? transfer.incomeManualTransactionId
+    if (incomeId) byIncomeId.set(incomeId, transfer)
+  }
+
+  return feed.map((item) => {
+    const asExpense = byExpenseId.get(item.id)
+    if (asExpense) {
+      return { ...item, transferId: asExpense.id, transferKind: asExpense.kind, transferRole: 'expense' as const }
+    }
+    const asIncome = byIncomeId.get(item.id)
+    if (asIncome) {
+      return { ...item, transferId: asIncome.id, transferKind: asIncome.kind, transferRole: 'income' as const }
     }
     return item
   })

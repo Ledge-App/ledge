@@ -1,3 +1,4 @@
+import { isTransfer } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 export interface MonthAggregate {
@@ -26,6 +27,11 @@ export function aggregateMonth(feed: FeedItem[]): MonthAggregate {
   let totalIncome = 0
 
   for (const item of feed) {
+    // Both legs of a transfer are money moved between the user's own accounts. Unlike a
+    // reimbursement's income leg below, neither leg marks the calendar day either — there is
+    // nothing about the day for the user to notice.
+    if (isTransfer(item)) continue
+
     const net = item.netAmount ?? item.amount
     const existingDay = spendByDay.get(item.date) ?? { net: 0, hasReimbursement: false }
     const hasReimbursement = existingDay.hasReimbursement || item.reimbursedAmount != null || item.isReimbursementIncome

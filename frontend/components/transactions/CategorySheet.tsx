@@ -17,13 +17,16 @@ interface CategorySheetProps {
   onClose: () => void
   onSave: (input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) => void
   onOpenReimbursement: (input: { categoryId: string; subcategoryId: string | null }) => void
+  onOpenTransfer: (input: { categoryId: string; subcategoryId: string | null }) => void
+  onUnmarkTransfer: () => void
 }
 
-export function CategorySheet({ visible, item, categories, subcategories, onClose, onSave, onOpenReimbursement }: CategorySheetProps) {
+export function CategorySheet({ visible, item, categories, subcategories, onClose, onSave, onOpenReimbursement, onOpenTransfer, onUnmarkTransfer }: CategorySheetProps) {
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
   const [markReimbursed, setMarkReimbursed] = useState(false)
+  const [markTransfer, setMarkTransfer] = useState(item?.transferKind != null)
 
   // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
   // so local state must be re-derived whenever the sheet is reopened for a different item.
@@ -32,15 +35,21 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
     setSubcategoryId(item?.subcategoryId ?? null)
     setApplyToVendor(true)
     setMarkReimbursed(false)
+    setMarkTransfer(item?.transferKind != null)
   }, [item?.id])
 
   if (!item) return null
 
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
+  const wasTransfer = item.transferKind != null
 
   function handleSave() {
     if (!categoryId) return
-    if (markReimbursed) {
+    if (markTransfer && !wasTransfer) {
+      onOpenTransfer({ categoryId, subcategoryId })
+    } else if (!markTransfer && wasTransfer) {
+      onUnmarkTransfer()
+    } else if (markReimbursed) {
       onOpenReimbursement({ categoryId, subcategoryId })
     } else {
       onSave({ categoryId, subcategoryId, applyToVendor })
@@ -95,7 +104,24 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
 
         <View className="flex-row items-center justify-between py-3">
           <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
-          <Switch value={markReimbursed} onValueChange={setMarkReimbursed} />
+          <Switch
+            value={markReimbursed}
+            onValueChange={(next) => {
+              setMarkReimbursed(next)
+              if (next) setMarkTransfer(false)
+            }}
+          />
+        </View>
+
+        <View className="flex-row items-center justify-between py-3">
+          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Transfer</Text>
+          <Switch
+            value={markTransfer}
+            onValueChange={(next) => {
+              setMarkTransfer(next)
+              if (next) setMarkReimbursed(false)
+            }}
+          />
         </View>
 
         <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />

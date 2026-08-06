@@ -11,11 +11,13 @@ import { useSubcategories } from '@/hooks/useSubcategories'
 import { useTransactionOverrides } from '@/hooks/useTransactionOverrides'
 import { useVendorMappings } from '@/hooks/useVendorMappings'
 import { useReimbursements } from '@/hooks/useReimbursements'
+import { useTransfers } from '@/hooks/useTransfers'
 import { CategoryCard } from '@/components/categories/CategoryCard'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
+import { TransferSheet } from '@/components/transfers/TransferSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -27,6 +29,7 @@ import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filt
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
+import type { TransferKind } from '@/types/domain'
 
 export default function DashboardScreen() {
   const [month, setMonth] = useState(currentMonth())
@@ -35,6 +38,7 @@ export default function DashboardScreen() {
   const [incomeOpen, setIncomeOpen] = useState(true)
   const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
   const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
+  const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
   const [pendingReimbursementMeta, setPendingReimbursementMeta] = useState<{ categoryId: string; subcategoryId: string | null } | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [vizMode, setVizMode] = useState(false)
@@ -48,6 +52,7 @@ export default function DashboardScreen() {
   const overrides = useTransactionOverrides()
   const vendorMappings = useVendorMappings()
   const reimbursements = useReimbursements()
+  const transfers = useTransfers()
 
   const accountFilteredFeed = useMemo(
     () => (selectedAccountId ? feed.filter((item) => item.accountId === selectedAccountId) : feed),
@@ -141,9 +146,52 @@ export default function DashboardScreen() {
     }
   }
 
+  async function handleOpenTransfer(input: { categoryId: string; subcategoryId: string | null }) {
+    if (!activeSheetItem) return
+    const item = activeSheetItem
+    try {
+      await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      setTransferItem(item)
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+    }
+  }
+
+  async function handleSaveTransfer({ kind, incomeItemId }: { kind: TransferKind; incomeItemId: string | null }) {
+    if (!transferItem) return
+    const incomeItem = incomeItemId ? feed.find((i) => i.id === incomeItemId) ?? null : null
+    try {
+      await transfers.create({
+        kind,
+        expensePlaidTransactionId: transferItem.source === 'plaid' ? transferItem.id : null,
+        expenseManualTransactionId: transferItem.source === 'manual' ? transferItem.id : null,
+        incomePlaidTransactionId: incomeItem?.source === 'plaid' ? incomeItem.id : null,
+        incomeManualTransactionId: incomeItem?.source === 'manual' ? incomeItem.id : null,
+        amount: Math.abs(transferItem.amount).toFixed(2),
+        note: null,
+      })
+      setTransferItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this transfer. Try again.')
+    }
+  }
+
+  async function handleUnmarkTransfer() {
+    if (!activeSheetItem?.transferId) return
+    try {
+      await transfers.delete({ id: activeSheetItem.transferId })
+      setActiveSheetItem(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
+    }
+  }
+
   const candidateIncomeItems = feed.filter(
     (item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome,
   )
+
+  const transferCandidateItems = feed.filter((item) => item.amount < 0 && item.transferKind === null)
 
   const hasNoAccounts = !accounts.isLoading && (accounts.data?.length ?? 0) === 0
 
@@ -249,6 +297,8 @@ export default function DashboardScreen() {
         onClose={() => setActiveSheetItem(null)}
         onSave={handleSaveCategory}
         onOpenReimbursement={handleOpenReimbursement}
+        onOpenTransfer={handleOpenTransfer}
+        onUnmarkTransfer={handleUnmarkTransfer}
       />
       <ReimbursementSheet
         visible={reimbursementItem != null}
@@ -259,6 +309,15 @@ export default function DashboardScreen() {
           setPendingReimbursementMeta(null)
         }}
         onSave={handleSaveReimbursement}
+      />
+      <TransferSheet
+        visible={transferItem != null}
+        expenseItem={transferItem}
+        candidateIncomeItems={transferCandidateItems}
+        accounts={accounts.data ?? []}
+        isSaving={transfers.isSaving}
+        onClose={() => setTransferItem(null)}
+        onSave={handleSaveTransfer}
       />
       <CategoryDetailSheet
         visible={detailState != null}
