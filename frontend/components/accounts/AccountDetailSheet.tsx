@@ -3,7 +3,7 @@ import { Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
-import { formatAmount } from '@/lib/format/money'
+import { formatAmount, formatMaskableAmount } from '@/lib/format/money'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -20,6 +20,7 @@ interface AccountDetailSheetProps {
   variant: AccountDetailVariant
   items: FeedItem[]
   categoryById: Map<string, Category>
+  isMasked: boolean
   onClose: () => void
   onTransactionPress?: (item: FeedItem) => void
   emptyLabel?: string
@@ -41,6 +42,7 @@ export function AccountDetailSheet({
   variant,
   items,
   categoryById,
+  isMasked,
   onClose,
   onTransactionPress,
   emptyLabel = 'No transactions for this account',
@@ -83,7 +85,7 @@ export function AccountDetailSheet({
           <Ionicons name={icon.name as any} size={24} color={icon.color} />
         </View>
         <Text className="font-display text-xl" style={{ color: balanceColor }}>
-          {formatAmount(shown.balance)}
+          {formatMaskableAmount(shown.balance, isMasked)}
         </Text>
       </View>
 

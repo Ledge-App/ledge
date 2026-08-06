@@ -8,6 +8,7 @@ import { colors } from '@/constants/theme'
 import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
+import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
 import { HeroCard } from '@/components/dashboard/HeroCard'
@@ -24,6 +25,7 @@ export default function AccountsScreen() {
   const utils = api.useUtils()
   const accounts = useAccounts()
   const { feed, isLoading: feedIsLoading } = useTransactionFeed()
+  const { isMasked, toggleMask } = useAmountsMasked()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
 
@@ -111,6 +113,8 @@ export default function AccountsScreen() {
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
+          isMasked={isMasked}
+          onToggleMask={toggleMask}
           onTrendPress={() => setTrendOpen(true)}
         />
 
@@ -123,9 +127,10 @@ export default function AccountsScreen() {
               name={account.name}
               balance={account.balances?.current ?? 0}
               variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+              isMasked={isMasked}
             />
           ))}
-          <AccountRow name="Cash" balance={cashOnHand} variant="cashOnHand" />
+          <AccountRow name="Cash" balance={cashOnHand} variant="cashOnHand" isMasked={isMasked} />
         </View>
 
         {creditAccounts.length > 0 ? (
@@ -138,6 +143,7 @@ export default function AccountsScreen() {
                 balance={account.balances?.current ?? 0}
                 variant="credit"
                 limit={account.balances?.limit ?? null}
+                isMasked={isMasked}
               />
             ))}
           </View>

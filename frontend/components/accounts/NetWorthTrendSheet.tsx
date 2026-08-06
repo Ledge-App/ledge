@@ -20,6 +20,9 @@ interface NetWorthTrendSheetProps {
   isLoading: boolean
 }
 
+// Deliberately exempt from the app-wide `useAmountsMasked` toggle: this sheet exists to show
+// the net worth trajectory, and a chart of masked amounts would have nothing left to say.
+// Every other balance surface (HeroCard, AccountRow, AccountDetailSheet) does honour it.
 function changeColor(change: number): string {
   if (change > 0) return colors.income
   if (change < 0) return colors.expense

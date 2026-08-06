@@ -7,6 +7,7 @@ import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
 import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
@@ -16,7 +17,7 @@ import { AccountDetailSheet } from '@/components/accounts/AccountDetailSheet'
 import { NetWorthTrendSheet } from '@/components/accounts/NetWorthTrendSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatAmount } from '@/lib/format/money'
+import { formatMaskableAmount } from '@/lib/format/money'
 import { computeNetWorthTotals, isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/netWorth'
 import type { Account } from '@/types/domain'
 
@@ -30,6 +31,7 @@ export default function AccountsTab() {
   const [trendOpen, setTrendOpen] = useState(false)
   const utils = api.useUtils()
   const accounts = useAccounts()
+  const { isMasked, toggleMask } = useAmountsMasked()
   const { feed, categoryById, isLoading: feedIsLoading } = useTransactionFeed()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
@@ -138,6 +140,8 @@ export default function AccountsTab() {
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
+          isMasked={isMasked}
+          onToggleMask={toggleMask}
           onTrendPress={() => setTrendOpen(true)}
         />
 
@@ -146,7 +150,7 @@ export default function AccountsTab() {
             <Pressable onPress={() => setCashOpen((v) => !v)} className="flex-row items-center justify-between gap-3 py-4">
               <Text className="font-sansSemi text-sm text-primary">Cash Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-textSecondary" numberOfLines={1}>Balance {formatAmount(totalAssets)}</Text>
+                <Text className="font-sansMed text-sm text-textSecondary" numberOfLines={1}>Balance {formatMaskableAmount(totalAssets, isMasked)}</Text>
                 <Ionicons name={cashOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>
@@ -158,6 +162,7 @@ export default function AccountsTab() {
                       name={account.name}
                       balance={account.balances?.current ?? 0}
                       variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+                      isMasked={isMasked}
                       onPress={() => setDetailTarget(account)}
                     />
                   </View>
@@ -167,6 +172,7 @@ export default function AccountsTab() {
                     name="Cash"
                     balance={cashOnHand}
                     variant="cashOnHand"
+                    isMasked={isMasked}
                     onPress={() => setDetailTarget('cash')}
                   />
                 </View>
@@ -179,7 +185,7 @@ export default function AccountsTab() {
             <Pressable onPress={() => setCreditOpen((v) => !v)} className="flex-row items-center justify-between gap-3 py-4">
               <Text className="font-sansSemi text-sm text-expense">Credit Accounts</Text>
               <View className="flex-row items-center gap-1">
-                <Text className="font-sansMed text-sm text-expense" numberOfLines={1}>Owed {formatAmount(totalLiabilities)}</Text>
+                <Text className="font-sansMed text-sm text-expense" numberOfLines={1}>Owed {formatMaskableAmount(totalLiabilities, isMasked)}</Text>
                 <Ionicons name={creditOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
               </View>
             </Pressable>
@@ -192,6 +198,7 @@ export default function AccountsTab() {
                       balance={account.balances?.current ?? 0}
                       variant="credit"
                       limit={account.balances?.limit ?? null}
+                      isMasked={isMasked}
                       onPress={() => setDetailTarget(account)}
                     />
                   </View>
@@ -218,6 +225,7 @@ export default function AccountsTab() {
         variant={detail?.variant ?? 'cash'}
         items={detail?.items ?? []}
         emptyLabel={detail?.emptyLabel}
+        isMasked={isMasked}
         categoryById={categoryById}
         onClose={() => setDetailTarget(null)}
       />
