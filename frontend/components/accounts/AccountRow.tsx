@@ -6,7 +6,7 @@ import { formatAmount } from '@/lib/format/money'
 interface AccountRowProps {
   name: string
   balance: number
-  variant: 'cash' | 'credit' | 'investment'
+  variant: 'cash' | 'credit' | 'investment' | 'cashOnHand'
   limit?: number | null
   isMasked?: boolean
   onPress?: () => void
@@ -16,6 +16,9 @@ const variantIcons: Record<string, { name: string; color: string }> = {
   cash: { name: 'wallet', color: '#3B82F6' },
   investment: { name: 'trending-up', color: '#E11D48' },
   credit: { name: 'card', color: '#6B7280' },
+  // Banknotes rather than a wallet, so the always-present cash row reads as distinct from
+  // a linked bank account at a glance.
+  cashOnHand: { name: 'cash', color: colors.income },
 }
 
 export function AccountRow({ name, balance, variant, limit, isMasked, onPress }: AccountRowProps) {
