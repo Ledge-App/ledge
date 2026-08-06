@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -133,4 +134,54 @@ export const reimbursements = pgTable('reimbursements', {
     'income_xor',
     sql`(${table.incomePlaidTransactionId} IS NOT NULL) <> (${table.incomeManualTransactionId} IS NOT NULL)`,
   ),
+}))
+
+// A transfer between the user's own accounts (or a credit card payment) shows up twice in the
+// feed — once as an expense on the source account, once as income on the destination. Both legs
+// are excluded from spend/income totals. Shaped like `reimbursements`, with two differences:
+// the income leg is OPTIONAL (transfers to an account the user hasn't connected have no second
+// leg to link), and `kind` records which transfer type it is.
+export const transfers = pgTable('transfers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => authUsers.id),
+  kind: text('kind').notNull(),
+  expensePlaidTransactionId: text('expense_plaid_transaction_id'),
+  // Cascade, unlike reimbursements: deleting a manual transaction must not be blocked by the
+  // transfer row that references it. Removing a leg removes the transfer entirely, which is
+  // what unmarking means anyway.
+  expenseManualTransactionId: uuid('expense_manual_transaction_id').references(() => manualTransactions.id, { onDelete: 'cascade' }),
+  incomePlaidTransactionId: text('income_plaid_transaction_id'),
+  incomeManualTransactionId: uuid('income_manual_transaction_id').references(() => manualTransactions.id, { onDelete: 'cascade' }),
+  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  expenseXor: check(
+    'transfer_expense_xor',
+    sql`(${table.expensePlaidTransactionId} IS NOT NULL) <> (${table.expenseManualTransactionId} IS NOT NULL)`,
+  ),
+  // At most one — both null is the valid "unpaired transfer" case.
+  incomeNotBoth: check(
+    'transfer_income_not_both',
+    sql`NOT (${table.incomePlaidTransactionId} IS NOT NULL AND ${table.incomeManualTransactionId} IS NOT NULL)`,
+  ),
+  // Kept in sync with TRANSFER_KINDS in lib/transfers/kinds.ts by a test in kinds.test.ts.
+  // The literals are inlined rather than imported because drizzle-kit loads this file through
+  // CJS and cannot resolve the ESM '.js' specifier the rest of the backend uses.
+  kindValid: check('transfer_kind_valid', sql`${table.kind} IN ('account_transfer', 'credit_card_payment', 'refund', 'reimbursement')`),
+  // Partial uniques so no transaction can be pulled into two transfers from either side.
+  // Reimbursements are excluded on the expense side because one expense can have multiple
+  // reimbursement income links (partial reimbursements).
+  expensePlaidUnique: uniqueIndex('transfers_expense_plaid_unique')
+    .on(table.userId, table.expensePlaidTransactionId)
+    .where(sql`${table.expensePlaidTransactionId} IS NOT NULL AND ${table.kind} != 'reimbursement'`),
+  expenseManualUnique: uniqueIndex('transfers_expense_manual_unique')
+    .on(table.userId, table.expenseManualTransactionId)
+    .where(sql`${table.expenseManualTransactionId} IS NOT NULL AND ${table.kind} != 'reimbursement'`),
+  incomePlaidUnique: uniqueIndex('transfers_income_plaid_unique')
+    .on(table.userId, table.incomePlaidTransactionId)
+    .where(sql`${table.incomePlaidTransactionId} IS NOT NULL`),
+  incomeManualUnique: uniqueIndex('transfers_income_manual_unique')
+    .on(table.userId, table.incomeManualTransactionId)
+    .where(sql`${table.incomeManualTransactionId} IS NOT NULL`),
 }))

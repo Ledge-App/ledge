@@ -14,6 +14,7 @@ describe('schema', () => {
       'transactionOverrides',
       'budgets',
       'reimbursements',
+      'transfers',
     ] as const
     for (const name of tableNames) {
       expect(schema[name]).toBeDefined()
@@ -30,5 +31,13 @@ describe('schema', () => {
     expect(schema.reimbursements.expenseManualTransactionId).toBeDefined()
     expect(schema.reimbursements.incomePlaidTransactionId).toBeDefined()
     expect(schema.reimbursements.incomeManualTransactionId).toBeDefined()
+  })
+
+  it('gives transfers the four linkage columns plus a kind discriminator', () => {
+    expect(schema.transfers.expensePlaidTransactionId).toBeDefined()
+    expect(schema.transfers.expenseManualTransactionId).toBeDefined()
+    expect(schema.transfers.incomePlaidTransactionId).toBeDefined()
+    expect(schema.transfers.incomeManualTransactionId).toBeDefined()
+    expect(schema.transfers.kind).toBeDefined()
   })
 })

@@ -5,47 +5,65 @@ import { BottomSheet } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
-import { colors } from '@/constants/theme'
+import { colors, hexToRgba } from '@/constants/theme'
+import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
-import type { Category, Subcategory } from '@/types/domain'
+import type { Category, Subcategory, TransferKind } from '@/types/domain'
 
 interface CategorySheetProps {
   visible: boolean
   item: FeedItem | null
   categories: Category[]
   subcategories: Subcategory[]
+  pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
   onClose: () => void
   onSave: (input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) => void
-  onOpenReimbursement: (input: { categoryId: string; subcategoryId: string | null }) => void
+  onOpenTransfer: (forcedKind?: TransferKind) => void
+  onClearPendingTransfer: () => void
+  onUnmarkTransfer: () => void
 }
 
-export function CategorySheet({ visible, item, categories, subcategories, onClose, onSave, onOpenReimbursement }: CategorySheetProps) {
+export function CategorySheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer }: CategorySheetProps) {
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
   const [markReimbursed, setMarkReimbursed] = useState(false)
+  const [markTransfer, setMarkTransfer] = useState(false)
 
-  // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
-  // so local state must be re-derived whenever the sheet is reopened for a different item.
   useEffect(() => {
     setCategoryId(item?.categoryId ?? null)
     setSubcategoryId(item?.subcategoryId ?? null)
     setApplyToVendor(true)
-    setMarkReimbursed(false)
+    setMarkReimbursed(item?.reimbursedAmount != null)
+    setMarkTransfer(item?.transferKind != null)
   }, [item?.id])
 
   if (!item) return null
 
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
+  const wasTransfer = item.transferKind != null
+  const wasReimbursed = item.reimbursedAmount != null
+  const isReimbursementPending = pendingTransfer?.kind === 'reimbursement'
+  const isTransferPending = pendingTransfer != null && pendingTransfer.kind !== 'reimbursement'
+  const effectiveMarkReimbursed = markReimbursed || isReimbursementPending
+  const effectiveMarkTransfer = markTransfer || isTransferPending
 
   function handleSave() {
     if (!categoryId) return
-    if (markReimbursed) {
-      onOpenReimbursement({ categoryId, subcategoryId })
+    if (!effectiveMarkTransfer && wasTransfer) {
+      onUnmarkTransfer()
+    } else if (effectiveMarkTransfer && !wasTransfer && !isTransferPending) {
+      onOpenTransfer()
+    } else if (!effectiveMarkReimbursed && wasReimbursed) {
+      onUnmarkTransfer()
+    } else if (effectiveMarkReimbursed && !wasReimbursed && !isReimbursementPending) {
+      onOpenTransfer('reimbursement')
     } else {
       onSave({ categoryId, subcategoryId, applyToVendor })
     }
   }
+
+  const transferType = pendingTransfer ? TRANSFER_TYPES[pendingTransfer.kind] : null
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
@@ -93,10 +111,75 @@ export function CategorySheet({ visible, item, categories, subcategories, onClos
           <Switch value={applyToVendor} onValueChange={setApplyToVendor} />
         </View>
 
+        {item.amount < 0 ? (
+          <View className="flex-row items-center justify-between py-3">
+            <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
+            <Switch
+              value={effectiveMarkReimbursed}
+              onValueChange={(next) => {
+                setMarkReimbursed(next)
+                if (next) {
+                  setMarkTransfer(false)
+                  if (isTransferPending) onClearPendingTransfer()
+                  if (!isReimbursementPending) onOpenTransfer('reimbursement')
+                } else {
+                  if (isReimbursementPending) onClearPendingTransfer()
+                }
+              }}
+            />
+          </View>
+        ) : null}
+
+        {isReimbursementPending && transferType ? (
+          <View className="rounded-lg border px-3 py-3" style={{ borderColor: transferType.color, backgroundColor: hexToRgba(transferType.color, 0.08) }}>
+            <View className="flex-row items-center gap-2">
+              <Ionicons name={transferType.icon} size={14} color={transferType.color} />
+              <Text className="font-sansMed text-sm" style={{ color: transferType.color }}>{transferType.label}</Text>
+            </View>
+            {pendingTransfer.counterpartItems.length > 0 ? (
+              pendingTransfer.counterpartItems.map((linked) => (
+                <Text key={linked.id} className="mt-1 font-sans text-sm text-textSecondary" numberOfLines={1}>
+                  {linked.merchantName} · {formatAmount(Math.abs(linked.amount))}
+                </Text>
+              ))
+            ) : null}
+          </View>
+        ) : null}
+
         <View className="flex-row items-center justify-between py-3">
-          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
-          <Switch value={markReimbursed} onValueChange={setMarkReimbursed} />
+          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Transfer</Text>
+          <Switch
+            value={effectiveMarkTransfer}
+            onValueChange={(next) => {
+              setMarkTransfer(next)
+              if (next) {
+                setMarkReimbursed(false)
+                if (isReimbursementPending) onClearPendingTransfer()
+                if (!isTransferPending) onOpenTransfer()
+              } else {
+                if (isTransferPending) onClearPendingTransfer()
+              }
+            }}
+          />
         </View>
+
+        {isTransferPending && transferType ? (
+          <View className="rounded-lg border px-3 py-3" style={{ borderColor: transferType.color, backgroundColor: hexToRgba(transferType.color, 0.08) }}>
+            <View className="flex-row items-center gap-2">
+              <Ionicons name={transferType.icon} size={14} color={transferType.color} />
+              <Text className="font-sansMed text-sm" style={{ color: transferType.color }}>{transferType.label}</Text>
+            </View>
+            {pendingTransfer.counterpartItems.length > 0 ? (
+              pendingTransfer.counterpartItems.map((linked) => (
+                <Text key={linked.id} className="mt-1 font-sans text-sm text-textSecondary" numberOfLines={1}>
+                  Linked to {linked.merchantName} · {formatAmount(Math.abs(linked.amount))}
+                </Text>
+              ))
+            ) : (
+              <Text className="mt-1 font-sans text-sm text-textMuted">No match selected</Text>
+            )}
+          </View>
+        ) : null}
 
         <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />
       </ScrollView>
