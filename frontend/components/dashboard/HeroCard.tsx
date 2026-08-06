@@ -11,6 +11,8 @@ interface HeroCardProps {
   isLoading: boolean
   isMasked: boolean
   onToggleMask: () => void
+  /** Omit to leave the trend icon in its dimmed, non-interactive state. */
+  onTrendPress?: () => void
 }
 
 function formatAmount(amount: number | null, isMasked: boolean): string {
@@ -23,7 +25,7 @@ function formatAmount(amount: number | null, isMasked: boolean): string {
 // server-side (architecture.md) — this card carries its own loading skeleton, independent
 // of the rest of the Accounts screen. Masking is owned by the screen so the eye toggle
 // also hides the per-account balances below the card.
-export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading, isMasked, onToggleMask }: HeroCardProps) {
+export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading, isMasked, onToggleMask, onTrendPress }: HeroCardProps) {
   return (
     <View className="overflow-hidden rounded-2xl p-5" style={{ backgroundColor: colors.primaryDim }}>
       <View className="flex-row items-center justify-between">
@@ -35,7 +37,14 @@ export function HeroCard({ netWorth, totalAssets, totalLiabilities, isLoading, i
           <Ionicons name={isMasked ? 'eye-off' : 'eye'} size={16} color={hexToRgba(colors.textInverse, 0.6)} />
         </Pressable>
         <Text className="font-sansMed text-sm text-textInverse" style={{ opacity: 0.9 }}>Net Worth</Text>
-        <Ionicons name="trending-up" size={18} color={colors.textInverse} style={{ opacity: 0.5 }} />
+        <Pressable
+          onPress={onTrendPress}
+          disabled={onTrendPress == null}
+          hitSlop={8}
+          accessibilityLabel="Net worth trend"
+        >
+          <Ionicons name="trending-up" size={18} color={colors.textInverse} style={{ opacity: onTrendPress ? 0.9 : 0.5 }} />
+        </Pressable>
       </View>
 
       <View className="my-5 items-center">

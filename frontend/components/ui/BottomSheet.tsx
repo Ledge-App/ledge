@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Dimensions, Modal, Pressable, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Dimensions, Modal, PanResponder, Pressable, View } from 'react-native'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { borderRadius, colors } from '@/constants/theme'
@@ -34,6 +34,46 @@ export function BottomSheet({ visible, onClose, children, topOffset }: BottomShe
     }
   }, [visible, translateY, backdropOpacity])
 
+  // Kept in a ref so the PanResponder below can be built once and still call the latest
+  // onClose — rebuilding it mid-gesture would drop the drag.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  // Drag-to-dismiss covers the whole sheet, not just the grabber — a 28px strip is far too
+  // small a target to discover, and pulling on the title or the content is what people
+  // actually try. Scrolling still wins where it should: this only claims the responder on
+  // move (never on capture), so a child ScrollView that wants the touch takes it first and
+  // the drag applies to the non-scrolling chrome instead. Taps are untouched, since a press
+  // with no movement never reaches onMoveShouldSetPanResponder.
+  //
+  // RN's built-in PanResponder avoids taking on react-native-gesture-handler, which is only
+  // a transitive peer here and so isn't guaranteed to be linked into the native build.
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        // 6px rather than 2: a small threshold would hijack the start of a vertical scroll
+        // in the gap before a child claims it.
+        onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dy <= 0) return
+          translateY.value = gesture.dy
+          backdropOpacity.value = Math.max(0, 1 - gesture.dy / (SCREEN_HEIGHT * 0.5))
+        },
+        onPanResponderRelease: (_, gesture) => {
+          // A short flick counts as well as a long drag, so dismissing never needs a full swipe.
+          if (gesture.dy > 110 || gesture.vy > 0.8) {
+            // Hand off to the `visible` effect, which animates from wherever the finger left
+            // the sheet down to offscreen and then unmounts it.
+            onCloseRef.current()
+            return
+          }
+          translateY.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) })
+          backdropOpacity.value = withTiming(1, { duration: 200 })
+        },
+      }),
+    [translateY, backdropOpacity],
+  )
+
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }))
@@ -65,8 +105,9 @@ export function BottomSheet({ visible, onClose, children, topOffset }: BottomShe
             },
             sheetStyle,
           ]}
+          {...panResponder.panHandlers}
         >
-          <View className="items-center pt-3 pb-1">
+          <View className="items-center pt-3 pb-3">
             <View className="h-1 w-10 rounded-full bg-border" />
           </View>
           {children}

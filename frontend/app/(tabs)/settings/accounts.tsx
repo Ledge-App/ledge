@@ -7,30 +7,24 @@ import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
 import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { usePlaidLink } from '@/hooks/usePlaidLink'
 import { HeroCard } from '@/components/dashboard/HeroCard'
 import { AccountRow } from '@/components/accounts/AccountRow'
+import { NetWorthTrendSheet } from '@/components/accounts/NetWorthTrendSheet'
+import { computeNetWorthTotals, isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/netWorth'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
-
-// Plaid's AccountType enum: 'investment' | 'credit' | 'depository' | 'loan' | 'brokerage' | 'other'.
-// Credit cards AND loans (mortgage, student, auto) are liabilities — they must be subtracted
-// from net worth, never added to assets.
-function isLiabilityAccount(account: { type: string }): boolean {
-  return account.type === 'credit' || account.type === 'loan'
-}
-
-function isInvestmentAccount(account: { type: string }): boolean {
-  return account.type === 'investment' || account.type === 'brokerage'
-}
 
 export default function AccountsScreen() {
   const [error, setError] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [trendOpen, setTrendOpen] = useState(false)
   const utils = api.useUtils()
   const accounts = useAccounts()
+  const { feed, isLoading: feedIsLoading } = useTransactionFeed()
   const { isMasked, toggleMask } = useAmountsMasked()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
@@ -38,8 +32,10 @@ export default function AccountsScreen() {
   const cashAccounts = useMemo(() => (accounts.data ?? []).filter((a) => !isLiabilityAccount(a)), [accounts.data])
   const creditAccounts = useMemo(() => (accounts.data ?? []).filter(isLiabilityAccount), [accounts.data])
 
-  const totalAssets = cashAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
-  const totalLiabilities = creditAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
+  const { totalAssets, totalLiabilities, cashOnHand, netWorth } = useMemo(
+    () => computeNetWorthTotals(accounts.data ?? [], feed),
+    [accounts.data, feed],
+  )
 
   async function handleAddAccount() {
     setError(null)
@@ -113,28 +109,29 @@ export default function AccountsScreen() {
         {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
 
         <HeroCard
-          netWorth={totalAssets - totalLiabilities}
+          netWorth={netWorth}
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
           isMasked={isMasked}
           onToggleMask={toggleMask}
+          onTrendPress={() => setTrendOpen(true)}
         />
 
-        {cashAccounts.length > 0 ? (
-          <View className="gap-1">
-            <Text className="font-sansMed text-sm text-textMuted">CASH ACCOUNTS</Text>
-            {cashAccounts.map((account) => (
-              <AccountRow
-                key={account.account_id}
-                name={account.name}
-                balance={account.balances?.current ?? 0}
-                variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
-                isMasked={isMasked}
-              />
-            ))}
-          </View>
-        ) : null}
+        {/* Always rendered: the Cash row is a built-in account, present even with nothing linked. */}
+        <View className="gap-1">
+          <Text className="font-sansMed text-sm text-textMuted">CASH ACCOUNTS</Text>
+          {cashAccounts.map((account) => (
+            <AccountRow
+              key={account.account_id}
+              name={account.name}
+              balance={account.balances?.current ?? 0}
+              variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+              isMasked={isMasked}
+            />
+          ))}
+          <AccountRow name="Cash" balance={cashOnHand} variant="cashOnHand" isMasked={isMasked} />
+        </View>
 
         {creditAccounts.length > 0 ? (
           <View className="gap-1">
@@ -152,6 +149,15 @@ export default function AccountsScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      <NetWorthTrendSheet
+        visible={trendOpen}
+        onClose={() => setTrendOpen(false)}
+        netWorth={netWorth}
+        accounts={accounts.data ?? []}
+        feed={feed}
+        isLoading={accounts.isLoading || feedIsLoading}
+      />
     </SafeAreaView>
   )
 }

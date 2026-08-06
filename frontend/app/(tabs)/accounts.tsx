@@ -14,37 +14,57 @@ import { usePlaidLink } from '@/hooks/usePlaidLink'
 import { HeroCard } from '@/components/dashboard/HeroCard'
 import { AccountRow } from '@/components/accounts/AccountRow'
 import { AccountDetailSheet } from '@/components/accounts/AccountDetailSheet'
+import { NetWorthTrendSheet } from '@/components/accounts/NetWorthTrendSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatMaskableAmount } from '@/lib/format/money'
+import { computeNetWorthTotals, isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/netWorth'
 import type { Account } from '@/types/domain'
-
-function isLiabilityAccount(account: { type: string }): boolean {
-  return account.type === 'credit' || account.type === 'loan'
-}
-
-function isInvestmentAccount(account: { type: string }): boolean {
-  return account.type === 'investment' || account.type === 'brokerage'
-}
 
 export default function AccountsTab() {
   const [error, setError] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [cashOpen, setCashOpen] = useState(true)
   const [creditOpen, setCreditOpen] = useState(true)
-  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+  // 'cash' is the built-in cash row, which has no Plaid account behind it.
+  const [detailTarget, setDetailTarget] = useState<Account | 'cash' | null>(null)
+  const [trendOpen, setTrendOpen] = useState(false)
   const utils = api.useUtils()
   const accounts = useAccounts()
   const { isMasked, toggleMask } = useAmountsMasked()
-  const { feed, categoryById } = useTransactionFeed()
+  const { feed, categoryById, isLoading: feedIsLoading } = useTransactionFeed()
   const credentials = usePlaidCredentials()
   const { createLinkToken, exchangeToken } = usePlaidLink()
 
   const cashAccounts = useMemo(() => (accounts.data ?? []).filter((a) => !isLiabilityAccount(a)), [accounts.data])
   const creditAccounts = useMemo(() => (accounts.data ?? []).filter(isLiabilityAccount), [accounts.data])
 
-  const totalAssets = cashAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
-  const totalLiabilities = creditAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0)
+  // totalAssets includes cash on hand, which is exactly what the Cash Accounts section totals
+  // now that the Cash row lives inside it.
+  const { totalAssets, totalLiabilities, cashOnHand, netWorth } = useMemo(
+    () => computeNetWorthTotals(accounts.data ?? [], feed),
+    [accounts.data, feed],
+  )
+
+  const detail = useMemo(() => {
+    if (detailTarget == null) return null
+    if (detailTarget === 'cash') {
+      return {
+        title: 'Cash',
+        balance: cashOnHand,
+        variant: 'cashOnHand' as const,
+        items: feed.filter((item) => item.source === 'manual'),
+        emptyLabel: 'No cash transactions yet',
+      }
+    }
+    return {
+      title: detailTarget.name,
+      balance: detailTarget.balances?.current ?? 0,
+      variant: isLiabilityAccount(detailTarget) ? ('credit' as const) : isInvestmentAccount(detailTarget) ? ('investment' as const) : ('cash' as const),
+      items: feed.filter((item) => item.accountId === detailTarget.account_id),
+      emptyLabel: 'No transactions for this account',
+    }
+  }, [detailTarget, feed, cashOnHand])
 
   async function handleAddAccount() {
     setError(null)
@@ -116,16 +136,17 @@ export default function AccountsTab() {
         {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
 
         <HeroCard
-          netWorth={totalAssets - totalLiabilities}
+          netWorth={netWorth}
           totalAssets={totalAssets}
           totalLiabilities={totalLiabilities}
           isLoading={accounts.isLoading}
           isMasked={isMasked}
           onToggleMask={toggleMask}
+          onTrendPress={() => setTrendOpen(true)}
         />
 
-        {cashAccounts.length > 0 ? (
-          <View className="rounded-xl bg-surface px-4">
+        {/* Always rendered: the Cash row is a built-in account, present even with nothing linked. */}
+        <View className="rounded-xl bg-surface px-4">
             <Pressable onPress={() => setCashOpen((v) => !v)} className="flex-row items-center justify-between gap-3 py-4">
               <Text className="font-sansSemi text-sm text-primary">Cash Accounts</Text>
               <View className="flex-row items-center gap-1">
@@ -142,14 +163,22 @@ export default function AccountsTab() {
                       balance={account.balances?.current ?? 0}
                       variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
                       isMasked={isMasked}
-                      onPress={() => setSelectedAccount(account)}
+                      onPress={() => setDetailTarget(account)}
                     />
                   </View>
                 ))}
+                <View className="border-t" style={{ borderColor: colors.border }}>
+                  <AccountRow
+                    name="Cash"
+                    balance={cashOnHand}
+                    variant="cashOnHand"
+                    isMasked={isMasked}
+                    onPress={() => setDetailTarget('cash')}
+                  />
+                </View>
               </View>
             ) : null}
-          </View>
-        ) : null}
+        </View>
 
         {creditAccounts.length > 0 ? (
           <View className="rounded-xl bg-surface px-4">
@@ -170,7 +199,7 @@ export default function AccountsTab() {
                       variant="credit"
                       limit={account.balances?.limit ?? null}
                       isMasked={isMasked}
-                      onPress={() => setSelectedAccount(account)}
+                      onPress={() => setDetailTarget(account)}
                     />
                   </View>
                 ))}
@@ -180,12 +209,26 @@ export default function AccountsTab() {
         ) : null}
       </ScrollView>
 
-      <AccountDetailSheet
-        visible={selectedAccount != null}
-        account={selectedAccount}
+      <NetWorthTrendSheet
+        visible={trendOpen}
+        onClose={() => setTrendOpen(false)}
+        netWorth={netWorth}
+        accounts={accounts.data ?? []}
         feed={feed}
+        isLoading={accounts.isLoading || feedIsLoading}
+      />
+
+      <AccountDetailSheet
+        visible={detail != null}
+        title={detail?.title ?? ''}
+        balance={detail?.balance ?? 0}
+        variant={detail?.variant ?? 'cash'}
+        items={detail?.items ?? []}
+        feed={feed}
+        emptyLabel={detail?.emptyLabel}
+        isMasked={isMasked}
         categoryById={categoryById}
-        onClose={() => setSelectedAccount(null)}
+        onClose={() => setDetailTarget(null)}
       />
     </SafeAreaView>
   )
