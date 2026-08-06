@@ -17,7 +17,7 @@ interface CategorySheetProps {
   subcategories: Subcategory[]
   pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
   onClose: () => void
-  onSave: (input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) => void
+  onSave: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => void
   onOpenTransfer: (forcedKind?: TransferKind) => void
   onClearPendingTransfer: () => void
   onUnmarkTransfer: () => void
@@ -49,7 +49,6 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
   const effectiveMarkTransfer = markTransfer || isTransferPending
 
   function handleSave() {
-    if (!categoryId) return
     if (!effectiveMarkTransfer && wasTransfer) {
       onUnmarkTransfer()
     } else if (effectiveMarkTransfer && !wasTransfer && !isTransferPending) {
@@ -181,7 +180,7 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
           </View>
         ) : null}
 
-        <Button label="Save Changes" onPress={handleSave} disabled={!categoryId} />
+        <Button label="Save Changes" onPress={handleSave} />
       </ScrollView>
     </BottomSheet>
   )

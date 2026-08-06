@@ -118,12 +118,14 @@ export default function TransactionsScreen() {
 
   const { spendByDay, totalExpense, totalIncome } = useMemo(() => aggregateMonth(filteredFeed), [filteredFeed])
 
-  async function handleSaveCategory(input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) {
+  async function handleSaveCategory(input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
     try {
-      await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-      if (input.applyToVendor) {
-        await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      if (input.categoryId) {
+        await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+        if (input.applyToVendor) {
+          await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+        }
       }
       if (pendingTransfer) {
         const isReimbursement = pendingTransfer.kind === 'reimbursement'

@@ -35,7 +35,7 @@ export interface TransactionEditor {
   closeCategorySheet: () => void
   closeReimbursementSheet: () => void
   closeManualSheet: () => void
-  saveCategory: (input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) => Promise<void>
+  saveCategory: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => Promise<void>
   openReimbursement: (input: { categoryId: string; subcategoryId: string | null }) => Promise<void>
   saveReimbursement: (linkedIncomeIds: string[]) => Promise<void>
   saveManual: (input: ManualInput) => Promise<void>
@@ -92,12 +92,14 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   }, [])
 
   const saveCategory = useCallback(
-    async (input: { categoryId: string; subcategoryId: string | null; applyToVendor: boolean }) => {
+    async (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => {
       if (!activeSheetItem) return
       try {
-        await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        if (input.applyToVendor) {
-          await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+        if (input.categoryId) {
+          await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+          if (input.applyToVendor) {
+            await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+          }
         }
         setActiveSheetItem(null)
       } catch (err) {
