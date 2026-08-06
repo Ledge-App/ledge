@@ -103,9 +103,7 @@ export function ManualTransactionSheet({
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
   const isValidAmount = /^\d+(\.\d{1,2})?$/.test(amountText) && Number(amountText) > 0
 
-  // Only an existing expense can be marked: creating has no id yet to link a transfer to, and
-  // the transfer flow starts from the money-out side.
-  const canMarkTransfer = transaction != null && type === 'expense' && onSaveAndMarkTransfer != null
+  const canMarkTransfer = transaction != null && onSaveAndMarkTransfer != null
 
   function handleSave() {
     const input: ManualTransactionInput = {

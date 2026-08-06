@@ -277,4 +277,43 @@ describe('applyTransfers', () => {
   it('returns the feed unchanged when there are no transfers', () => {
     expect(applyTransfers(feed, [])).toEqual(feed)
   })
+
+  it('sets reimbursedAmount and netAmount for reimbursement-kind transfers', () => {
+    const transfers: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out')).toMatchObject({ reimbursedAmount: 200, netAmount: 300 })
+    expect(find(result, 'in')).toMatchObject({ isReimbursementIncome: true })
+  })
+
+  it('accumulates multiple reimbursement transfers on the same expense', () => {
+    const transfers: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+      { id: 'r2', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '100.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out')).toMatchObject({ reimbursedAmount: 300, netAmount: 200 })
+  })
+
+  it('floors netAmount at zero when reimbursements exceed expense', () => {
+    const transfers: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '600.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out')).toMatchObject({ reimbursedAmount: 600, netAmount: 0 })
+  })
+
+  it('carries the expense category to the reimbursement income leg', () => {
+    const catFeed = mergeFeed(plaidTxns, [], [{ id: 'o1', plaidTransactionId: 'out', categoryId: 'food', subcategoryId: null }] as unknown as import('@/types/domain').TransactionOverride[], [])
+    const transfers: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+    ]
+    const result = applyTransfers(catFeed, transfers)
+
+    expect(find(result, 'in').reimbursementCategoryId).toBe('food')
+  })
 })

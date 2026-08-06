@@ -8,23 +8,15 @@ export interface TransferContext {
   accounts: Account[]
 }
 
-// The contract every transfer type implements. Candidate matching lives on the client because
-// Plaid transactions are never persisted server-side (transactionSyncService is a pure relay) —
-// the backend has no transaction table to search, so it only validates and stores `kind`.
 export interface TransferTypeDefinition {
   kind: TransferKind
-  /** Chip text in TransferSheet and the badge text on both legs' rows. */
   label: string
-  /** One-line explainer shown under the chips once selected. */
-  description: string
   icon: keyof typeof Ionicons.glyphMap
   color: string
-  /** Whether this type is offered at all for a given expense. */
-  appliesTo(expense: FeedItem, ctx: TransferContext): boolean
-  /** Whether `candidate` is a valid counterparty income leg for `expense`. */
-  matches(expense: FeedItem, candidate: FeedItem, ctx: TransferContext): boolean
-  /** Whether the type can be saved with no income leg linked. */
+  appliesTo(item: FeedItem, ctx: TransferContext): boolean
+  matches(item: FeedItem, candidate: FeedItem, ctx: TransferContext): boolean
   allowsUnpaired: boolean
+  multiSelect?: boolean
 }
 
 /** Whole days between two YYYY-MM-DD calendar keys, parsed as UTC so DST never shifts the count. */
@@ -33,70 +25,98 @@ export function daysBetween(a: string, b: string): number {
   return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / MS_PER_DAY
 }
 
-/**
- * Tolerance is a fraction of the EXPENSE amount, compared on absolute values — feed amounts
- * follow Plaid's convention where income is negative.
- */
 export function amountWithinTolerance(pct: number) {
-  return (expense: FeedItem, candidate: FeedItem): boolean =>
-    Math.abs(Math.abs(candidate.amount) - Math.abs(expense.amount)) <= Math.abs(expense.amount) * pct
+  return (a: FeedItem, b: FeedItem): boolean =>
+    Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) <= Math.abs(a.amount) * pct
+}
+
+export function exactAmount(a: FeedItem, b: FeedItem): boolean {
+  return Math.abs(a.amount) === Math.abs(b.amount)
 }
 
 export function withinDays(days: number) {
-  return (expense: FeedItem, candidate: FeedItem): boolean => daysBetween(expense.date, candidate.date) <= days
+  return (a: FeedItem, b: FeedItem): boolean => daysBetween(a.date, b.date) <= days
 }
 
-/**
- * A transfer moves money between two accounts, so the legs can't share one. Manual transactions
- * have accountId === null (they aren't tied to a connected account), and are never excluded here.
- */
-export function differentAccount(expense: FeedItem, candidate: FeedItem): boolean {
-  if (expense.accountId === null || candidate.accountId === null) return true
-  return expense.accountId !== candidate.accountId
+export function differentAccount(a: FeedItem, b: FeedItem): boolean {
+  if (a.accountId === null || b.accountId === null) return true
+  return a.accountId !== b.accountId
 }
 
-export function onLiabilityAccount(candidate: FeedItem, ctx: TransferContext): boolean {
-  if (candidate.accountId === null) return false
-  const account = ctx.accounts.find((a) => a.account_id === candidate.accountId)
+function isExpense(item: FeedItem): boolean {
+  return item.amount > 0
+}
+
+function itemOnLiabilityAccount(item: FeedItem, ctx: TransferContext): boolean {
+  if (item.accountId === null) return false
+  const account = ctx.accounts.find((a) => a.account_id === item.accountId)
   return account ? isLiabilityAccount(account) : false
 }
 
-const withinTolerance = amountWithinTolerance(0.05)
-const withinWindow = withinDays(7)
-
-function isBaseCounterparty(expense: FeedItem, candidate: FeedItem): boolean {
-  return (
-    candidate.amount < 0 &&
-    candidate.id !== expense.id &&
-    withinTolerance(expense, candidate) &&
-    withinWindow(expense, candidate) &&
-    differentAccount(expense, candidate)
-  )
+function isOppositeSign(item: FeedItem, candidate: FeedItem): boolean {
+  return (item.amount > 0 && candidate.amount < 0) || (item.amount < 0 && candidate.amount > 0)
 }
 
-// Adding a kind to TRANSFER_KINDS in the backend widens the TransferKind union, and this Record
-// then fails to typecheck until the new kind has a full definition here. That is the mechanism
-// that makes "every transfer type defines itself under one interface" enforceable.
+const withinWeek = withinDays(7)
+const withinMonth = withinDays(30)
+const within5Pct = amountWithinTolerance(0.05)
+
 export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
   account_transfer: {
     kind: 'account_transfer',
     label: 'Between accounts',
-    description: 'Money moved between two of your own accounts.',
     icon: 'swap-horizontal',
     color: colors.primary,
     appliesTo: () => true,
-    matches: isBaseCounterparty,
+    matches: (item, candidate) =>
+      isOppositeSign(item, candidate) &&
+      candidate.id !== item.id &&
+      within5Pct(item, candidate) &&
+      withinWeek(item, candidate) &&
+      differentAccount(item, candidate),
     allowsUnpaired: true,
   },
   credit_card_payment: {
     kind: 'credit_card_payment',
     label: 'Credit card payment',
-    description: 'A payment toward one of your credit cards or loans.',
     icon: 'card-outline',
     color: colors.transfer,
-    appliesTo: () => true,
-    matches: (expense, candidate, ctx) => isBaseCounterparty(expense, candidate) && onLiabilityAccount(candidate, ctx),
+    appliesTo: (item, ctx) => {
+      if (isExpense(item)) return true
+      return itemOnLiabilityAccount(item, ctx)
+    },
+    matches: (item, candidate, ctx) => {
+      if (!isOppositeSign(item, candidate) || candidate.id === item.id) return false
+      if (!exactAmount(item, candidate) || !withinWeek(item, candidate) || !differentAccount(item, candidate)) return false
+      if (isExpense(item)) return itemOnLiabilityAccount(candidate, ctx)
+      return true
+    },
     allowsUnpaired: true,
+  },
+  refund: {
+    kind: 'refund',
+    label: 'Refund',
+    icon: 'arrow-undo-outline',
+    color: '#D97706',
+    appliesTo: () => true,
+    matches: (item, candidate) =>
+      isOppositeSign(item, candidate) &&
+      candidate.id !== item.id &&
+      exactAmount(item, candidate) &&
+      withinMonth(item, candidate),
+    allowsUnpaired: true,
+  },
+  reimbursement: {
+    kind: 'reimbursement',
+    label: 'Reimbursement',
+    icon: 'arrow-undo',
+    color: colors.reimbursed,
+    appliesTo: (item) => !isExpense(item),
+    matches: (item, candidate) =>
+      isOppositeSign(item, candidate) &&
+      candidate.id !== item.id,
+    allowsUnpaired: false,
+    multiSelect: true,
   },
 }
 

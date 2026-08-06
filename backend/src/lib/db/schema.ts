@@ -168,14 +168,16 @@ export const transfers = pgTable('transfers', {
   // Kept in sync with TRANSFER_KINDS in lib/transfers/kinds.ts by a test in kinds.test.ts.
   // The literals are inlined rather than imported because drizzle-kit loads this file through
   // CJS and cannot resolve the ESM '.js' specifier the rest of the backend uses.
-  kindValid: check('transfer_kind_valid', sql`${table.kind} IN ('account_transfer', 'credit_card_payment')`),
+  kindValid: check('transfer_kind_valid', sql`${table.kind} IN ('account_transfer', 'credit_card_payment', 'refund', 'reimbursement')`),
   // Partial uniques so no transaction can be pulled into two transfers from either side.
+  // Reimbursements are excluded on the expense side because one expense can have multiple
+  // reimbursement income links (partial reimbursements).
   expensePlaidUnique: uniqueIndex('transfers_expense_plaid_unique')
     .on(table.userId, table.expensePlaidTransactionId)
-    .where(sql`${table.expensePlaidTransactionId} IS NOT NULL`),
+    .where(sql`${table.expensePlaidTransactionId} IS NOT NULL AND ${table.kind} != 'reimbursement'`),
   expenseManualUnique: uniqueIndex('transfers_expense_manual_unique')
     .on(table.userId, table.expenseManualTransactionId)
-    .where(sql`${table.expenseManualTransactionId} IS NOT NULL`),
+    .where(sql`${table.expenseManualTransactionId} IS NOT NULL AND ${table.kind} != 'reimbursement'`),
   incomePlaidUnique: uniqueIndex('transfers_income_plaid_unique')
     .on(table.userId, table.incomePlaidTransactionId)
     .where(sql`${table.incomePlaidTransactionId} IS NOT NULL`),
