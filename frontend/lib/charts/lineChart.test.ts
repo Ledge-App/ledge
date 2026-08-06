@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatTick, niceScale, smoothLine } from './lineChart'
+import { formatAxisAmount, formatTick, niceExtent, niceScale, smoothLine } from './lineChart'
 
 describe('niceScale', () => {
   it('produces a top tick that covers the max', () => {
@@ -59,6 +59,49 @@ describe('formatTick', () => {
   it('abbreviates thousands', () => {
     expect(formatTick(1000, 200)).toBe('1K')
     expect(formatTick(1200, 200)).toBe('1.2K')
+  })
+})
+
+describe('niceExtent', () => {
+  it('covers the full data range on both sides', () => {
+    for (const [min, max] of [[-250.37, 0], [0, 73000], [-1200, 4800], [12, 12]] as const) {
+      const ticks = niceExtent(min, max)
+      expect(ticks[0]).toBeLessThanOrEqual(Math.min(min, 0))
+      expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(Math.max(max, 0))
+    }
+  })
+
+  // The area fill hangs from the zero line, so zero has to be an actual gridline.
+  it('always includes zero as a tick', () => {
+    for (const [min, max] of [[-250.37, 0], [0, 73000], [-1200, 4800], [-9, -3]] as const) {
+      expect(niceExtent(min, max)).toContain(0)
+    }
+  })
+
+  it('returns strictly increasing ticks', () => {
+    const ticks = niceExtent(-1200, 4800)
+    expect(ticks.length).toBeGreaterThanOrEqual(2)
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i]).toBeGreaterThan(ticks[i - 1])
+  })
+
+  it('falls back to a 0-1 domain when there is no span to scale', () => {
+    expect(niceExtent(0, 0)).toEqual([0, 1])
+    expect(niceExtent(NaN, NaN)).toEqual([0, 1])
+  })
+})
+
+describe('formatAxisAmount', () => {
+  it('abbreviates thousands and millions', () => {
+    expect(formatAxisAmount(0)).toBe('0')
+    expect(formatAxisAmount(24000)).toBe('24K')
+    expect(formatAxisAmount(1500)).toBe('1.5K')
+    expect(formatAxisAmount(2_400_000)).toBe('2.4M')
+  })
+
+  it('keeps the sign outside the abbreviation', () => {
+    expect(formatAxisAmount(-1500)).toBe('-1.5K')
+    expect(formatAxisAmount(-200)).toBe('-200')
+    expect(formatAxisAmount(-2.5)).toBe('-2.5')
   })
 })
 

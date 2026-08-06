@@ -233,7 +233,8 @@ The signature UI element. Used on Dashboard and Budget screens.
 ```
 
 - Privacy toggle (eye icon): masks all amounts to `$****`
-- Trend icon opens a net worth history chart (out of scope v1 — show disabled state)
+- Trend icon opens the net worth history sheet (`NetWorthTrendSheet`): a year navigator, a signed area chart of month-end net worth, and a newest-first list of months with their month-over-month change. Since balances are never persisted, the series is *back-cast* from today's net worth by unwinding transactions month by month — Plaid and manual alike, matching how `aggregateMonth` already counts them. See `lib/accounts/netWorthHistory.ts` for the sign convention and the one remaining limit (investment market movement is not reconstructable)
+- The icon stays in its dimmed, non-interactive state when a screen renders `HeroCard` without an `onTrendPress` handler
 - Balances shown here are fetched live through the backend on each view (never persisted server-side — see `architecture.md`), so this card should carry its own loading skeleton independent of the rest of the screen
 
 ### AccountRow
@@ -253,6 +254,7 @@ Credit variant:
 - Institution logo: 32px rounded square
 - Credit accounts show balance in `expense` color + limit in `textMuted`
 - Cash/investment accounts show balance in `textPrimary`
+- `cashOnHand` variant: the built-in **Cash** row, always present at the end of the Cash Accounts section even with nothing linked. Banknote icon in `income`, to read as distinct from a linked bank's wallet icon. Its balance is derived from manual transactions (`computeCashOnHand`) rather than a Plaid balance, and it opens the same `AccountDetailSheet` listing those transactions — which is why that sheet takes `title`/`balance`/`items` rather than an `Account`
 
 ### CalendarCell
 
