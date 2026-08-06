@@ -4,18 +4,25 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
+import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { BottomSheet } from '@/components/ui/BottomSheet'
+import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
+import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account, Category } from '@/types/domain'
 
 interface AccountDetailSheetProps {
   visible: boolean
   account: Account | null
+  /** The whole feed, not just this account's rows. The displayed list is derived from it, and
+   *  editing needs the rest for cross-account context: reimbursement candidates and the
+   *  reimbursed-transaction delete warning. Keep it even if the displayed rows ever become a
+   *  prop of their own — that's what lets a non-Plaid row (a built-in cash balance, say) open
+   *  this sheet and still be editable. */
   feed: FeedItem[]
   categoryById: Map<string, Category>
   onClose: () => void
-  onTransactionPress?: (item: FeedItem) => void
 }
 
 const variantIcons: Record<string, { name: string; color: string }> = {
@@ -30,8 +37,11 @@ function getVariant(type: string): string {
   return 'cash'
 }
 
-export function AccountDetailSheet({ visible, account, feed, categoryById, onClose, onTransactionPress }: AccountDetailSheetProps) {
+export function AccountDetailSheet({ visible, account, feed, categoryById, onClose }: AccountDetailSheetProps) {
   const insets = useSafeAreaInsets()
+  // Reimbursement candidates and the manual-delete check span every account, so the editor gets the
+  // whole feed rather than this account's slice.
+  const editor = useTransactionEditor(feed)
 
   const accountFeed = useMemo(
     () => (account ? feed.filter((item) => item.accountId === account.account_id) : []),
@@ -76,6 +86,12 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
         </Text>
       </View>
 
+      {editor.saveError ? (
+        <View className="px-5">
+          <ErrorBanner message={editor.saveError} onDismiss={editor.dismissSaveError} />
+        </View>
+      ) : null}
+
       <Text className="mb-2 px-5 font-sansSemi text-sm text-textSecondary">Transactions</Text>
 
       <SectionList
@@ -108,7 +124,7 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
               categoryColor={category?.color ?? colors.textMuted}
               categoryIcon={category?.icon ?? '❓'}
               reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-              onPress={onTransactionPress ? () => onTransactionPress(item) : undefined}
+              onPress={() => editor.openTransaction(item)}
             />
           )
         }}
@@ -116,6 +132,8 @@ export function AccountDetailSheet({ visible, account, feed, categoryById, onClo
           <Text className="py-8 text-center font-sans text-sm text-textMuted">No transactions for this account</Text>
         }
       />
+
+      <TransactionEditSheets editor={editor} />
     </BottomSheet>
   )
 }
