@@ -21,6 +21,9 @@ function manual(amount: number, id = `m-${amount}`): FeedItem {
     netAmount: null,
     isReimbursementIncome: false,
     reimbursementCategoryId: null,
+    transferId: null,
+    transferKind: null,
+    transferRole: null,
   }
 }
 

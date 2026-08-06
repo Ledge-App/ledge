@@ -21,6 +21,9 @@ function txn(overrides: Partial<FeedItem> & { date: string; amount: number }): F
     netAmount: null,
     isReimbursementIncome: false,
     reimbursementCategoryId: null,
+    transferId: null,
+    transferKind: null,
+    transferRole: null,
     ...overrides,
   }
 }

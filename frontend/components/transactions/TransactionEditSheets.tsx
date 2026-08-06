@@ -1,15 +1,11 @@
 import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
-import { ReimbursementSheet } from '@/components/reimbursements/ReimbursementSheet'
 import type { TransactionEditor } from '@/hooks/useTransactionEditor'
 
 interface TransactionEditSheetsProps {
   editor: TransactionEditor
 }
 
-// Renders the three edit sheets driven by useTransactionEditor. Mount it inside whatever container
-// lists the transactions — when that container is itself a BottomSheet, keeping these as its
-// children is what lets iOS stack the edit modal above it.
 export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
   return (
     <>
@@ -18,16 +14,12 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
         item={editor.activeSheetItem}
         categories={editor.categories}
         subcategories={editor.subcategories}
+        pendingTransfer={null}
         onClose={editor.closeCategorySheet}
         onSave={editor.saveCategory}
-        onOpenReimbursement={editor.openReimbursement}
-      />
-      <ReimbursementSheet
-        visible={editor.reimbursementItem != null}
-        expenseItem={editor.reimbursementItem}
-        candidateIncomeItems={editor.candidateIncomeItems}
-        onClose={editor.closeReimbursementSheet}
-        onSave={editor.saveReimbursement}
+        onOpenTransfer={() => {}}
+        onClearPendingTransfer={() => {}}
+        onUnmarkTransfer={() => {}}
       />
       <ManualTransactionSheet
         visible={editor.manualSheetOpen}
