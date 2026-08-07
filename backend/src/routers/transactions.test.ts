@@ -9,7 +9,7 @@ describe('transactions router', () => {
   it('sync passes the authenticated user id and cursor map through', async () => {
     serviceMock.sync.mockResolvedValue({ added: [], modified: [], removed: [], cursors: {}, hasMore: false })
     const { transactionsRouter } = await import('./transactions.js')
-    const caller = transactionsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = transactionsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await caller.sync({ cursors: { 'item-1': 'cursor-1' } })
 

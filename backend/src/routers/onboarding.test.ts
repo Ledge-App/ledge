@@ -12,7 +12,7 @@ describe('onboarding router', () => {
   it('seedCategories delegates to onboardingService with caller jwt/userId', async () => {
     onboardingServiceMock.seedCategories.mockResolvedValue({ categoryIdsByLedgeName: { 'Food & Drink': 'cat-1' } })
     const { onboardingRouter } = await import('./onboarding.js')
-    const caller = onboardingRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = onboardingRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     const result = await caller.seedCategories()
 
@@ -23,7 +23,7 @@ describe('onboarding router', () => {
   it('generateVendorMappings delegates to onboardingService with input transactions', async () => {
     onboardingServiceMock.generateVendorMappings.mockResolvedValue({ createdCount: 1 })
     const { onboardingRouter } = await import('./onboarding.js')
-    const caller = onboardingRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = onboardingRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     const transactions = [
       { merchant_name: 'Blue Bottle', personal_finance_category: { primary: 'FOOD_AND_DRINK', detailed: 'FOOD_AND_DRINK_COFFEE' } },

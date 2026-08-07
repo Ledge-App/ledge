@@ -102,7 +102,15 @@ export default function AccountsTab() {
     }
   }
 
-  if (!accounts.isLoading && (accounts.data?.length ?? 0) === 0 && !credentials.isLoading) {
+  // itemErrors suppresses the empty state: with every item failing there are no accounts to
+  // show, but "link your first account" would be a lie — the accounts exist and are broken.
+  // Falling through renders the per-institution warnings that say so.
+  if (
+    !accounts.isLoading &&
+    (accounts.data?.length ?? 0) === 0 &&
+    accounts.itemErrors.length === 0 &&
+    !credentials.isLoading
+  ) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
         <View className="px-5 pt-4">{error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}</View>
@@ -134,6 +142,23 @@ export default function AccountsTab() {
         </View>
 
         {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+
+        {/* Per-institution failures. The rest of the screen is live, so these are shown inline
+            rather than as an error state — before, any one of them took the whole screen down. */}
+        {accounts.itemErrors.map((itemError) => (
+          <View key={itemError.itemId} className="flex-row items-start gap-2 rounded-xl bg-surface p-4">
+            <Ionicons name="warning-outline" size={16} color={colors.expense} />
+            <View className="flex-1 gap-1">
+              <Text className="font-sansMed text-sm text-textPrimary">
+                Couldn&apos;t load {itemError.institutionName}
+              </Text>
+              <Text className="font-sans text-xs leading-4 text-textMuted">
+                Its balances and transactions are out of date. Reconnect it from Settings →
+                Institutions.
+              </Text>
+            </View>
+          </View>
+        ))}
 
         <HeroCard
           netWorth={netWorth}

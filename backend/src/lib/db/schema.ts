@@ -25,12 +25,24 @@ const authUsers = authSchema.table('users', {
   id: uuid('id').primaryKey(),
 })
 
+// Developer allowlist. Only these accounts may choose the sandbox Plaid environment; everyone
+// else is pinned to production. Seeded by hand via SQL — deliberately not writable from the app.
+// The lowercase check is a guardrail: lookups normalise the incoming email, so a mixed-case row
+// would silently never match. Better to reject the bad INSERT than to debug a dev who can't
+// see the toggle.
+export const devEmails = pgTable('dev_emails', {
+  email: text('email').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  lowercase: check('dev_emails_lowercase', sql`${table.email} = lower(${table.email})`),
+}))
+
 export const plaidCredentials = pgTable('plaid_credentials', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id).unique(),
   clientId: text('client_id').notNull(),
   encryptedSecret: text('encrypted_secret').notNull(),
-  environment: text('environment').notNull(), // 'sandbox' | 'development' | 'production'
+  environment: text('environment').notNull(), // 'sandbox' | 'production' — fixed at first save, never updated
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

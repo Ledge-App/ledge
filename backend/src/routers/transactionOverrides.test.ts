@@ -11,7 +11,7 @@ describe('transactionOverrides router', () => {
   it('upsert writes a per-transaction override keyed by the opaque Plaid transaction id', async () => {
     repoMock.upsert.mockResolvedValue({ id: 'to-1', plaidTransactionId: 'plaid-tx-1', categoryId, subcategoryId: null })
     const { transactionOverridesRouter } = await import('./transactionOverrides.js')
-    const caller = transactionOverridesRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = transactionOverridesRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await caller.upsert({ plaidTransactionId: 'plaid-tx-1', categoryId, subcategoryId: null })
 

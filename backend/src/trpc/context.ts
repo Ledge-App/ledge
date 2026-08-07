@@ -6,14 +6,14 @@ export async function createContext({ req }: CreateFastifyContextOptions) {
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null
 
   if (!token) {
-    return { userId: null, jwt: null }
+    return { userId: null, email: null, jwt: null }
   }
 
   try {
-    const { userId } = await verifyJwt(token)
-    return { userId, jwt: token }
+    const { userId, email } = await verifyJwt(token)
+    return { userId, email, jwt: token }
   } catch {
-    return { userId: null, jwt: null }
+    return { userId: null, email: null, jwt: null }
   }
 }
 

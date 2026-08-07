@@ -11,7 +11,7 @@ describe('vendorMappings router', () => {
   it('upsert always writes source=user_defined, overriding any plaid_auto mapping', async () => {
     repoMock.upsert.mockResolvedValue({ id: 'vm-1', vendorName: 'panda express', categoryId, subcategoryId: null, source: 'user_defined' })
     const { vendorMappingsRouter } = await import('./vendorMappings.js')
-    const caller = vendorMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = vendorMappingsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await caller.upsert({ vendorName: 'panda express', categoryId, subcategoryId: null })
 
@@ -26,7 +26,7 @@ describe('vendorMappings router', () => {
   it('bulkRecategorize applies the mapping to every past transaction for that vendor', async () => {
     repoMock.bulkRecategorize.mockResolvedValue({ updatedCount: 3 })
     const { vendorMappingsRouter } = await import('./vendorMappings.js')
-    const caller = vendorMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = vendorMappingsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     const result = await caller.bulkRecategorize({
       vendorName: 'panda express',

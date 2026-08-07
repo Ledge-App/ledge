@@ -17,7 +17,17 @@ function getRemoteJwks() {
   return remoteJwks
 }
 
-export async function verifyJwt(token: string): Promise<{ userId: string }> {
+// Email comes from the same verified signature as the subject, so it needs no separate
+// trust decision — but it is optional (service-role and anonymous tokens carry no email),
+// hence null rather than a throw.
+function claims(payload: { sub?: string; email?: unknown }): { userId: string; email: string | null } {
+  if (!payload.sub) {
+    throw new Error('JWT missing subject claim')
+  }
+  return { userId: payload.sub, email: typeof payload.email === 'string' ? payload.email : null }
+}
+
+export async function verifyJwt(token: string): Promise<{ userId: string; email: string | null }> {
   const { alg } = decodeProtectedHeader(token)
 
   if (alg === 'HS256') {
@@ -26,15 +36,9 @@ export async function verifyJwt(token: string): Promise<{ userId: string }> {
       throw new Error('SUPABASE_JWT_SECRET is not set')
     }
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { algorithms: ['HS256'] })
-    if (!payload.sub) {
-      throw new Error('JWT missing subject claim')
-    }
-    return { userId: payload.sub }
+    return claims(payload)
   }
 
   const { payload } = await jwtVerify(token, getRemoteJwks(), { algorithms: ['ES256', 'RS256'] })
-  if (!payload.sub) {
-    throw new Error('JWT missing subject claim')
-  }
-  return { userId: payload.sub }
+  return claims(payload)
 }

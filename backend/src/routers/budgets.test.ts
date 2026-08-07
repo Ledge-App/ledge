@@ -11,7 +11,7 @@ describe('budgets router', () => {
   it("create scopes the budget to the caller's user id", async () => {
     repoMock.create.mockResolvedValue({ id: 'b1', categoryId, amount: '200.00', period: 'monthly' })
     const { budgetsRouter } = await import('./budgets.js')
-    const caller = budgetsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = budgetsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await caller.create({ categoryId, amount: '200.00', period: 'monthly' })
 
@@ -21,7 +21,7 @@ describe('budgets router', () => {
   it('spendCalculations combines each budget with its computed progress', async () => {
     repoMock.list.mockResolvedValue([{ id: 'b1', categoryId, amount: '200.00', period: 'monthly' }])
     const { budgetsRouter } = await import('./budgets.js')
-    const caller = budgetsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = budgetsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     const result = await caller.spendCalculations({ spendByCategory: { [categoryId]: '127.40' } })
 

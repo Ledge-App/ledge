@@ -16,21 +16,31 @@ interface PlaidCredentialsFormProps {
 type TestResult = { status: 'idle' } | { status: 'success' } | { status: 'error'; message: string }
 
 export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
-  const { data: existing, isLoading, test, isTesting, save, isSaving } = usePlaidCredentials()
+  const { data: existing, allowedEnvironments, isLoading, test, isTesting, save, isSaving } = usePlaidCredentials()
 
   const [isHowToOpen, setIsHowToOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
-  const [environment, setEnvironment] = useState<PlaidEnvironment>('sandbox')
+  // No default. The environment is permanent once saved, so it must be chosen deliberately
+  // rather than inherited from whatever the control happened to start on.
+  const [environment, setEnvironment] = useState<PlaidEnvironment | null>(null)
   const [clientId, setClientId] = useState('')
   const [secret, setSecret] = useState('')
   const [testResult, setTestResult] = useState<TestResult>({ status: 'idle' })
 
   const isNewSetup = !existing
+  const canChooseEnvironment = allowedEnvironments.length > 1
+
+  // Client ID and environment are fixed at first save, so a rotation resends the stored
+  // values verbatim; only the secret is the user's to change. The server rejects anything
+  // else, so this keeps the client honest rather than merely convenient.
+  const submission = existing
+    ? { clientId: existing.clientId, secret, environment: existing.environment as PlaidEnvironment }
+    : { clientId, secret, environment: (canChooseEnvironment ? environment : 'production') as PlaidEnvironment }
 
   async function handleTest() {
     setTestResult({ status: 'idle' })
     try {
-      const result = await test({ clientId, secret, environment })
+      const result = await test(submission)
       if (result.ok) {
         setTestResult({ status: 'success' })
       } else {
@@ -42,7 +52,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
   }
 
   async function handleSave() {
-    const result = await save({ clientId, secret, environment })
+    const result = await save(submission)
     if (result.ok) {
       setReplaceOpen(false)
       setClientId('')
@@ -63,31 +73,43 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
 
   if (isLoading) return null
 
-  const canTest = clientId.trim().length > 0 && secret.trim().length > 0
+  const canTest =
+    submission.secret.trim().length > 0 &&
+    submission.clientId.trim().length > 0 &&
+    // Only blocks the first save; a rotation inherits the stored environment.
+    (!isNewSetup || !canChooseEnvironment || environment !== null)
   const canSave = canTest && testResult.status === 'success' && !isSaving
 
   const formFields = (
     <>
-      <View className="gap-2">
-        <Text className="font-sansMed text-sm text-textSecondary">Environment</Text>
-        <SegmentedControl
-          value={environment}
-          onChange={setEnvironment}
-          options={[
-            { label: 'Sandbox', value: 'sandbox' },
-            { label: 'Production', value: 'production' },
-          ]}
-        />
-      </View>
+      {isNewSetup && canChooseEnvironment ? (
+        <View className="gap-2">
+          <Text className="font-sansMed text-sm text-textSecondary">Environment</Text>
+          <SegmentedControl
+            value={environment}
+            onChange={setEnvironment}
+            options={[
+              { label: 'Sandbox', value: 'sandbox' },
+              { label: 'Production', value: 'production' },
+            ]}
+          />
+          <Text className="font-sans text-xs leading-4 text-textMuted">
+            This cannot be changed later — linked banks are tied to the environment they were
+            connected in.
+          </Text>
+        </View>
+      ) : null}
 
-      <TextField
-        label="Client ID"
-        value={clientId}
-        onChangeText={setClientId}
-        autoCapitalize="none"
-        autoCorrect={false}
-        mono
-      />
+      {isNewSetup ? (
+        <TextField
+          label="Client ID"
+          value={clientId}
+          onChangeText={setClientId}
+          autoCapitalize="none"
+          autoCorrect={false}
+          mono
+        />
+      ) : null}
 
       <SecretInput value={secret} onChangeText={setSecret} />
 
@@ -149,7 +171,8 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
     )
   }
 
-  // Existing credentials: show read-only summary + Replace button that opens a modal
+  // Existing credentials: read-only summary + a sheet that rotates the secret only. Client ID
+  // and environment are fixed for the life of the account, so they are shown, not edited.
   return (
     <View className="gap-6">
       <View className="gap-2">
@@ -174,14 +197,14 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
         </View>
       </View>
 
-      <Button label="Replace Keys" variant="secondary" onPress={() => setReplaceOpen(true)} />
+      <Button label="Update Secret" variant="secondary" onPress={() => setReplaceOpen(true)} />
 
       <BottomSheet visible={replaceOpen} onClose={handleCloseReplace}>
         <View className="flex-row items-center justify-between px-5 py-3">
           <Pressable onPress={handleCloseReplace} hitSlop={8}>
             <Ionicons name="close" size={22} color={colors.textSecondary} />
           </Pressable>
-          <Text className="font-display text-md text-textPrimary">Replace Keys</Text>
+          <Text className="font-display text-md text-textPrimary">Update Secret</Text>
           <View style={{ width: 22 }} />
         </View>
 

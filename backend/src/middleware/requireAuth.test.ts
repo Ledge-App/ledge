@@ -18,7 +18,16 @@ describe('verifyJwt — HS256 (legacy shared secret)', () => {
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject('user-abc-123')
       .sign(secretKey)
-    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-abc-123' })
+    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-abc-123', email: null })
+  })
+
+  it('extracts the email claim when the token carries one', async () => {
+    const { verifyJwt } = await import('./requireAuth.js')
+    const token = await new SignJWT({ email: 'dev@example.com' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('user-abc-123')
+      .sign(secretKey)
+    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-abc-123', email: 'dev@example.com' })
   })
 
   it('rejects on an invalid signature', async () => {
@@ -68,7 +77,16 @@ describe('verifyJwt — ES256 (JWKS signing keys)', () => {
       .setProtectedHeader({ alg: 'ES256', kid })
       .setSubject('user-es256-1')
       .sign(privateKey)
-    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-es256-1' })
+    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-es256-1', email: null })
+  })
+
+  it('extracts the email claim from an ES256 token', async () => {
+    const { verifyJwt } = await import('./requireAuth.js')
+    const token = await new SignJWT({ email: 'dev@example.com' })
+      .setProtectedHeader({ alg: 'ES256', kid })
+      .setSubject('user-es256-1')
+      .sign(privateKey)
+    await expect(verifyJwt(token)).resolves.toEqual({ userId: 'user-es256-1', email: 'dev@example.com' })
   })
 
   it('rejects a token signed with a key not found in the JWKS', async () => {

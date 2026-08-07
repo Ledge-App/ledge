@@ -12,14 +12,26 @@ export const accountsRouter = router({
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const items = await plaidItemRepository.listDecryptedTokens(ctx.userId)
 
-    const results = []
+    const accounts = []
+    const itemErrors = []
     for (const item of items) {
-      const accounts = await accountRepository.get(client, item.accessToken)
-      for (const account of accounts) {
-        results.push({ ...account, itemId: item.itemId, institutionName: item.institutionName })
+      // One broken item (revoked access, ITEM_LOGIN_REQUIRED, keys that no longer match the
+      // token) must not take down the whole query — this is the root of the transaction feed,
+      // so throwing here blanks the dashboard, transactions and net worth at once. Mirrors the
+      // per-item isolation transactionSyncService already applies.
+      try {
+        for (const account of await accountRepository.get(client, item.accessToken)) {
+          accounts.push({ ...account, itemId: item.itemId, institutionName: item.institutionName })
+        }
+      } catch (err) {
+        itemErrors.push({
+          itemId: item.itemId,
+          institutionName: item.institutionName,
+          message: err instanceof Error ? err.message : 'Could not load accounts for this institution.',
+        })
       }
     }
-    return results
+    return { accounts, itemErrors }
   }),
 
   listInstitutions: protectedProcedure.query(async ({ ctx }) => {
