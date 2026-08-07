@@ -3,7 +3,7 @@ import { db } from '../lib/db/client.js'
 import { plaidCredentials } from '../lib/db/schema.js'
 import { decrypt, encrypt } from '../lib/crypto/aes.js'
 
-type Environment = 'sandbox' | 'development' | 'production'
+type Environment = 'sandbox' | 'production'
 
 export const plaidCredentialRepository = {
   async upsert(input: { userId: string; clientId: string; secret: string; environment: Environment }): Promise<void> {

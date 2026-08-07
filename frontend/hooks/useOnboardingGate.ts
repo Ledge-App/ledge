@@ -15,7 +15,7 @@ export function useOnboardingGate(): OnboardingGateStatus {
   const hasCredentials = !!credentials.data
 
   const accounts = api.accounts.list.useQuery(undefined, { enabled: hasCredentials })
-  const hasLinkedAccount = !!accounts.data && accounts.data.length > 0
+  const hasLinkedAccount = !!accounts.data && accounts.data.accounts.length > 0
 
   const categories = api.categories.list.useQuery(undefined, { enabled: hasLinkedAccount })
   const hasCategories = !!categories.data && categories.data.length > 0

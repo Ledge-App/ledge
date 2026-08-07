@@ -9,7 +9,7 @@ describe('plaidCategoryMappings router', () => {
   it('create rejects assigning a PFC code that is already claimed by another category (unique constraint bubbles up as an error)', async () => {
     repoMock.create.mockRejectedValue(new Error('duplicate key value violates unique constraint'))
     const { plaidCategoryMappingsRouter } = await import('./plaidCategoryMappings.js')
-    const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await expect(
       caller.create({ plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: '11111111-1111-1111-1111-111111111111' }),
@@ -21,7 +21,7 @@ describe('plaidCategoryMappings router', () => {
       { id: 'map-1', plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_COFFEE', categoryId: '11111111-1111-1111-1111-111111111111' },
     ])
     const { plaidCategoryMappingsRouter } = await import('./plaidCategoryMappings.js')
-    const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = plaidCategoryMappingsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     expect(await caller.list()).toHaveLength(1)
     expect(repoMock.list).toHaveBeenCalledWith('jwt-1')

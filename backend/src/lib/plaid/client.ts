@@ -3,7 +3,7 @@ import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid'
 export function createPlaidClient(
   clientId: string,
   secret: string,
-  environment: 'sandbox' | 'development' | 'production',
+  environment: 'sandbox' | 'production',
 ): PlaidApi {
   const configuration = new Configuration({
     basePath: PlaidEnvironments[environment],

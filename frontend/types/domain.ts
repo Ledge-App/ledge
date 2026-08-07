@@ -19,7 +19,8 @@ export type Transfer = RouterOutputs['transfers']['list'][number]
 // the single source of truth for which kinds exist. TRANSFER_TYPES in lib/transfers/registry.ts
 // is a Record keyed by this union, so a new kind fails to compile until it's fully defined.
 export type TransferKind = RouterInputs['transfers']['create']['kind']
-export type Account = RouterOutputs['accounts']['list'][number]
+export type Account = RouterOutputs['accounts']['list']['accounts'][number]
+export type AccountItemError = RouterOutputs['accounts']['list']['itemErrors'][number]
 export type TransactionSyncResult = RouterOutputs['transactions']['sync']
 export type PlaidTransaction = TransactionSyncResult['added'][number]
 export type PlaidCategoryMapping = RouterOutputs['plaidCategoryMappings']['list'][number]

@@ -11,7 +11,7 @@ describe('manualTransactions router', () => {
   it('create defaults amount to a positive value regardless of type', async () => {
     repoMock.create.mockResolvedValue({ id: 'mt-1', amount: '5.00', type: 'expense', categoryId, subcategoryId: null, date: '2026-06-21', note: 'Street food' })
     const { manualTransactionsRouter } = await import('./manualTransactions.js')
-    const caller = manualTransactionsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = manualTransactionsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await caller.create({ amount: '5.00', type: 'expense', categoryId, subcategoryId: null, date: '2026-06-21', note: 'Street food' })
 
@@ -27,7 +27,7 @@ describe('manualTransactions router', () => {
 
   it('rejects a negative amount at the input-validation layer', async () => {
     const { manualTransactionsRouter } = await import('./manualTransactions.js')
-    const caller = manualTransactionsRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    const caller = manualTransactionsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     await expect(
       caller.create({ amount: '-5.00', type: 'expense', categoryId, subcategoryId: null, date: '2026-06-21', note: null }),

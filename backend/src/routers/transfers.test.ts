@@ -18,7 +18,7 @@ describe('transfers router', () => {
 
   async function caller() {
     const { transfersRouter } = await import('./transfers.js')
-    return transfersRouter.createCaller({ userId: 'user-1', jwt: 'jwt-1' })
+    return transfersRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
   }
 
   it('create passes the scoped jwt and user id through to the repository', async () => {

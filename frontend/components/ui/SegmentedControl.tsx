@@ -2,7 +2,9 @@ import { Pressable, Text, View } from 'react-native'
 
 interface SegmentedControlProps<T extends string> {
   options: Array<{ label: string; value: T }>
-  value: T
+  // null renders with nothing selected, for choices that must be made explicitly
+  // rather than defaulted into.
+  value: T | null
   onChange: (value: T) => void
 }
 
