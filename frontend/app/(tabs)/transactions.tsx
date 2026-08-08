@@ -26,6 +26,7 @@ import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { countsTowardTotals } from '@/lib/transactions/totals'
+import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { ManualTransactionInput } from '@/components/transactions/ManualTransactionSheet'
 import type { ManualTransaction, TransferKind } from '@/types/domain'
@@ -128,21 +129,8 @@ export default function TransactionsScreen() {
         }
       }
       if (pendingTransfer) {
-        const isReimbursement = pendingTransfer.kind === 'reimbursement'
-        for (const counterpartId of pendingTransfer.counterpartIds.length > 0 ? pendingTransfer.counterpartIds : [null]) {
-          const counterpart = counterpartId ? feed.find((i) => i.id === counterpartId) ?? null : null
-          const isExp = activeSheetItem.amount > 0
-          const expenseItem = isExp ? activeSheetItem : counterpart
-          const incomeItem = isExp ? counterpart : activeSheetItem
-          await transfers.create({
-            kind: pendingTransfer.kind,
-            expensePlaidTransactionId: expenseItem?.source === 'plaid' ? expenseItem.id : null,
-            expenseManualTransactionId: expenseItem?.source === 'manual' ? expenseItem.id : null,
-            incomePlaidTransactionId: incomeItem?.source === 'plaid' ? incomeItem.id : null,
-            incomeManualTransactionId: incomeItem?.source === 'manual' ? incomeItem.id : null,
-            amount: isReimbursement && counterpart ? Math.abs(counterpart.amount).toFixed(2) : Math.abs(activeSheetItem.amount).toFixed(2),
-            note: null,
-          })
+        for (const transferInput of buildTransferInputs(activeSheetItem, pendingTransfer, feed)) {
+          await transfers.create(transferInput)
         }
         setPendingTransfer(null)
       }
