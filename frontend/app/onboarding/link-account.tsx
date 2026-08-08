@@ -2,6 +2,7 @@ import { router } from 'expo-router'
 import { useState } from 'react'
 import { Text, View } from 'react-native'
 import { createPlaidLinkSession } from '@/lib/plaid/createLinkSession'
+import { onboardingBackTarget } from '@/lib/onboarding/backTarget'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { OnboardingStepHeader } from '@/components/onboarding/OnboardingStepHeader'
 import { Button } from '@/components/ui/Button'
@@ -9,6 +10,7 @@ import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 export default function LinkAccountScreen() {
   const { createLinkToken, exchangeToken } = useOnboarding()
+  const backTarget = onboardingBackTarget(2)
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -55,7 +57,10 @@ export default function LinkAccountScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <OnboardingStepHeader step={2} />
+      <OnboardingStepHeader
+        step={2}
+        onBack={backTarget ? () => router.replace(backTarget) : undefined}
+      />
       <View className="flex-1 justify-center gap-6 px-5">
         <View className="gap-2">
           <Text className="font-sansSemi text-xl text-textPrimary">Link your first account</Text>
