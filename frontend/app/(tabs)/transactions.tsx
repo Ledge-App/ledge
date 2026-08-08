@@ -8,7 +8,7 @@ import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransfers } from '@/hooks/useTransfers'
-import { TransactionRow } from '@/components/transactions/TransactionRow'
+import { DayGroupedTransactions } from '@/components/transactions/DayGroupedTransactions'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
@@ -20,8 +20,6 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
-import { countsTowardTotals } from '@/lib/transactions/totals'
-import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { TransferSuggestion } from '@/hooks/useTransactionFeed'
 
 export default function TransactionsScreen() {
@@ -61,24 +59,12 @@ export default function TransactionsScreen() {
     setCategoryFilter(categoryIdParam ?? null)
   }, [categoryIdParam])
 
-  const sections = useMemo(() => {
-    const byDate = new Map<string, FeedItem[]>()
-    for (const item of filteredFeed) {
-      const bucket = byDate.get(item.date) ?? []
-      bucket.push(item)
-      byDate.set(item.date, bucket)
-    }
-    return Array.from(byDate.entries())
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([date, items]) => ({ title: date, data: items }))
-  }, [filteredFeed])
-
   useEffect(() => {
-    const liveDates = new Set(sections.map((section) => section.title))
+    const liveDates = new Set(filteredFeed.map((item) => item.date))
     for (const date of sectionOffsets.current.keys()) {
       if (!liveDates.has(date)) sectionOffsets.current.delete(date)
     }
-  }, [sections])
+  }, [filteredFeed])
 
   useEffect(() => {
     setSelectedDate(null)
@@ -227,47 +213,23 @@ export default function TransactionsScreen() {
             <Text className="text-center font-sans text-sm text-textMuted">No transactions this month</Text>
           </View>
         ) : (
-          sections.map((section) => {
-            const date = new Date(section.title + 'T00:00:00')
-            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-            const dayOfWeek = dayNames[date.getDay()]
-            const monthDay = `${date.getMonth() + 1}/${date.getDate()}`
-            const incomeTotal = section.data.filter((i) => i.amount < 0 && countsTowardTotals(i)).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
-            const expenseTotal = section.data.filter((i) => i.amount > 0 && countsTowardTotals(i)).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
-
-            return (
-              <View
-                key={section.title}
-                className="mx-5 mb-3 rounded-xl bg-surface px-4"
-                onLayout={(event) => {
-                  sectionOffsets.current.set(section.title, event.nativeEvent.layout.y)
-                }}
-              >
-                <View className="flex-row items-center justify-between py-3">
-                  <Text className="font-sansSemi text-sm text-textPrimary">{monthDay} {dayOfWeek}</Text>
-                  <View className="flex-row gap-3">
-                    {incomeTotal > 0 ? <Text className="font-sans text-xs text-income">IN {formatAmount(incomeTotal)}</Text> : null}
-                    {expenseTotal > 0 ? <Text className="font-sans text-xs text-expense">OUT {formatAmount(expenseTotal)}</Text> : null}
-                  </View>
-                </View>
-                {section.data.map((item) => {
-                  const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
-                  return (
-                    <View key={item.id} className="border-t" style={{ borderColor: colors.border }}>
-                      <TransactionRow
-                        item={item}
-                        categoryName={category?.name ?? 'Uncategorized'}
-                        categoryColor={category?.color ?? colors.textMuted}
-                        categoryIcon={category?.icon ?? '❓'}
-                        reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                        onPress={() => editor.openTransaction(item)}
-                      />
-                    </View>
-                  )
-                })}
-              </View>
-            )
-          })
+          <DayGroupedTransactions
+            items={filteredFeed}
+            cardClassName="mx-5 mb-3 rounded-xl bg-surface px-4"
+            categoryFor={(item) => {
+              const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
+              return {
+                name: category?.name ?? 'Uncategorized',
+                color: category?.color ?? colors.textMuted,
+                icon: category?.icon ?? '❓',
+              }
+            }}
+            reimbursementCategoryNameFor={(item) =>
+              item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null
+            }
+            onItemPress={editor.openTransaction}
+            onDayLayout={(date, y) => sectionOffsets.current.set(date, y)}
+          />
         )}
       </ScrollView>
 

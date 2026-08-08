@@ -98,8 +98,14 @@ export default function DashboardScreen() {
     )
   }
 
-  const expenseCategories = categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []
-  const incomeCategories = categories.data?.filter((c) => incomeByCategory.has(c.id)) ?? []
+  // Driven by the segments, not by spendByCategory: a category whose transactions are all excluded
+  // has no entry in that map but does have a segment (at zero), and it needs a card — the card is
+  // the only way into its detail sheet, and without one those rows are unreachable from here.
+  // Filtering `categories` rather than mapping the segments keeps the grid in category order.
+  const expenseSegmentIds = new Set(expenseSegments.map((s) => s.categoryId))
+  const incomeSegmentIds = new Set(incomeSegments.map((s) => s.categoryId))
+  const expenseCategories = categories.data?.filter((c) => expenseSegmentIds.has(c.id)) ?? []
+  const incomeCategories = categories.data?.filter((c) => incomeSegmentIds.has(c.id)) ?? []
 
   // Uncategorized isn't a real category, so it has no row in `categories` to filter for — it's
   // whatever the month total has left over once the real categories are accounted for. Without a

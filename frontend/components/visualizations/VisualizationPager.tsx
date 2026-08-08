@@ -50,7 +50,10 @@ export function VisualizationPager({
   const topMerchants = useMemo(() => computeTopMerchants(monthFeed, mode), [monthFeed, mode])
 
   const lineColor = mode === 'expense' ? colors.primary : colors.income
-  const isEmpty = total === 0
+  // Keyed on the segments rather than the total: a month whose every transaction is excluded has a
+  // total of zero but still has rows the user should be able to reach, and those segments carry
+  // them. Genuinely empty months have no segments either, so the label still shows when it should.
+  const isEmpty = segments.length === 0
 
   function handleScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const idx = Math.round(e.nativeEvent.contentOffset.x / width)

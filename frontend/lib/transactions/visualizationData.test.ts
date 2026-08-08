@@ -81,6 +81,72 @@ describe('computeDonutSegments', () => {
     expect(computeDonutSegments([], new Map(), categories, 0, 'expense')).toEqual([])
   })
 
+  // A category whose rows are all excluded still has rows the user should be able to open. Without
+  // a segment there is no card and no way into the detail sheet, so the transactions become
+  // unreachable from this screen entirely.
+  it('keeps a category whose transactions are all excluded, at zero', () => {
+    const feed = [
+      item({ id: 'a', amount: 100, date: '2026-08-01', categoryId: 'food' }),
+      item({
+        id: 'sweep',
+        amount: 286,
+        date: '2026-08-02',
+        categoryId: 'rent',
+        isBrokerageCashAccount: true,
+        isSweptOutflow: true,
+      }),
+    ]
+    const segments = computeDonutSegments(feed, new Map([['food', 100]]), categories, 100, 'expense')
+
+    const rent = segments.find((s) => s.categoryId === 'rent')
+    expect(rent?.amount).toBe(0)
+    expect(rent?.percentage).toBe(0)
+    // Counts what the sheet will list, excluded rows included — otherwise the row reads "0 txns"
+    // and opens onto one.
+    expect(rent?.transactionCount).toBe(1)
+    // Zero sorts last, so it can never displace real spend.
+    expect(segments.map((s) => s.categoryId)).toEqual(['food', 'rent'])
+  })
+
+  it('still shows zero cards when nothing in the month counts', () => {
+    const feed = [
+      item({
+        id: 'sweep',
+        amount: 286,
+        date: '2026-08-02',
+        categoryId: 'rent',
+        isBrokerageCashAccount: true,
+        isSweptOutflow: true,
+      }),
+    ]
+    const segments = computeDonutSegments(feed, new Map(), categories, 0, 'expense')
+
+    expect(segments.map((s) => s.categoryId)).toEqual(['rent'])
+    expect(segments[0].amount).toBe(0)
+    // No total to divide by — percentage must not come out NaN and poison the ring geometry.
+    expect(segments[0].percentage).toBe(0)
+  })
+
+  // Its own leg sits on the income side by sign, but the sheet files it under the expense it paid
+  // back and refuses to list it in income mode. A zero income card would open onto nothing.
+  it('does not invent a zero income category from a reimbursement income leg', () => {
+    const feed = [
+      item({ id: 'reimb', amount: -60, date: '2026-08-01', categoryId: 'food', isReimbursementIncome: true }),
+    ]
+
+    expect(computeDonutSegments(feed, new Map(), categories, 0, 'income')).toEqual([])
+  })
+
+  it('keeps an uncategorized segment when its only rows are excluded', () => {
+    const feed = [
+      item({ id: 'sweep', amount: 286, date: '2026-08-02', isBrokerageCashAccount: true, isSweptOutflow: true }),
+    ]
+    const segments = computeDonutSegments(feed, new Map(), categories, 0, 'expense')
+
+    expect(segments.map((s) => s.categoryId)).toEqual([UNCATEGORIZED_ID])
+    expect(segments[0].amount).toBe(0)
+  })
+
   it('sorts largest first', () => {
     const feed = [
       item({ id: 'a', amount: 20, date: '2026-08-01', categoryId: 'food' }),

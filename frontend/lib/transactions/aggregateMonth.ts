@@ -31,7 +31,13 @@ export function aggregateMonth(feed: FeedItem[]): MonthAggregate {
     // legs of a paired transfer, and sweeps whose counterpart the feed can never see. Unlike a
     // reimbursement's income leg below, none of it marks the calendar day either — there is
     // nothing about the day for the user to notice.
-    if (isInternalMovement(item)) continue
+    //
+    // isSweptOutflow is checked alongside it rather than left to isInternalMovement: the sweeps
+    // the amount-mirror rule catches carry a generic TRANSFER_OUT_ACCOUNT_TRANSFER code, so the
+    // PFC test can't see them. Together these two are exactly countsTowardTotals' exclusions
+    // besides the reimbursement leg handled below — the row is already greyed out on that
+    // predicate, and a total that disagreed with the rows under it is what this prevents.
+    if (isInternalMovement(item) || item.isSweptOutflow) continue
 
     const net = item.netAmount ?? item.amount
     const existingDay = spendByDay.get(item.date) ?? { net: 0, hasReimbursement: false }

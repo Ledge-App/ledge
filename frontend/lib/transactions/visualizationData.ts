@@ -31,12 +31,18 @@ export function computeDonutSegments(
   total: number,
   mode: 'expense' | 'income',
 ): DonutSegment[] {
-  if (total === 0) return []
-
+  // Counts every row the detail sheet will list, excluded ones included — the count labels that
+  // list, so filtering on countsTowardTotals here made a category read "2 txns" and open onto 3.
+  // It is also what keeps a category whose rows are ALL excluded on screen at zero: without an
+  // entry there is no card, and those transactions become unreachable from this screen entirely.
+  //
+  // A reimbursement's income leg is the one exclusion, and it is not about totals: the sheet files
+  // that leg under the expense it paid back and refuses to list it in income mode, so counting it
+  // here would conjure a zero income category that opens onto nothing.
   const countByCategory = new Map<string, number>()
   let uncategorizedCount = 0
   for (const item of feed) {
-    if (!countsTowardTotals(item)) continue
+    if (item.isReimbursementIncome) continue
     const net = item.netAmount ?? item.amount
     const isRelevant = mode === 'expense' ? net > 0 : net < 0
     if (!isRelevant) continue
@@ -47,32 +53,37 @@ export function computeDonutSegments(
     }
   }
 
+  // Zero-amount segments are deliberately not drawable: CategoryDonut skips them, so they cost the
+  // ring neither an arc nor a gap. They exist for the card grid and the breakdown list.
+  const percentageOf = (amount: number) => (total > 0 ? (amount / total) * 100 : 0)
+
   const segments: DonutSegment[] = []
   let categorizedTotal = 0
   for (const cat of categories) {
-    const amount = amountByCategory.get(cat.id)
-    if (!amount || amount <= 0) continue
-    categorizedTotal += amount
+    const amount = amountByCategory.get(cat.id) ?? 0
+    if (amount <= 0 && !countByCategory.has(cat.id)) continue
+    if (amount > 0) categorizedTotal += amount
     segments.push({
       categoryId: cat.id,
       name: cat.name,
       icon: cat.icon,
       color: cat.color,
-      amount,
-      percentage: (amount / total) * 100,
+      amount: Math.max(0, amount),
+      percentage: percentageOf(Math.max(0, amount)),
       transactionCount: countByCategory.get(cat.id) ?? 0,
     })
   }
 
   const uncategorizedAmount = total - categorizedTotal
-  if (uncategorizedAmount > 0.01) {
+  if (uncategorizedAmount > 0.01 || uncategorizedCount > 0) {
+    const amount = Math.max(0, uncategorizedAmount)
     segments.push({
       categoryId: UNCATEGORIZED_ID,
       name: UNCATEGORIZED_NAME,
       icon: UNCATEGORIZED_ICON,
       color: UNCATEGORIZED_COLOR,
-      amount: uncategorizedAmount,
-      percentage: (uncategorizedAmount / total) * 100,
+      amount,
+      percentage: percentageOf(amount),
       transactionCount: uncategorizedCount,
     })
   }
