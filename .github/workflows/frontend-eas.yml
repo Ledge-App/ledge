@@ -7,8 +7,8 @@ on:
         description: "What to do"
         type: choice
         options:
-          - build
           - update
+          - build
         required: true
       submit_to_testflight:
         description: "Submit to TestFlight after building"

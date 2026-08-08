@@ -18,6 +18,11 @@ export const plaidLinkService = {
       user: { client_user_id: userId },
       client_name: 'Ledge',
       products: ['transactions'],
+      // optional_products activates investments (holdings) where the institution supports
+      // it WITHOUT narrowing the institution search the way listing it in `products` would.
+      // Items linked before this consent exists return ADDITIONAL_CONSENT_REQUIRED on
+      // holdings calls until relinked.
+      optional_products: ['investments'],
       country_codes: ['US'],
       language: 'en',
     } as never)
