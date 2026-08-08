@@ -13,6 +13,7 @@ import { budgetsRouter } from '../routers/budgets.js'
 import { reimbursementsRouter } from '../routers/reimbursements.js'
 import { transfersRouter } from '../routers/transfers.js'
 import { transferDismissalsRouter } from '../routers/transferDismissals.js'
+import { investmentsRouter } from '../routers/investments.js'
 import { onboardingRouter } from '../routers/onboarding.js'
 
 export const appRouter = router({
@@ -30,6 +31,7 @@ export const appRouter = router({
   reimbursements: reimbursementsRouter,
   transfers: transfersRouter,
   transferDismissals: transferDismissalsRouter,
+  investments: investmentsRouter,
   onboarding: onboardingRouter,
 })
 

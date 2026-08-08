@@ -25,3 +25,4 @@ export type AccountItemError = RouterOutputs['accounts']['list']['itemErrors'][n
 export type TransactionSyncResult = RouterOutputs['transactions']['sync']
 export type PlaidTransaction = TransactionSyncResult['added'][number]
 export type PlaidCategoryMapping = RouterOutputs['plaidCategoryMappings']['list'][number]
+export type Holding = RouterOutputs['investments']['holdings'][number]
