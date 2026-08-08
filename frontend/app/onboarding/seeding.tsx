@@ -3,6 +3,7 @@ import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
 import { useOnboarding } from '@/hooks/useOnboarding'
+import { onboardingBackTarget } from '@/lib/onboarding/backTarget'
 import { OnboardingStepHeader } from '@/components/onboarding/OnboardingStepHeader'
 import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
@@ -21,6 +22,7 @@ export default function SeedingScreen() {
   const [completed, setCompleted] = useState<Set<StepKey>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const hasStarted = useRef(false)
+  const backTarget = onboardingBackTarget(3, { seedingFailed: error !== null })
 
   async function runSequence() {
     setError(null)
@@ -54,7 +56,10 @@ export default function SeedingScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <OnboardingStepHeader step={3} />
+      <OnboardingStepHeader
+        step={3}
+        onBack={backTarget ? () => router.replace(backTarget) : undefined}
+      />
       <View className="flex-1 justify-center gap-8 px-5">
         <View className="gap-2">
           <Text className="font-sansSemi text-xl text-textPrimary">Almost there</Text>
