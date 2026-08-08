@@ -40,6 +40,29 @@ describe('pfc taxonomy', () => {
     expect(ALL_PFC_DETAILED_CODES.filter((c) => c.includes('PEER_TO_PEER'))).toEqual([])
   })
 
+  // v2 renamed three codes rather than adding them. Both spellings must stay mapped: sync is
+  // pinned to v2, but transactions cached in MMKV before the pin still carry the v1 code, and the
+  // client resolves categories from whatever the cached row says.
+  it('maps both the v1 and v2 spelling of every renamed code', () => {
+    const byCode = new Map<string, string>()
+    for (const entry of DEFAULT_PFC_MAPPING) {
+      for (const code of entry.detailedCodes) byCode.set(code, entry.ledgeCategory)
+    }
+
+    const renames: Array<[v1: string, v2: string]> = [
+      ['INCOME_WAGES', 'INCOME_SALARY'],
+      ['INCOME_OTHER_INCOME', 'INCOME_OTHER'],
+      ['TRANSFER_IN_CASH_ADVANCES_AND_LOANS', 'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT'],
+    ]
+
+    for (const [v1, v2] of renames) {
+      expect(byCode.has(v1), `${v1} unmapped`).toBe(true)
+      expect(byCode.has(v2), `${v2} unmapped`).toBe(true)
+      // Same real-world event, so the same Ledge category regardless of which version named it.
+      expect(byCode.get(v1)).toBe(byCode.get(v2))
+    }
+  })
+
   it('includes the Food & Drink category with its documented codes', () => {
     const foodAndDrink = DEFAULT_PFC_MAPPING.find((e) => e.ledgeCategory === 'Food & Drink')
     expect(foodAndDrink?.detailedCodes).toEqual(

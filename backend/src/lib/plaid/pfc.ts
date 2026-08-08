@@ -190,8 +190,12 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     icon: '💰',
     subcategories: ['Paycheck', 'Interest'],
     detailedCodes: [
+      // v1 names, kept because rows cached before the v2 pin still carry them.
       'INCOME_WAGES',
       'INCOME_OTHER_INCOME',
+      // v2 renames of the two above.
+      'INCOME_SALARY',
+      'INCOME_OTHER',
       'INCOME_INTEREST_EARNED',
       'INCOME_DIVIDENDS',
       'INCOME_RETIREMENT_PENSION',
@@ -214,7 +218,6 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     subcategories: ['Zelle', 'Venmo'],
     detailedCodes: [
       'TRANSFER_IN_ACCOUNT_TRANSFER',
-      'TRANSFER_IN_CASH_ADVANCES_AND_LOANS',
       'TRANSFER_IN_DEPOSIT',
       'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS',
       'TRANSFER_IN_SAVINGS',
@@ -279,6 +282,11 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
       'LOAN_DISBURSEMENTS_MORTGAGE',
       'LOAN_DISBURSEMENTS_PERSONAL',
       'LOAN_DISBURSEMENTS_STUDENT',
+      // v2 rename of v1's TRANSFER_IN_CASH_ADVANCES_AND_LOANS, which also moved primary from
+      // TRANSFER_IN to LOAN_DISBURSEMENTS. Both names live here: loan proceeds landing in an
+      // account are a disbursement, not a transfer in, whichever version named them.
+      'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT',
+      'TRANSFER_IN_CASH_ADVANCES_AND_LOANS',
     ],
   },
   {
