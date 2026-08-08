@@ -1,6 +1,6 @@
-import type { ManualTransaction, PlaidTransaction, Reimbursement, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
+import type { ManualTransaction, PlaidCategoryMapping, PlaidTransaction, Reimbursement, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
-export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'uncategorized'
+export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'uncategorized'
 
 export interface ResolvedCategory {
   categoryId: string | null
@@ -8,12 +8,20 @@ export interface ResolvedCategory {
   categorySource: CategorySource
 }
 
-// Implements product.md's 4-step category resolution order:
-// transaction_overrides > user_defined vendor_mappings > plaid_auto vendor_mappings > Uncategorized.
+// Implements product.md's category resolution order:
+// transaction_overrides > user_defined vendor_mappings > plaid_auto vendor_mappings >
+// the transaction's own PFC via plaid_category_mappings > Uncategorized.
+//
+// The PFC step exists because the three steps above it are all keyed on merchant_name, which
+// Plaid leaves null for everything it can't merchant-enrich (ACH, checks, Zelle, direct
+// deposits), and because plaid_auto vendor_mappings are only generated once during onboarding,
+// so any merchant first seen afterwards has no row. Both cases arrive carrying a perfectly good
+// personal_finance_category, so resolving it here is what keeps them out of Uncategorized.
 export function resolveCategory(
-  txn: { transactionId: string; merchantName: string | null },
+  txn: { transactionId: string; merchantName: string | null; pfcPrimary?: string | null; pfcDetailed?: string | null },
   overrides: TransactionOverride[],
   vendorMappings: VendorMapping[],
+  plaidCategoryMappings: PlaidCategoryMapping[] = [],
 ): ResolvedCategory {
   const override = overrides.find((o) => o.plaidTransactionId === txn.transactionId)
   if (override) {
@@ -32,6 +40,26 @@ export function resolveCategory(
     : undefined
   if (plaidAuto) {
     return { categoryId: plaidAuto.categoryId, subcategoryId: plaidAuto.subcategoryId, categorySource: 'plaid_auto' }
+  }
+
+  // Detailed code first (more precise), then the primary. The primary pass prefers an explicit
+  // primary-only row (plaid_pfc_detailed IS NULL, the convention product.md describes) but falls
+  // back to any row sharing the primary, since seedCategories only ever writes detailed rows —
+  // otherwise a detailed code Plaid adds later would land in Uncategorized despite its whole
+  // primary being mapped.
+  const pfcMatch = txn.pfcDetailed
+    ? plaidCategoryMappings.find((m) => m.plaidPfcDetailed === txn.pfcDetailed)
+    : undefined
+  const primaryMatch =
+    !pfcMatch && txn.pfcPrimary
+      ? (plaidCategoryMappings.find((m) => m.plaidPfcPrimary === txn.pfcPrimary && m.plaidPfcDetailed === null) ??
+        plaidCategoryMappings.find((m) => m.plaidPfcPrimary === txn.pfcPrimary))
+      : undefined
+  const resolvedFromPfc = pfcMatch ?? primaryMatch
+  if (resolvedFromPfc) {
+    // No subcategory: plaid_category_mappings binds a PFC code to a category only, and
+    // subcategories are user-defined refinements with no Plaid equivalent.
+    return { categoryId: resolvedFromPfc.categoryId, subcategoryId: null, categorySource: 'plaid_pfc' }
   }
 
   return { categoryId: null, subcategoryId: null, categorySource: 'uncategorized' }
@@ -71,12 +99,19 @@ export function mergeFeed(
   manualTransactions: ManualTransaction[],
   overrides: TransactionOverride[],
   vendorMappings: VendorMapping[],
+  plaidCategoryMappings: PlaidCategoryMapping[] = [],
 ): FeedItem[] {
   const plaidItems: FeedItem[] = plaidTransactions.map((txn) => {
     const resolved = resolveCategory(
-      { transactionId: txn.transaction_id, merchantName: txn.merchant_name ?? null },
+      {
+        transactionId: txn.transaction_id,
+        merchantName: txn.merchant_name ?? null,
+        pfcPrimary: txn.personal_finance_category?.primary ?? null,
+        pfcDetailed: txn.personal_finance_category?.detailed ?? null,
+      },
       overrides,
       vendorMappings,
+      plaidCategoryMappings,
     )
     return {
       id: txn.transaction_id,

@@ -4,6 +4,7 @@ import { useAccounts } from './useAccounts'
 import { useManualTransactions } from './useManualTransactions'
 import { useTransactionOverrides } from './useTransactionOverrides'
 import { useVendorMappings } from './useVendorMappings'
+import { usePlaidCategoryMappings } from './usePlaidCategoryMappings'
 import { useCategories } from './useCategories'
 import { useReimbursements } from './useReimbursements'
 import { useTransfers } from './useTransfers'
@@ -44,6 +45,7 @@ export function useTransactionFeed() {
   const manualTransactions = useManualTransactions()
   const overrides = useTransactionOverrides()
   const vendorMappings = useVendorMappings()
+  const plaidCategoryMappings = usePlaidCategoryMappings()
   const categories = useCategories()
   const reimbursements = useReimbursements()
   const transfers = useTransfers()
@@ -157,12 +159,29 @@ export function useTransactionFeed() {
     [itemIds, syncCompletedAt],
   )
 
+  // plaidCategoryMappings is gated alongside the others rather than defaulted to []: resolving
+  // with an empty mapping list would render a feed full of Uncategorized rows, then re-render
+  // them categorized once the query lands. Better to hold the feed empty for one tick.
   const feed = useMemo(() => {
-    if (!manualTransactions.data || !overrides.data || !vendorMappings.data) return []
-    const merged = mergeFeed(rawTransactions, manualTransactions.data, overrides.data, vendorMappings.data)
+    if (!manualTransactions.data || !overrides.data || !vendorMappings.data || !plaidCategoryMappings.data) return []
+    const merged = mergeFeed(
+      rawTransactions,
+      manualTransactions.data,
+      overrides.data,
+      vendorMappings.data,
+      plaidCategoryMappings.data,
+    )
     const reimbursed = applyReimbursements(merged, reimbursements.data ?? [])
     return applyTransfers(reimbursed, transfers.data ?? [])
-  }, [rawTransactions, manualTransactions.data, overrides.data, vendorMappings.data, reimbursements.data, transfers.data])
+  }, [
+    rawTransactions,
+    manualTransactions.data,
+    overrides.data,
+    vendorMappings.data,
+    plaidCategoryMappings.data,
+    reimbursements.data,
+    transfers.data,
+  ])
 
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 
@@ -275,6 +294,7 @@ export function useTransactionFeed() {
       manualTransactions.isLoading ||
       overrides.isLoading ||
       vendorMappings.isLoading ||
+      plaidCategoryMappings.isLoading ||
       categories.isLoading ||
       syncMutation.isLoading,
     error:
@@ -282,6 +302,7 @@ export function useTransactionFeed() {
       manualTransactions.error ??
       overrides.error ??
       vendorMappings.error ??
+      plaidCategoryMappings.error ??
       categories.error ??
       syncMutation.error,
     itemErrors: syncMutation.data?.itemErrors ?? [],

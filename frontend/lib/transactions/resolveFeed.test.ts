@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveCategory, mergeFeed, applyReimbursements, applyTransfers } from './resolveFeed'
-import type { TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement, Transfer } from '@/types/domain'
+import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement, Transfer } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -35,6 +35,149 @@ describe('resolveCategory', () => {
   it('falls back to uncategorized when merchantName is null', () => {
     const result = resolveCategory({ transactionId: 'txn-null-merchant', merchantName: null }, overrides, vendorMappings)
     expect(result).toEqual({ categoryId: null, subcategoryId: null, categorySource: 'uncategorized' })
+  })
+})
+
+// A transaction's own personal_finance_category, resolved through plaid_category_mappings, is
+// the step that keeps merchant_name-less transactions (ACH, checks, Zelle, direct deposits —
+// Plaid leaves merchant_name null for anything it can't merchant-enrich) out of Uncategorized,
+// and covers every merchant first seen after onboarding generated the vendor_mappings.
+describe('resolveCategory PFC fallback', () => {
+  const pfcMappings: PlaidCategoryMapping[] = [
+    { id: 'pm1', plaidPfcPrimary: 'FOOD_AND_DRINK', plaidPfcDetailed: 'FOOD_AND_DRINK_GROCERIES', categoryId: 'cat-food' },
+    { id: 'pm2', plaidPfcPrimary: 'TRANSFER_IN', plaidPfcDetailed: 'TRANSFER_IN_DEPOSIT', categoryId: 'cat-transfers-in' },
+    { id: 'pm3', plaidPfcPrimary: 'MEDICAL', plaidPfcDetailed: null, categoryId: 'cat-health-primary-only' },
+    { id: 'pm4', plaidPfcPrimary: 'MEDICAL', plaidPfcDetailed: 'MEDICAL_DENTAL', categoryId: 'cat-health-detailed' },
+  ]
+
+  it('categorizes a transaction with no merchant_name via its PFC detailed code', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-ach', merchantName: null, pfcPrimary: 'TRANSFER_IN', pfcDetailed: 'TRANSFER_IN_DEPOSIT' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-transfers-in', subcategoryId: null, categorySource: 'plaid_pfc' })
+  })
+
+  it('categorizes a merchant that has no vendor mapping yet via its PFC detailed code', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-new', merchantName: 'Brand New Grocer', pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-food', subcategoryId: null, categorySource: 'plaid_pfc' })
+  })
+
+  it('ranks vendor mappings above the PFC fallback, so user intent still wins', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-panda', merchantName: 'Panda Express', pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-user', subcategoryId: 'sub-user', categorySource: 'user_defined' })
+  })
+
+  it('ranks an override above the PFC fallback', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-override', merchantName: null, pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-override', subcategoryId: null, categorySource: 'override' })
+  })
+
+  // Guards against a Plaid taxonomy addition silently dumping a whole primary into Uncategorized.
+  it('falls back to a primary-only mapping row when the detailed code is unrecognized', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-future', merchantName: null, pfcPrimary: 'MEDICAL', pfcDetailed: 'MEDICAL_SOME_NEW_PLAID_CODE' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-health-primary-only', subcategoryId: null, categorySource: 'plaid_pfc' })
+  })
+
+  it('prefers the detailed match over the primary-only row for the same primary', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-dental', merchantName: null, pfcPrimary: 'MEDICAL', pfcDetailed: 'MEDICAL_DENTAL' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result.categoryId).toBe('cat-health-detailed')
+  })
+
+  // seedCategories only ever writes rows with a detailed code, so the primary fallback has to
+  // work off those rows too rather than requiring a primary-only row that never exists.
+  it('falls back to any row sharing the primary when no primary-only row exists', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-future-food', merchantName: null, pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_SOME_NEW_CODE' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-food', subcategoryId: null, categorySource: 'plaid_pfc' })
+  })
+
+  it('stays uncategorized when the PFC primary is mapped to nothing at all', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-unmapped', merchantName: null, pfcPrimary: 'BANK_FEES', pfcDetailed: 'BANK_FEES_ATM_FEES' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: null, subcategoryId: null, categorySource: 'uncategorized' })
+  })
+
+  it('stays uncategorized when the transaction carries no PFC at all', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-no-pfc', merchantName: null, pfcPrimary: null, pfcDetailed: null },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: null, subcategoryId: null, categorySource: 'uncategorized' })
+  })
+})
+
+describe('mergeFeed PFC fallback', () => {
+  const pfcMappings: PlaidCategoryMapping[] = [
+    { id: 'pm1', plaidPfcPrimary: 'TRANSFER_IN', plaidPfcDetailed: 'TRANSFER_IN_DEPOSIT', categoryId: 'cat-transfers-in' },
+  ]
+
+  const achTxn = [
+    {
+      transaction_id: 'ach-1',
+      account_id: 'acc-1',
+      amount: -2400,
+      date: '2026-06-15',
+      name: 'DIRECT DEP PAYROLL',
+      merchant_name: null,
+      pending: false,
+      personal_finance_category: { primary: 'TRANSFER_IN', detailed: 'TRANSFER_IN_DEPOSIT', confidence_level: 'HIGH' },
+    },
+  ] as unknown as PlaidTransaction[]
+
+  it('threads each transaction’s PFC into the resolution chain', () => {
+    const feed = mergeFeed(achTxn, [], [], [], pfcMappings)
+    expect(feed[0]).toMatchObject({ categoryId: 'cat-transfers-in', categorySource: 'plaid_pfc' })
+  })
+
+  it('leaves the item uncategorized when no PFC mappings are supplied', () => {
+    const feed = mergeFeed(achTxn, [], [], [], [])
+    expect(feed[0]).toMatchObject({ categoryId: null, categorySource: 'uncategorized' })
+  })
+
+  it('never applies the PFC fallback to manual transactions, which carry no PFC', () => {
+    const manual = [
+      { id: 'm1', amount: '5.00', type: 'expense', categoryId: null, subcategoryId: null, date: '2026-06-20', note: 'Cash' },
+    ] as ManualTransaction[]
+    const feed = mergeFeed([], manual, [], [], pfcMappings)
+    expect(feed[0]).toMatchObject({ categoryId: null, categorySource: 'uncategorized' })
   })
 })
 

@@ -47,7 +47,10 @@ Required, one-time, before a user can link any bank account.
   1. `transaction_overrides` for this specific Plaid transaction ID (highest priority)
   2. `vendor_mappings` with `source='user_defined'` for this merchant_name
   3. `vendor_mappings` with `source='plaid_auto'` for this merchant_name
-  4. "Uncategorized" fallback
+  4. The transaction's own `personal_finance_category` through `plaid_category_mappings` — `detailed` first, then `primary` (preferring a primary-only row, else any row sharing the primary)
+  5. "Uncategorized" fallback
+- Step 4 is what keeps the long tail out of "Uncategorized", and steps 1–3 alone are not sufficient: they all key on `merchant_name`, which Plaid leaves null for anything it can't merchant-enrich (ACH, checks, Zelle, direct deposits), and `plaid_auto` vendor_mappings are only generated once during onboarding, so any merchant first seen afterwards has no row. Both cases still arrive carrying a valid PFC.
+- Steps 1–3 rank above step 4 so a user's own categorization always beats Plaid's guess. Step 4 resolves a category only — never a subcategory, since `plaid_category_mappings` binds PFC codes to categories and subcategories have no Plaid equivalent.
 - Manual transactions are fetched from the backend and merged into the local cache; their category is stored directly on the `manual_transactions` row (no override or vendor mapping needed)
 - Feed is sorted by date descending across both Plaid and manual transactions
 - Show "?" badge on rows where the underlying vendor_mapping has `MEDIUM` Plaid confidence
@@ -129,7 +132,7 @@ Plaid returns a `confidence_level` (`VERY_HIGH`, `HIGH`, `MEDIUM`) on each trans
 
 ### 5. Transaction Categorization
 
-- Every transaction is auto-categorized on first load via vendor_mappings (see Onboarding above)
+- Every transaction is auto-categorized on load: via vendor_mappings where one exists (see Onboarding above), otherwise via its own PFC through `plaid_category_mappings` (step 4 of the resolution order above). Onboarding's vendor_mappings are therefore a warm start, not the only source of categories — a transaction is only "Uncategorized" if its PFC primary maps to nothing or Plaid supplied no PFC at all.
 - Tap any transaction → bottom sheet with current category pre-selected
 - User can change category + optional subcategory
 - On save:
