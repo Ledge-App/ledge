@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Keyboard, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { TextField } from '@/components/ui/TextField'
@@ -64,6 +64,7 @@ export function ManualTransactionSheet({
   onSaveAndMarkTransfer,
   onSaveAndUnmarkTransfer,
 }: ManualTransactionSheetProps) {
+  const sheetScroll = useSheetScroll()
   const [type, setType] = useState<'expense' | 'income'>(transaction?.type ?? 'expense')
   const [amountText, setAmountText] = useState(transaction?.amount ?? '')
   const [categoryId, setCategoryId] = useState<string | null>(transaction?.categoryId ?? null)
@@ -125,7 +126,7 @@ export function ManualTransactionSheet({
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -136,7 +137,7 @@ export function ManualTransactionSheet({
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView ref={scrollRef} className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
+      <ScrollView {...sheetScroll.scrollProps} ref={scrollRef} className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
 
         <SegmentedControl
           options={[{ label: 'Expense', value: 'expense' as const }, { label: 'Income', value: 'income' as const }]}

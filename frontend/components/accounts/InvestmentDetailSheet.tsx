@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { HoldingsHeatMap } from '@/components/accounts/HoldingsHeatMap'
 import { colors } from '@/constants/theme'
 import { useHoldings } from '@/hooks/useHoldings'
@@ -70,11 +70,12 @@ function HoldingRow({ holding, isMasked }: { holding: Holding; isMasked: boolean
 // and dividends inside a brokerage aren't household spending or income, which is exactly
 // why these accounts live in their own section.
 export function InvestmentDetailSheet({ account, isMasked, onClose }: InvestmentDetailSheetProps) {
+  const sheetScroll = useSheetScroll()
   const holdings = useHoldings(account ? { itemId: account.itemId, accountId: account.account_id } : null)
   const needsRelink = holdings.error?.message.includes('ADDITIONAL_CONSENT_REQUIRED') ?? false
 
   return (
-    <BottomSheet visible={account != null} onClose={onClose}>
+    <BottomSheet visible={account != null} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -92,7 +93,7 @@ export function InvestmentDetailSheet({ account, isMasked, onClose }: Investment
         </Text>
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="pb-10">
         {holdings.isLoading ? (
           <View className="items-center py-8">
             <ActivityIndicator color={colors.primary} />

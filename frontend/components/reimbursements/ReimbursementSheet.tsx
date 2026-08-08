@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -17,6 +17,7 @@ interface ReimbursementSheetProps {
 
 export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems, onClose, onSave }: ReimbursementSheetProps) {
   const [linkedIds, setLinkedIds] = useState<string[]>([])
+  const sheetScroll = useSheetScroll()
 
   // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
   // so links selected for a previous expense must be cleared when a new one is opened.
@@ -36,7 +37,7 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -45,7 +46,7 @@ export function ReimbursementSheet({ visible, expenseItem, candidateIncomeItems,
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
         <Text className="font-mono text-base text-expense">
           {expenseItem.merchantName} {formatAmount(expenseItem.amount)}
         </Text>

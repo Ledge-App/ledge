@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
@@ -24,6 +24,7 @@ interface CategorySheetProps {
 }
 
 export function CategorySheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer }: CategorySheetProps) {
+  const sheetScroll = useSheetScroll()
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
@@ -65,7 +66,7 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
   const transferType = pendingTransfer ? TRANSFER_TYPES[pendingTransfer.kind] : null
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -76,7 +77,7 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
         <Text className="font-sans text-sm text-textSecondary">
           {item.date} · {formatAmount(item.amount)}
         </Text>

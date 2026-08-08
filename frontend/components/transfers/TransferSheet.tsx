@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
 import { TRANSFER_TYPE_LIST, daysBetween } from '@/lib/transfers/registry'
@@ -21,6 +21,7 @@ interface TransferSheetProps {
 }
 
 export function TransferSheet({ visible, item, candidateItems, accounts, isSaving, forcedKind, onClose, onSave }: TransferSheetProps) {
+  const sheetScroll = useSheetScroll()
   const applicableTypes = useMemo(
     () => (item ? TRANSFER_TYPE_LIST.filter((type) => type.kind !== 'reimbursement' && type.appliesTo(item, { accounts })) : []),
     [item, accounts],
@@ -80,7 +81,7 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
     : null
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -89,7 +90,7 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
         <Text className={`font-mono text-base ${isStartingFromExpense ? 'text-expense' : 'text-income'}`}>
           {item.merchantName} {formatAmount(item.amount)}
         </Text>
