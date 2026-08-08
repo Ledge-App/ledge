@@ -217,7 +217,7 @@ Tab Bar
 
 ## Auth
 
-- Supabase Auth: email + password to start, add OAuth (Google/Apple) later
+- Supabase Auth: Google sign-in only (no email/password); Apple sign-in could follow later
 - Session persisted via Expo SecureStore
 - On first launch: onboarding flow → sign up → connect Plaid developer credentials (Feature 0) → link account via Plaid Link → category seeding (Feature 3)
 

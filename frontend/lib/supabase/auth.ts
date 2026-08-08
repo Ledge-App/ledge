@@ -1,9 +1,12 @@
+import { GoogleSignin, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin'
 import { createClient, type Session } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
 import { Platform } from 'react-native'
 
-// Auth only: sign in/up, session, refresh — no data queries (see architecture.md).
+// Auth only: sign in, session, refresh — no data queries (see architecture.md).
+// Google is the only identity provider; the Email provider is disabled in the Supabase
+// dashboard, so there is no password path to fall back to.
 
 // expo-secure-store has no web implementation (iOS is the only shipped platform
 // per architecture.md) — fall back to localStorage so the app doesn't crash when
@@ -36,19 +39,43 @@ export const supabaseAuth = createClient(
   },
 )
 
-export async function signUp(email: string, password: string) {
-  const { data, error } = await supabaseAuth.auth.signUp({ email, password })
+// `webClientId` is not about a web build: Supabase validates the ID token's `aud` against
+// the Web OAuth client registered on its Google provider, so the token must be minted for
+// that client even though sign-in happens through the iOS one.
+GoogleSignin.configure({
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+})
+
+// Returns null when the user dismisses the Google sheet — a cancel is not a failure, and
+// surfacing it as one would flash an error banner at someone who just tapped outside.
+// The SDK reports a dismissal as a `cancelled` response rather than a rejection, but a
+// stale cached credential still rejects with SIGN_IN_CANCELLED, so both are handled.
+export async function signInWithGoogle() {
+  let idToken: string
+  try {
+    const response = await GoogleSignin.signIn()
+    if (response.type === 'cancelled') return null
+    if (!response.data.idToken) throw new Error('Google did not return an ID token.')
+    idToken = response.data.idToken
+  } catch (err) {
+    if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) return null
+    throw err
+  }
+
+  const { data, error } = await supabaseAuth.auth.signInWithIdToken({
+    provider: 'google',
+    token: idToken,
+  })
   if (error) throw error
   return data
 }
 
-export async function signIn(email: string, password: string) {
-  const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  return data
-}
-
+// Google's own session is cleared too, not just Supabase's. Left signed in, the SDK would
+// hand back the previous account without a picker on the next tap, so signing out and back
+// in could never switch accounts.
 export async function signOut() {
+  await GoogleSignin.signOut()
   const { error } = await supabaseAuth.auth.signOut()
   if (error) throw error
 }

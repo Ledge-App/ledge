@@ -162,7 +162,16 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
         run: |
+          # EXPO_PUBLIC_* vars are inlined into the bundle at build time. An unset secret
+          # is not an error to eas-cli — it would ship an update where the value reads
+          # `undefined` at runtime, breaking sign-in or the API client with no failed job.
+          for var in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_API_URL \
+                     EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID; do
+            test -n "${!var}" || { echo "::error::$var is not set"; exit 1; }
+          done
           npx eas-cli update \
             --channel production \
             --message "${{ inputs.message || github.event.head_commit.message || 'Manual update' }}" \
