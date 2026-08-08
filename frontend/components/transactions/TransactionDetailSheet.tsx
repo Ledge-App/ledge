@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { LinkedTransactions } from '@/components/transactions/LinkedTransactions'
 import { Button } from '@/components/ui/Button'
@@ -132,7 +133,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
                 className="h-8 w-8 items-center justify-center rounded-full"
                 style={{ backgroundColor: hexToRgba(selectedCategory?.color ?? colors.textMuted, 0.18) }}
               >
-                <Text style={{ fontSize: 16 }}>{selectedCategory?.icon ?? '❓'}</Text>
+                <CategoryIcon icon={selectedCategory?.icon ?? null} size={16} color={selectedCategory?.color} />
               </View>
               <Text className="font-sansMed text-base text-textPrimary">
                 {selectedCategory?.name ?? 'Uncategorized'}

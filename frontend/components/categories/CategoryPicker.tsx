@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, Text } from 'react-native'
 import { hexToRgba } from '@/constants/theme'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import type { Category } from '@/types/domain'
 
 interface CategoryPickerProps {
@@ -26,7 +27,7 @@ export function CategoryPicker({ categories, selectedCategoryId, onSelect }: Cat
               borderColor: category.color,
             }}
           >
-            <Text style={{ fontSize: 22 }}>{category.icon}</Text>
+            <CategoryIcon icon={category.icon} size={22} color={category.color} />
             <Text className="text-center font-sansMed text-xs text-textPrimary" numberOfLines={1}>
               {category.name}
             </Text>

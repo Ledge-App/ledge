@@ -10,7 +10,8 @@ import type { FeedItem } from '@/lib/transactions/resolveFeed'
 export interface RowCategory {
   name: string
   color: string
-  icon: string
+  /** Icon slug; null when the item has no category, which renders the uncategorized fallback. */
+  icon: string | null
 }
 
 interface DayGroupedTransactionsProps {

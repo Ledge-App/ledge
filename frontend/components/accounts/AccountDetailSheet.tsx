@@ -126,7 +126,7 @@ export function AccountDetailSheet({
               item={item}
               categoryName={category?.name ?? 'Uncategorized'}
               categoryColor={category?.color ?? colors.textMuted}
-              categoryIcon={category?.icon ?? '❓'}
+              categoryIcon={category?.icon ?? null}
               reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
               onPress={() => editor.openTransaction(item)}
             />

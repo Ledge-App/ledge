@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native'
 import { categoryColors, colors } from '@/constants/theme'
 import { TextField } from '@/components/ui/TextField'
 import { Button } from '@/components/ui/Button'
+import { IconPicker } from './IconPicker'
 import { PlaidPfcPicker } from './PlaidPfcPicker'
 import type { Category, PlaidCategoryMapping } from '@/types/domain'
 
@@ -34,7 +35,11 @@ export function CategoryForm({ category, mappings, categories, isSaving, onSave,
   return (
     <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-6 px-5 py-6">
       <TextField label="Name" value={name} onChangeText={setName} placeholder="e.g. Groceries" />
-      <TextField label="Icon (emoji)" value={icon} onChangeText={setIcon} placeholder="🛒" maxLength={4} />
+
+      <View className="gap-2">
+        <Text className="font-sansMed text-sm text-textSecondary">Icon</Text>
+        <IconPicker selectedSlug={icon} color={color} onSelect={setIcon} />
+      </View>
 
       <View className="gap-2">
         <Text className="font-sansMed text-sm text-textSecondary">Color</Text>

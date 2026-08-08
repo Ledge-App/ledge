@@ -1,10 +1,11 @@
 import { Pressable, Text, View } from 'react-native'
 import { hexToRgba } from '@/constants/theme'
+import { CategoryIcon } from './CategoryIcon'
 import { formatAmount } from '@/lib/format/money'
 
 interface CategoryCardProps {
   name: string
-  icon: string
+  icon: string | null
   color: string
   spent: number
   budget: number | null
@@ -25,7 +26,7 @@ export function CategoryCard({ name, icon, color, spent, onPress }: CategoryCard
       <Text className="font-sansSemi text-sm text-textSecondary">{name}</Text>
 
       <View className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: iconBg }}>
-        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <CategoryIcon icon={icon} size={20} color={color} />
       </View>
 
       <Text className="font-display text-md text-textPrimary">{formatAmount(spent)}</Text>

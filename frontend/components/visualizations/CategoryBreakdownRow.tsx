@@ -1,10 +1,11 @@
 import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 
 interface CategoryBreakdownRowProps {
-  icon: string
+  icon: string | null
   name: string
   color: string
   percentage: number
@@ -21,7 +22,7 @@ export function CategoryBreakdownRow({ icon, name, color, percentage, amount, tr
           className="items-center justify-center rounded-full"
           style={{ width: 32, height: 32, backgroundColor: hexToRgba(color, 0.2), marginRight: 12 }}
         >
-          <Text style={{ fontSize: 16 }}>{icon}</Text>
+          <CategoryIcon icon={icon} size={16} color={color} />
         </View>
 
         <Text className="font-sansSemi text-base text-textPrimary" style={{ flexShrink: 1 }}>

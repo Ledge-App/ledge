@@ -3,6 +3,7 @@ import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { DayGroupedTransactions } from '@/components/transactions/DayGroupedTransactions'
 import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -42,7 +43,7 @@ export function CategoryDetailSheet({ visible, segment, allSegments, transaction
             className="items-center justify-center rounded-full"
             style={{ width: 28, height: 28, backgroundColor: hexToRgba(segment.color, 0.2) }}
           >
-            <Text style={{ fontSize: 14 }}>{segment.icon}</Text>
+            <CategoryIcon icon={segment.icon} size={14} color={segment.color} />
           </View>
           <Text className="font-sansSemi text-md text-textPrimary">{segment.name}</Text>
           <Text className="font-display text-md" style={{ color: segment.color }}>

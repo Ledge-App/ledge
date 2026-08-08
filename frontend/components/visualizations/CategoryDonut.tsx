@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Text, View, useWindowDimensions } from 'react-native'
 import Svg, { Line, Path } from 'react-native-svg'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { colors, fontFamily } from '@/constants/theme'
 
 interface CategoryDonutProps {
@@ -147,11 +148,11 @@ export function CategoryDonut({ segments, highlightedCategoryId, onSegmentPress,
                 <Text style={{ fontFamily: fontFamily.mono, fontSize: 11, color: colors.textSecondary }}>
                   {Math.round(l.percentage)}%
                 </Text>
-                <Text style={{ fontSize: 13 }}>{l.icon}</Text>
+                <CategoryIcon icon={l.icon} size={13} color={l.color} />
               </>
             ) : (
               <>
-                <Text style={{ fontSize: 13 }}>{l.icon}</Text>
+                <CategoryIcon icon={l.icon} size={13} color={l.color} />
                 <Text style={{ fontFamily: fontFamily.mono, fontSize: 11, color: colors.textSecondary }}>
                   {Math.round(l.percentage)}%
                 </Text>

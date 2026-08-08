@@ -1,3 +1,4 @@
+import { FALLBACK_ICON_SLUG } from '@/lib/categories/icons'
 import { countsTowardTotals } from './totals'
 import type { FeedItem } from './resolveFeed'
 import type { YearMonth } from './filterByMonth'
@@ -6,7 +7,7 @@ import type { YearMonth } from './filterByMonth'
 // id, so it can never collide with a real one.
 export const UNCATEGORIZED_ID = '__uncategorized__'
 export const UNCATEGORIZED_NAME = 'Uncategorized'
-export const UNCATEGORIZED_ICON = '❔'
+export const UNCATEGORIZED_ICON = FALLBACK_ICON_SLUG
 export const UNCATEGORIZED_COLOR = '#A8A89C'
 
 export interface DonutSegment {

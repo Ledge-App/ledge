@@ -221,7 +221,7 @@ export default function TransactionsScreen() {
               return {
                 name: category?.name ?? 'Uncategorized',
                 color: category?.color ?? colors.textMuted,
-                icon: category?.icon ?? '❓',
+                icon: category?.icon ?? null,
               }
             }}
             reimbursementCategoryNameFor={(item) =>

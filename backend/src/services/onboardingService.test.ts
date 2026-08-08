@@ -29,7 +29,8 @@ describe('onboardingService.seedCategories', () => {
     expect(categoryRepoMock.create).toHaveBeenCalledWith('jwt-1', 'user-1', {
       name: 'Food & Drink',
       color: '#F97316',
-      icon: '🍽',
+      icon: 'food-and-drink',
+      isDefault: true,
     })
     expect(pfcMappingRepoMock.create).toHaveBeenCalledWith('jwt-1', 'user-1', {
       plaidPfcPrimary: 'FOOD_AND_DRINK',
