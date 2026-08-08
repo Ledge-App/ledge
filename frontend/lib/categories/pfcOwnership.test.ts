@@ -3,8 +3,8 @@ import { resolvePfcOwnership } from './pfcOwnership'
 import type { Category, PlaidCategoryMapping } from '@/types/domain'
 
 const categories: Category[] = [
-  { id: 'cat-food', name: 'Food & Drink', color: '#F97316', icon: '🍽' },
-  { id: 'cat-transport', name: 'Transport', color: '#3B82F6', icon: '🚗' },
+  { id: 'cat-food', name: 'Food & Drink', color: '#F97316', icon: 'food-and-drink', isDefault: true },
+  { id: 'cat-transport', name: 'Transport', color: '#3B82F6', icon: 'transport', isDefault: true },
 ]
 
 const mappings: PlaidCategoryMapping[] = [

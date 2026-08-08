@@ -15,6 +15,11 @@ export interface PfcMappingEntry {
   /** Plaid's primary PFC code shared by every entry in detailedCodes, e.g. 'FOOD_AND_DRINK'. */
   primary: string
   color: string
+  /**
+   * Icon slug, matching a filename in frontend/assets/category-icons/ and a key in that app's
+   * CATEGORY_ICONS registry. Seeded verbatim into `categories.icon`; a slug with no asset renders
+   * the uncategorized fallback.
+   */
   icon: string
   subcategories: string[]
   detailedCodes: string[]
@@ -25,7 +30,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Food & Drink',
     primary: 'FOOD_AND_DRINK',
     color: '#F97316',
-    icon: '🍽',
+    icon: 'food-and-drink',
     subcategories: ['Restaurants', 'Groceries', 'Coffee', 'Bars'],
     detailedCodes: [
       'FOOD_AND_DRINK_RESTAURANTS',
@@ -42,7 +47,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Transport',
     primary: 'TRANSPORTATION',
     color: '#3B82F6',
-    icon: '🚗',
+    icon: 'transport',
     subcategories: ['Rideshare', 'Gas', 'Transit', 'Parking'],
     detailedCodes: [
       'TRANSPORTATION_TAXIS_AND_RIDE_SHARES',
@@ -58,7 +63,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Travel',
     primary: 'TRAVEL',
     color: '#8B5CF6',
-    icon: '✈️',
+    icon: 'travel',
     subcategories: ['Flights', 'Hotels', 'Vacation'],
     detailedCodes: [
       'TRAVEL_FLIGHTS',
@@ -72,7 +77,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Entertainment',
     primary: 'ENTERTAINMENT',
     color: '#EC4899',
-    icon: '🎮',
+    icon: 'entertainment',
     subcategories: ['Streaming', 'Events', 'Games'],
     detailedCodes: [
       'ENTERTAINMENT_MUSIC_AND_AUDIO',
@@ -87,7 +92,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Shopping',
     primary: 'GENERAL_MERCHANDISE',
     color: '#EAB308',
-    icon: '🛍',
+    icon: 'shopping',
     subcategories: ['Clothing', 'Electronics', 'Amazon'],
     detailedCodes: [
       'GENERAL_MERCHANDISE_ONLINE_MARKETPLACES',
@@ -110,7 +115,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Bills & Utilities',
     primary: 'RENT_AND_UTILITIES',
     color: '#6B7280',
-    icon: '🧾',
+    icon: 'bills-and-utilities',
     subcategories: ['Rent', 'Electric', 'Internet', 'Phone'],
     detailedCodes: [
       'RENT_AND_UTILITIES_RENT',
@@ -126,7 +131,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Health',
     primary: 'MEDICAL',
     color: '#10B981',
-    icon: '⚕️',
+    icon: 'health',
     subcategories: ['Doctor', 'Pharmacy', 'Dental'],
     detailedCodes: [
       'MEDICAL_PRIMARY_CARE',
@@ -142,7 +147,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Personal Care',
     primary: 'PERSONAL_CARE',
     color: '#F43F5E',
-    icon: '💇',
+    icon: 'personal-care',
     subcategories: ['Hair', 'Gym'],
     detailedCodes: [
       'PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS',
@@ -155,7 +160,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Home',
     primary: 'HOME_IMPROVEMENT',
     color: '#84CC16',
-    icon: '🏠',
+    icon: 'home',
     subcategories: ['Furniture', 'Repairs'],
     detailedCodes: [
       'HOME_IMPROVEMENT_FURNITURE',
@@ -169,7 +174,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Services',
     primary: 'GENERAL_SERVICES',
     color: '#06B6D4',
-    icon: '🧰',
+    icon: 'services',
     subcategories: ['Subscriptions', 'Insurance'],
     detailedCodes: [
       'GENERAL_SERVICES_ACCOUNTING_AND_FINANCIAL_PLANNING',
@@ -187,7 +192,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Income',
     primary: 'INCOME',
     color: '#34D399',
-    icon: '💰',
+    icon: 'income',
     subcategories: ['Paycheck', 'Interest'],
     detailedCodes: [
       // v1 names, kept because rows cached before the v2 pin still carry them.
@@ -214,7 +219,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Transfers In',
     primary: 'TRANSFER_IN',
     color: '#2DD4BF',
-    icon: '⬇️',
+    icon: 'transfer-in',
     subcategories: ['Zelle', 'Venmo'],
     detailedCodes: [
       'TRANSFER_IN_ACCOUNT_TRANSFER',
@@ -231,7 +236,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Transfers Out',
     primary: 'TRANSFER_OUT',
     color: '#9CA3AF',
-    icon: '⬆️',
+    icon: 'transfer-out',
     subcategories: ['Zelle', 'Venmo'],
     detailedCodes: [
       'TRANSFER_OUT_ACCOUNT_TRANSFER',
@@ -251,7 +256,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Payments',
     primary: 'LOAN_PAYMENTS',
     color: '#F87171',
-    icon: '🏦',
+    icon: 'payments',
     subcategories: ['Student Loans', 'Credit Card'],
     detailedCodes: [
       'LOAN_PAYMENTS_STUDENT_LOAN_PAYMENT',
@@ -273,7 +278,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Loans Received',
     primary: 'LOAN_DISBURSEMENTS',
     color: '#FBBF24',
-    icon: '🧾',
+    icon: 'loan-received',
     subcategories: ['Student', 'Auto', 'Personal'],
     detailedCodes: [
       'LOAN_DISBURSEMENTS_AUTO',
@@ -293,7 +298,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Fees',
     primary: 'BANK_FEES',
     color: '#6B7280',
-    icon: '⚠️',
+    icon: 'fee',
     subcategories: [],
     detailedCodes: [
       // v2 additions
@@ -311,7 +316,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ledgeCategory: 'Other',
     primary: 'GOVERNMENT_AND_NON_PROFIT',
     color: '#71717A',
-    icon: '❔',
+    icon: 'other',
     subcategories: [],
     detailedCodes: [
       'GOVERNMENT_AND_NON_PROFIT_DONATIONS',

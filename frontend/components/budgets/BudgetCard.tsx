@@ -1,11 +1,12 @@
 import { Pressable, Text, View } from 'react-native'
 import { shadow } from '@/constants/theme'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { formatAmount } from '@/lib/format/money'
 import { BudgetProgressBar } from './BudgetProgressBar'
 
 interface BudgetCardProps {
   categoryName: string
-  categoryIcon: string
+  categoryIcon: string | null
   spent: number
   budget: number
   onPress?: () => void
@@ -23,7 +24,7 @@ export function BudgetCard({ categoryName, categoryIcon, spent, budget, onPress 
   return (
     <Pressable onPress={onPress} accessibilityRole="button" className="gap-2 rounded-md bg-surface p-4" style={shadow.sm}>
       <View className="flex-row items-center gap-2">
-        <Text style={{ fontSize: 18 }}>{categoryIcon}</Text>
+        <CategoryIcon icon={categoryIcon} size={18} />
         <Text className="font-sansSemi text-base text-textPrimary">{categoryName}</Text>
       </View>
       <Text className="font-mono text-sm text-textSecondary">

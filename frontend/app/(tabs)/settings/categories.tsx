@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useCategories } from '@/hooks/useCategories'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 
 export default function CategoriesListScreen() {
   const categories = useCategories()
@@ -29,7 +30,7 @@ export default function CategoriesListScreen() {
               className="flex-row items-center gap-3 px-4 py-4"
             >
               <View className="h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: `${category.color}30` }}>
-                <Text style={{ fontSize: 16 }}>{category.icon}</Text>
+                <CategoryIcon icon={category.icon} size={16} color={category.color} />
               </View>
               <Text className="font-sansMed text-base text-textPrimary">{category.name}</Text>
               <View className="ml-auto">

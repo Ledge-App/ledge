@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  boolean,
   check,
   date,
   numeric,
@@ -67,6 +68,11 @@ export const categories = pgTable('categories', {
   name: text('name').notNull(),
   color: text('color').notNull(),
   icon: text('icon').notNull(),
+  // Seeded from DEFAULT_PFC_MAPPING rather than created by the user. Defaults are renameable-proof
+  // (categories.update rejects a name patch on them) so that name stays a reliable way to identify
+  // which seeded category a row is — the icon backfill in drizzle/0008 needed exactly that and had
+  // no way to get it. Colour and icon stay editable; only the name is pinned.
+  isDefault: boolean('is_default').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

@@ -19,6 +19,17 @@ export const plaidCategoryMappingRepository = {
     return data.map(fromRow)
   },
 
+  async findById(jwt: string, id: string): Promise<PlaidCategoryMapping | null> {
+    const client = getScopedClient(jwt)
+    const { data, error } = await client
+      .from('plaid_category_mappings')
+      .select('id, plaid_pfc_primary, plaid_pfc_detailed, category_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    return data ? fromRow(data) : null
+  },
+
   async create(
     jwt: string,
     userId: string,

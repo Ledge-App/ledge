@@ -6,6 +6,7 @@ import { colors } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useBudgets } from '@/hooks/useBudgets'
 import { useCategories } from '@/hooks/useCategories'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { BudgetCard } from '@/components/budgets/BudgetCard'
 import { BudgetProgressBar } from '@/components/budgets/BudgetProgressBar'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
@@ -106,7 +107,7 @@ export default function BudgetsScreen() {
             <BudgetCard
               key={budget.id}
               categoryName={categoryById.get(budget.categoryId)?.name ?? 'Unknown'}
-              categoryIcon={categoryById.get(budget.categoryId)?.icon ?? '❓'}
+              categoryIcon={categoryById.get(budget.categoryId)?.icon ?? null}
               spent={spent}
               budget={Number(budget.amount)}
               onPress={() => router.push({ pathname: '/(tabs)/transactions', params: { categoryId: budget.categoryId } })}
@@ -120,7 +121,7 @@ export default function BudgetsScreen() {
             {unbudgetedCategories.map((category) => (
               <View key={category.id} className="flex-row items-center justify-between rounded-md bg-surface p-4">
                 <View className="flex-row items-center gap-2">
-                  <Text style={{ fontSize: 18 }}>{category.icon}</Text>
+                  <CategoryIcon icon={category.icon} size={18} color={category.color} />
                   <Text className="font-sansMed text-base text-textPrimary">{category.name}</Text>
                 </View>
                 <Text

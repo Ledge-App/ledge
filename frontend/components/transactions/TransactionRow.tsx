@@ -1,6 +1,7 @@
 import { Image, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
+import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
 import { countsTowardTotals, isInvestmentSweep } from '@/lib/transactions/totals'
@@ -13,7 +14,8 @@ interface TransactionRowProps {
   item: FeedItem
   categoryName: string
   categoryColor: string
-  categoryIcon: string
+  /** Icon slug; null when the item has no category, which renders the uncategorized fallback. */
+  categoryIcon: string | null
   reimbursementCategoryName: string | null
   onPress?: () => void
 }
@@ -54,8 +56,10 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: iconBg }}>
         {transferType ? (
           <Ionicons name={transferType.icon} size={18} color={iconColor} />
+        ) : item.isReimbursementIncome ? (
+          <Text style={{ fontSize: 18, color: iconColor }}>↩️</Text>
         ) : (
-          <Text style={{ fontSize: 18, color: iconColor }}>{item.isReimbursementIncome ? '↩️' : categoryIcon}</Text>
+          <CategoryIcon icon={categoryIcon} size={18} color={iconColor} />
         )}
         {item.source === 'manual' ? (
           <View className="absolute -bottom-0.5 -right-0.5 h-4 w-4 items-center justify-center rounded-full bg-surface">

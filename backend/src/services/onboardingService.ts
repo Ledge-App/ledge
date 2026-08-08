@@ -28,6 +28,7 @@ export const onboardingService = {
         name: entry.ledgeCategory,
         color: entry.color,
         icon: entry.icon,
+        isDefault: true,
       })
       categoryIdsByLedgeName[entry.ledgeCategory] = category.id
 

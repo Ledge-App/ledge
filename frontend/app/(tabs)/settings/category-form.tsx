@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useCategories } from '@/hooks/useCategories'
 import { usePlaidCategoryMappings } from '@/hooks/usePlaidCategoryMappings'
+import { CategoryDetails } from '@/components/categories/CategoryDetails'
 import { CategoryForm } from '@/components/categories/CategoryForm'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -86,6 +87,16 @@ export default function CategoryFormScreen() {
   // useState initializers, so it must never mount before both queries have resolved —
   // otherwise an edit would open with empty PFC codes and Save would wipe real mappings.
   if (categories.isLoading || mappings.isLoading) return <LoadingScreen />
+
+  // Built-in categories are fixed, so they get a read-only screen rather than a form whose Save
+  // and Delete the server would reject anyway.
+  if (category?.isDefault) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+        <CategoryDetails category={category} mappings={mappings.data ?? []} />
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>

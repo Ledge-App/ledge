@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ALL_PFC_DETAILED_CODES, DEFAULT_PFC_MAPPING } from './pfc.js'
 
@@ -17,6 +19,21 @@ describe('pfc taxonomy', () => {
     const mapped = new Set(DEFAULT_PFC_MAPPING.flatMap((e) => e.detailedCodes))
     for (const code of ALL_PFC_DETAILED_CODES) {
       expect(mapped.has(code)).toBe(true)
+    }
+  })
+
+  // Seeding writes these slugs straight into `categories.icon`, and the app resolves them against
+  // frontend/assets/category-icons. A slug with no asset there is silent: every newly seeded user
+  // gets the uncategorized fallback for that category, with nothing failing at seed time.
+  it('names an icon asset that exists in the frontend', () => {
+    const assetDir = fileURLToPath(new URL('../../../../frontend/assets/category-icons', import.meta.url))
+    const assetSlugs = new Set(
+      readdirSync(assetDir)
+        .filter((f) => f.endsWith('.svg'))
+        .map((f) => f.replace(/\.svg$/, '')),
+    )
+    for (const entry of DEFAULT_PFC_MAPPING) {
+      expect(assetSlugs, `${entry.ledgeCategory} -> ${entry.icon}`).toContain(entry.icon)
     }
   })
 
