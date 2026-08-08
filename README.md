@@ -20,7 +20,8 @@ See `docs/product.md`, `docs/architecture.md`, and `docs/design.md` for the full
 ## Prerequisites
 
 - Node.js and npm
-- A [Supabase](https://supabase.com) project (Postgres + Auth)
+- A [Supabase](https://supabase.com) project (Postgres + Auth), with the **Google** auth provider enabled and the **Email** provider disabled
+- A [Google Cloud](https://console.cloud.google.com) project with an OAuth consent screen and two OAuth clients (one **Web**, registered on Supabase's Google provider; one **iOS**, for bundle ID `com.qihongw08.ledge`)
 - Xcode + an Apple Developer account, for running the iOS app on a simulator or device
 - Your own free [Plaid](https://dashboard.plaid.com/signup) developer account (added per-user, in-app — not a project-level secret)
 
@@ -60,16 +61,19 @@ npm run ios            # builds and launches on the iOS Simulator (or --device f
 
 `.env` values:
 
-| Variable                        | Where to get it                                                                                                                                                               |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_SUPABASE_URL`      | Same Supabase Project URL as the backend                                                                                                                                      |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Same Publishable key as the backend                                                                                                                                           |
-| `EXPO_PUBLIC_API_URL`           | Your backend's URL — `http://localhost:3000` for the simulator; your Mac's LAN IP, or a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`), for a physical device |
+| Variable                           | Where to get it                                                                                                                                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_SUPABASE_URL`         | Same Supabase Project URL as the backend                                                                                                                                      |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY`    | Same Publishable key as the backend                                                                                                                                           |
+| `EXPO_PUBLIC_API_URL`              | Your backend's URL — `http://localhost:3000` for the simulator; your Mac's LAN IP, or a tunnel (e.g. `cloudflared tunnel --url http://localhost:3000`), for a physical device |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | Google Cloud → Credentials → your **iOS** OAuth client ID                                                                                                                     |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google Cloud → Credentials → your **Web** OAuth client ID (the same one registered on Supabase's Google provider)                                                             |
 
 Run the test suite with `npm test`.
 
 ### Notes on native builds
 
+- **Google Sign-In is a native module** (`@react-native-google-signin/google-signin`). Its config plugin writes a URL scheme into the Info.plist, so replace `REPLACE_WITH_REVERSED_IOS_CLIENT_ID` in `app.json` with your iOS client ID's reversed form (Google Cloud lists it as the "iOS URL scheme"), then run `npx expo prebuild --clean && npm run ios` — it will not take effect on an existing build.
 - **Plaid Link is a native module** (`react-native-plaid-link-sdk`) and does not run in Expo Go — `npm run ios`/`npm run android` build a real dev client via `expo prebuild`, which needs Xcode/CocoaPods installed.
 - **Plaid OAuth institutions** (Chase, Bank of America, etc.) require a universal link, which needs: a paid Apple Developer Program membership, the **Associated Domains** capability with an explicit (non-wildcard) App ID registered on the Apple Developer portal, an `apple-app-site-association` file hosted at your redirect domain, that same URL registered in the Plaid Dashboard's Allowed redirect URIs, and `PLAID_REDIRECT_URI` set on the backend. Non-OAuth Sandbox institutions (e.g. "Platypus Bank", `user_good`/`pass_good`) work without any of this.
 - **Real/live institutions require Plaid Production keys**, entered by each user in Settings → Plaid Developer Account with Environment set to Production. Sandbox keys only work against Plaid's fake test institutions — linking a real bank always needs the user's own Production `client_id`/`secret` from their Plaid dashboard.

@@ -12,7 +12,7 @@
 | Components | shadcn/ui RN port (`@shadcn/ui` + `react-native-reusables`) | |
 | Backend | Node.js + Fastify + TypeScript | Single API surface. Owns **all** data access and **all** Plaid calls |
 | API layer | tRPC | End-to-end types between backend and RN client, since both are TypeScript |
-| Auth | Supabase Auth | Mobile signs in directly against Supabase Auth (the one thing that stays direct); backend verifies the resulting JWT on every request |
+| Auth | Supabase Auth (Google only) | Mobile signs in directly against Supabase Auth (the one thing that stays direct); backend verifies the resulting JWT on every request. Google is the sole identity provider — the Email provider is disabled, so there is no password path |
 | DB | Supabase Postgres | Accessed exclusively through the backend |
 | ORM / Migrations | Drizzle ORM + Drizzle Kit | Schema lives in the backend; mobile never touches the DB directly |
 | Financial data | Plaid API | All calls (Link token creation, token exchange, transactions/sync, accounts/get) happen server-side in the backend, using **per-user** credentials (see BYOK below) |
@@ -40,7 +40,8 @@ Rather than one shared app-wide Plaid `client_id`/`secret`, each user brings the
 
 Even though the backend is a single API surface that owns all data access, Postgres Row-Level Security stays enabled on every table. This means a bug in the backend's own authorization logic can't leak another user's row — it's a second, independent enforcement layer, not a redundant one.
 
-- Mobile signs in via Supabase Auth directly and receives a JWT.
+- Mobile signs in via Supabase Auth directly and receives a JWT. Sign-in is native Google Sign-In: the `@react-native-google-signin/google-signin` SDK returns a Google ID token, which is exchanged for a Supabase session via `signInWithIdToken`. No browser round-trip and no deep link — the `ledge://` scheme and the associated domain are Plaid's, not auth's. Supabase validates the ID token's `aud` against the **Web** OAuth client configured on its Google provider, which is why the app passes a `webClientId` alongside the `iosClientId` it actually signs in with.
+- There is no separate signup screen or flow: a first Google sign-in creates the account. Nothing enforces the "invite-only" framing in the product copy — any Google account can currently sign up.
 - Every request to the backend carries that JWT in `Authorization: Bearer <token>`.
 - A `requireAuth` middleware verifies the JWT against the Supabase JWT secret and extracts `user_id`.
 - **Ordinary CRUD** (categories, budgets, vendor mappings, manual transactions, reimbursements, overrides): the backend uses a **per-request Supabase client re-authenticated with that same user JWT**, so RLS (`auth.uid() = user_id`) enforces the boundary at the database layer.
@@ -89,7 +90,7 @@ RLS only governs data crossing the network. The mobile app holds a **single `Que
 ```
 Device                    Backend API                    Supabase Postgres         Plaid
   |
-  |-- auth (email/OAuth) --------------------------------------------------------->|  (direct to Supabase Auth)
+  |-- auth (Google ID token) ----------------------------------------------------->|  (direct to Supabase Auth)
   |<- JWT session ------------------------------------------------------------------|
   |
   |-- POST /plaidCredentials.save (JWT) -------------------->|
@@ -130,7 +131,7 @@ Device                    Backend API                    Supabase Postgres      
 | Plaid access token | Backend DB (`plaid_items`, AES-256 encrypted) | Encrypted at rest; never reaches the device, which only ever handles the short-lived `public_token` during the Link handshake. Because it is server-side, a reinstall does not require relinking |
 | Supabase session (refresh + access token) | Device Keychain (SecureStore) | The only thing in SecureStore. Note iOS keeps Keychain items across an uninstall, so the app clears the session on first launch after a reinstall (`usePurgeSessionOnFreshInstall`) |
 | Plaid client_id / secret (BYOK) | Backend DB (`plaid_credentials`, secret AES-256 encrypted) | Per-user credential, decrypted only inside the backend for outbound Plaid calls |
-| User account | Supabase Auth | Auth only |
+| User account | Supabase Auth (Google identity) | Auth only. No password is ever stored or handled — the Email provider is disabled |
 | Categories + subcategories | Backend DB | Low sensitivity |
 | Vendor → category mappings | Backend DB | Low sensitivity |
 | Budgets | Backend DB | Low sensitivity |
@@ -322,8 +323,7 @@ ledge/
 ├── app/                                  # Expo Router — screens only, no logic
 │   ├── (auth)/
 │   │   ├── _layout.tsx
-│   │   ├── login.tsx
-│   │   └── signup.tsx
+│   │   └── login.tsx                     # Sole auth screen — Google sign-in doubles as signup
 │   ├── (tabs)/
 │   │   ├── _layout.tsx
 │   │   ├── index.tsx                     # Dashboard screen
@@ -374,7 +374,7 @@ ledge/
 │   │   ├── mmkv.ts
 │   │   └── sqlite.ts
 │   └── supabase/
-│       └── auth.ts                       # Auth only: sign in/up, session, refresh — no data queries
+│       └── auth.ts                       # Auth only: Google sign-in, session, refresh — no data queries
 │
 ├── types/                                 # Shared types, ideally imported from the backend package
 │   ├── domain.ts
