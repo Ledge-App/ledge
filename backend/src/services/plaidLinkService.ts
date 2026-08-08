@@ -35,13 +35,19 @@ export const plaidLinkService = {
     const itemResponse = await client.itemGet({ access_token: accessToken } as never)
     const institutionId = itemResponse.data.item.institution_id as string
 
+    // include_optional_metadata carries the institution's logo (base64 PNG). Stored at link
+    // time so account/transaction rows can badge the bank without a Plaid call per render;
+    // Plaid has no logo for some institutions, recorded as '' (fetched-none) vs null (never
+    // fetched) so the accounts.list lazy backfill knows not to retry.
     const institutionResponse = await client.institutionsGetById({
       institution_id: institutionId,
       country_codes: ['US'],
+      options: { include_optional_metadata: true },
     } as never)
     const institutionName = institutionResponse.data.institution.name as string
+    const institutionLogo = (institutionResponse.data.institution.logo as string | null) ?? ''
 
-    await plaidItemRepository.create({ userId, institutionId, institutionName, accessToken, itemId })
+    await plaidItemRepository.create({ userId, institutionId, institutionName, accessToken, itemId, institutionLogo })
 
     return { institutionId, institutionName }
   },

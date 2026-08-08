@@ -54,7 +54,25 @@ describe('plaidLinkService', () => {
       institutionName: 'Chase',
       accessToken: 'access-1',
       itemId: 'item-1',
+      // No logo in the institution response -> '' (fetched-none), never re-fetched.
+      institutionLogo: '',
     })
     expect(result).toEqual({ institutionId: 'ins_1', institutionName: 'Chase' })
+  })
+
+  it('exchangeToken stores the institution logo when Plaid provides one', async () => {
+    credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
+    itemPublicTokenExchange.mockResolvedValue({ data: { access_token: 'access-1', item_id: 'item-1' } })
+    itemGet.mockResolvedValue({ data: { item: { institution_id: 'ins_1' } } })
+    institutionsGetById.mockResolvedValue({ data: { institution: { name: 'Chase', logo: 'aWNvbg==' } } })
+    itemRepoMock.create.mockResolvedValue(undefined)
+    const { plaidLinkService } = await import('./plaidLinkService.js')
+
+    await plaidLinkService.exchangeToken('user-1', 'public-token-xyz')
+
+    expect(institutionsGetById).toHaveBeenCalledWith(
+      expect.objectContaining({ options: { include_optional_metadata: true } }),
+    )
+    expect(itemRepoMock.create).toHaveBeenCalledWith(expect.objectContaining({ institutionLogo: 'aWNvbg==' }))
   })
 })

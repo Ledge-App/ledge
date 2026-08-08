@@ -51,6 +51,10 @@ export const plaidItems = pgTable('plaid_items', {
   userId: uuid('user_id').notNull().references(() => authUsers.id),
   institutionId: text('institution_id').notNull(),
   institutionName: text('institution_name').notNull(),
+  // Base64 PNG from Plaid's institutionsGetById (include_optional_metadata). Nullable with a
+  // sentinel: NULL = never fetched (lazy-backfilled on the next accounts.list), '' = fetched
+  // and Plaid has no logo for this institution (never re-fetched).
+  institutionLogo: text('institution_logo'),
   encryptedAccessToken: text('encrypted_access_token').notNull(),
   itemId: text('item_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

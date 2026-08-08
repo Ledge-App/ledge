@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from 'react-native'
+import { Image, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
 import { formatMaskableAmount } from '@/lib/format/money'
@@ -9,6 +9,8 @@ interface AccountRowProps {
   variant: 'cash' | 'credit' | 'investment' | 'cashOnHand'
   limit?: number | null
   isMasked: boolean
+  /** Base64 PNG institution logo; replaces the generic variant icon when present. */
+  logo?: string | null
   onPress?: () => void
 }
 
@@ -21,16 +23,23 @@ const variantIcons: Record<string, { name: string; color: string }> = {
   cashOnHand: { name: 'cash', color: colors.income },
 }
 
-export function AccountRow({ name, balance, variant, limit, isMasked, onPress }: AccountRowProps) {
+export function AccountRow({ name, balance, variant, limit, isMasked, logo, onPress }: AccountRowProps) {
   const balanceColor = variant === 'credit' ? colors.expense : colors.textPrimary
   const icon = variantIcons[variant] ?? variantIcons.cash
 
   return (
     <Pressable onPress={onPress} className="flex-row items-center justify-between py-3.5">
       <View className="flex-1 flex-row items-center gap-3">
-        <View className="h-9 w-9 items-center justify-center rounded-lg bg-surfaceRaised">
-          <Ionicons name={icon.name as any} size={18} color={icon.color} />
-        </View>
+        {logo ? (
+          <Image
+            source={{ uri: `data:image/png;base64,${logo}` }}
+            style={{ width: 36, height: 36, borderRadius: 8 }}
+          />
+        ) : (
+          <View className="h-9 w-9 items-center justify-center rounded-lg bg-surfaceRaised">
+            <Ionicons name={icon.name as any} size={18} color={icon.color} />
+          </View>
+        )}
         <Text className="flex-shrink font-sansMed text-base text-textPrimary" numberOfLines={1}>{name}</Text>
       </View>
       <View className="ml-3 items-end">
