@@ -7,15 +7,9 @@ import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useBudgets } from '@/hooks/useBudgets'
 import { useCategories } from '@/hooks/useCategories'
-import { useSubcategories } from '@/hooks/useSubcategories'
-import { useTransactionOverrides } from '@/hooks/useTransactionOverrides'
-import { useVendorMappings } from '@/hooks/useVendorMappings'
-import { useTransfers } from '@/hooks/useTransfers'
 import { CategoryCard } from '@/components/categories/CategoryCard'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
-import { CategorySheet } from '@/components/transactions/CategorySheet'
-import { TransferSheet } from '@/components/transfers/TransferSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -26,32 +20,20 @@ import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { UNCATEGORIZED_ID, computeDonutSegments } from '@/lib/transactions/visualizationData'
-import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
-import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
-import type { TransferKind } from '@/types/domain'
 
 export default function DashboardScreen() {
   const [month, setMonth] = useState(currentMonth())
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [expensesOpen, setExpensesOpen] = useState(true)
   const [incomeOpen, setIncomeOpen] = useState(true)
-  const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
-  const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
-  const [pendingTransfer, setPendingTransfer] = useState<{ kind: TransferKind; counterpartIds: string[] } | null>(null)
-  const [transferForcedKind, setTransferForcedKind] = useState<TransferKind | undefined>(undefined)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const [vizMode, setVizMode] = useState(false)
   const [detailState, setDetailState] = useState<{ segment: DonutSegment; mode: 'expense' | 'income' } | null>(null)
 
-  const { feed, categoryById, isLoading, error } = useTransactionFeed()
+  const { feed, isLoading, error } = useTransactionFeed()
   const accounts = useAccounts()
   const budgets = useBudgets()
   const categories = useCategories()
-  const subcategories = useSubcategories()
-  const overrides = useTransactionOverrides()
-  const vendorMappings = useVendorMappings()
-  const transfers = useTransfers()
 
   const accountFilteredFeed = useMemo(
     () => (selectedAccountId ? feed.filter((item) => item.accountId === selectedAccountId) : feed),
@@ -94,76 +76,6 @@ export default function DashboardScreen() {
   // segment's percentage of the month total, so leaving any spend out draws a gap in the ring.
   const detailSegments = detailState == null ? [] : detailState.mode === 'expense' ? expenseSegments : incomeSegments
 
-  async function handleSaveCategory(input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) {
-    if (!activeSheetItem) return
-    try {
-      if (input.categoryId) {
-        await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        if (input.applyToVendor) {
-          await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        }
-      }
-      if (pendingTransfer) {
-        for (const transferInput of buildTransferInputs(activeSheetItem, pendingTransfer, feed)) {
-          await transfers.create(transferInput)
-        }
-        setPendingTransfer(null)
-      }
-      setActiveSheetItem(null)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
-    }
-  }
-
-  function handleOpenTransfer(forcedKind?: TransferKind) {
-    if (!activeSheetItem) return
-    const item = activeSheetItem
-    setTransferForcedKind(forcedKind)
-    setActiveSheetItem(null)
-    setTimeout(() => setTransferItem(item), 350)
-  }
-
-  function handleConfirmTransfer({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) {
-    const item = transferItem
-    setPendingTransfer({ kind, counterpartIds })
-    setTransferItem(null)
-    if (item) setTimeout(() => setActiveSheetItem(item), 350)
-  }
-
-  function handleDeclineTransfer() {
-    const item = transferItem
-    setTransferItem(null)
-    if (item) setTimeout(() => setActiveSheetItem(item), 350)
-  }
-
-  async function handleUnmarkTransfer() {
-    if (!activeSheetItem?.transferId) return
-    try {
-      // unmark (not delete) also records a dismissal, so auto-detection can't re-create
-      // the pair the user just removed on the next scan.
-      await transfers.unmark({ id: activeSheetItem.transferId })
-      setActiveSheetItem(null)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
-    }
-  }
-
-  const transferCandidateItems = useMemo(() => {
-    if (!transferItem) return []
-    const wantExpense = transferItem.amount < 0
-    return feed.filter((item) =>
-      (wantExpense ? item.amount > 0 : item.amount < 0) && item.transferKind === null,
-    )
-  }, [feed, transferItem])
-
-  const resolvedPendingTransfer = useMemo(() => {
-    if (!pendingTransfer) return null
-    const counterpartItems = pendingTransfer.counterpartIds
-      .map((id) => feed.find((i) => i.id === id))
-      .filter((i): i is FeedItem => i != null)
-    return { kind: pendingTransfer.kind, counterpartItems }
-  }, [pendingTransfer, feed])
-
   const hasNoAccounts = !accounts.isLoading && (accounts.data?.length ?? 0) === 0
 
   if (isLoading) return <LoadingScreen />
@@ -203,12 +115,9 @@ export default function DashboardScreen() {
     </View>
   )
 
-  const errorBanners = (
-    <>
-      {error ? <ErrorBanner message="Something went wrong loading your data." /> : null}
-      {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
-    </>
-  )
+  // Save errors are reported by the edit sheets themselves (CategoryDetailSheet owns the editor),
+  // so this screen only surfaces its own data-loading failure.
+  const errorBanner = error ? <ErrorBanner message="Something went wrong loading your data." /> : null
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
@@ -216,7 +125,7 @@ export default function DashboardScreen() {
         <>
           <View className="px-5 pt-4 pb-2" style={{ gap: 12 }}>
             {topBar}
-            {errorBanners}
+            {errorBanner}
           </View>
           <VisualizationPager
             monthFeed={monthFeed}
@@ -232,7 +141,7 @@ export default function DashboardScreen() {
       ) : (
         <ScrollView contentContainerClassName="gap-5 px-5 py-4">
           {topBar}
-          {errorBanners}
+          {errorBanner}
 
           <Pressable onPress={() => setExpensesOpen((v) => !v)} className="flex-row items-center justify-center gap-2">
             <Text className="font-sansSemi text-base text-textPrimary">Expenses {formatAmount(totalExpense)}</Text>
@@ -304,33 +213,12 @@ export default function DashboardScreen() {
 
       <ViewTogglePill vizMode={vizMode} onToggle={() => setVizMode((v) => !v)} />
 
-      <CategorySheet
-        visible={activeSheetItem != null}
-        item={activeSheetItem}
-        categories={categories.data ?? []}
-        subcategories={subcategories.data ?? []}
-        pendingTransfer={resolvedPendingTransfer}
-        onClose={() => { setActiveSheetItem(null); setPendingTransfer(null) }}
-        onSave={handleSaveCategory}
-        onOpenTransfer={handleOpenTransfer}
-        onClearPendingTransfer={() => setPendingTransfer(null)}
-        onUnmarkTransfer={handleUnmarkTransfer}
-      />
-      <TransferSheet
-        visible={transferItem != null}
-        item={transferItem}
-        candidateItems={transferCandidateItems}
-        accounts={accounts.data ?? []}
-        isSaving={false}
-        forcedKind={transferForcedKind}
-        onClose={handleDeclineTransfer}
-        onSave={handleConfirmTransfer}
-      />
       <CategoryDetailSheet
         visible={detailState != null}
         segment={detailState?.segment ?? null}
         allSegments={detailSegments}
         transactions={detailTransactions}
+        feed={feed}
         onClose={() => setDetailState(null)}
       />
     </SafeAreaView>

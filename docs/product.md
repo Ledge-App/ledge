@@ -80,13 +80,16 @@ Default mapping (abbreviated — full list in `lib/plaid/pfc.ts`):
 | Home | `HOME_IMPROVEMENT_FURNITURE`, `HOME_IMPROVEMENT_HARDWARE`, `HOME_IMPROVEMENT_REPAIR_AND_MAINTENANCE` | Furniture, Repairs |
 | Services | `GENERAL_SERVICES_SUBSCRIPTION`, `GENERAL_SERVICES_INSURANCE`, `GENERAL_SERVICES_FINANCIAL_PLANNING_AND_MANAGEMENT` | Subscriptions, Insurance |
 | Income | `INCOME_WAGES`, `INCOME_OTHER_INCOME`, `INCOME_INTEREST_EARNED`, `INCOME_DIVIDENDS` | Paycheck, Interest |
-| Transfers In | `TRANSFER_IN_ACCOUNT_TRANSFER`, `TRANSFER_IN_PEER_TO_PEER_PAYMENT` | Zelle, Venmo |
-| Transfers Out | `TRANSFER_OUT_ACCOUNT_TRANSFER`, `TRANSFER_OUT_PEER_TO_PEER_PAYMENT` | Zelle, Venmo |
-| Loans | `LOAN_PAYMENTS_STUDENT_LOAN_PAYMENT`, `LOAN_PAYMENTS_CREDIT_CARD_PAYMENT`, `LOAN_PAYMENTS_MORTGAGE_PAYMENT` | Student Loans, Credit Card |
+| Transfers In | `TRANSFER_IN_ACCOUNT_TRANSFER`, `TRANSFER_IN_DEPOSIT`, `TRANSFER_IN_WIRE` | Zelle, Venmo |
+| Transfers Out | `TRANSFER_OUT_ACCOUNT_TRANSFER`, `TRANSFER_OUT_SAVINGS`, `TRANSFER_OUT_WIRE` | Zelle, Venmo |
+| Loans Received | `LOAN_DISBURSEMENTS_STUDENT`, `LOAN_DISBURSEMENTS_AUTO`, `LOAN_DISBURSEMENTS_PERSONAL` | Student, Auto, Personal |
+| Payments | `LOAN_PAYMENTS_STUDENT_LOAN_PAYMENT`, `LOAN_PAYMENTS_CREDIT_CARD_PAYMENT`, `LOAN_PAYMENTS_MORTGAGE_PAYMENT` | Student Loans, Credit Card |
 | Fees | `BANK_FEES_ATM_FEES`, `BANK_FEES_OVERDRAFT_FEES`, `BANK_FEES_FOREIGN_TRANSACTION_FEES` | — |
 | Other | `GOVERNMENT_AND_NON_PROFIT_GOVERNMENT_DEPARTMENTS_AND_AGENCIES`, `GOVERNMENT_AND_NON_PROFIT_NON_PROFIT` | — |
 
 Every PFC detailed code in Plaid's taxonomy must be assigned to exactly one default Ledge category in `lib/plaid/pfc.ts`. No PFC code should be left unassigned in the defaults.
+
+The taxonomy version is pinned to **v2** in `transactionRepository.sync` via `options.personal_finance_category_version`. This is required, not cosmetic: unpinned, Plaid serves v1 to accounts granted Transactions access before 2025-12-03 and v2 after, so under BYOK two users on the same build would receive different taxonomies while `DEFAULT_PFC_MAPPING` stays a single hardcoded table. v2 is a superset of v1, so pinning up is the version that can be mapped exhaustively. Note that `pfc.test.ts`'s coverage check is self-referential and cannot detect drift from Plaid's real taxonomy — diff `pfc.ts` against https://plaid.com/documents/pfc-taxonomy-all.csv by hand when revising.
 
 These are written to the backend database as the user's starting categories. The user can rename, recolor, merge, or delete any of them, and reassign PFC codes between categories, from Settings → Categories at any time.
 

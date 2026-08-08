@@ -132,6 +132,27 @@ describe('aggregateMonth', () => {
     expect(result.totalIncome).toBe(3000)
   })
 
+  // The sweep's counterpart is an investment transaction, outside /transactions/sync, so it
+  // never pairs into a transfer record — it has to be excluded on its PFC alone.
+  it('excludes a cash-management sweep that has no transfer record', () => {
+    const result = aggregateMonth([
+      item({ id: 'a', date: '2026-06-01', amount: 40, categoryId: 'groceries' }),
+      item({ id: 'sweep', date: '2026-06-02', amount: 500, categoryId: 'transfers-out', pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }),
+    ])
+
+    expect(result.totalExpense).toBe(40)
+    expect(result.spendByCategory.has('transfers-out')).toBe(false)
+    expect(result.spendByDay.has('2026-06-02')).toBe(false)
+  })
+
+  it('keeps counting a credit card payment that never paired, since the card is not linked', () => {
+    const result = aggregateMonth([
+      item({ id: 'pay', amount: 1200, categoryId: 'payments', pfcDetailed: 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' }),
+    ])
+
+    expect(result.totalExpense).toBe(1200)
+  })
+
   it('returns empty aggregates for an empty feed', () => {
     const result = aggregateMonth([])
     expect(result.totalExpense).toBe(0)
