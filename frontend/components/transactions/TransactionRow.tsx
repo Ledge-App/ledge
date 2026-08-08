@@ -4,6 +4,8 @@ import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
 import { countsTowardTotals, isInvestmentSweep } from '@/lib/transactions/totals'
+import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
+import { linkPillLabel } from '@/lib/transactions/linkSummary'
 import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
@@ -22,27 +24,28 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
   // bank badge without each parent re-wiring it. Rides the shared accounts query cache.
   const institutionLogos = useInstitutionLogos()
   const institutionLogo = item.accountId ? institutionLogos.get(item.accountId) ?? null : null
-  const isIncome = item.amount < 0
   const transferType = item.transferKind ? TRANSFER_TYPES[item.transferKind] : null
-  // Anything excluded from the totals is greyed rather than shown in red/green, so the row reads
-  // as "not spending, not income" at a glance instead of looking like money that moved. Keyed on
-  // the same predicate the aggregates use, so what's grey and what's counted can never disagree —
-  // this covers transfer legs (where a badge carries the meaning) and brokerage-cash sweeps
-  // (where nothing else marks them).
+  // Greyed when the totals leave it out, so the row reads as "not spending, not income" at a
+  // glance. Shared with the detail sheet, which has to reach the same verdict.
   const isExcluded = !countsTowardTotals(item)
-  const amountColor = isExcluded ? colors.textMuted : isIncome ? colors.income : colors.expense
-  // One badge slot, two sources. A transfer leg names its kind; a brokerage-cash sweep has no
-  // transfer record to name, so it says "Investment" — otherwise it would grey out with nothing
-  // on the row explaining why it stopped counting. Muted rather than coloured: unlike a transfer,
-  // this wasn't a link the user made or confirmed, so it shouldn't shout.
+  const amountColor = transactionAmountColor(item)
+  // One badge slot, three sources. A transfer leg names its kind. A reimbursement leg has no
+  // transferKind to name — applyTransfers stamps only the other kinds — so it names what came
+  // back, which the row's gross amount alone can't convey. A brokerage-cash sweep has no
+  // record at all, so it says "Investment", otherwise it would grey out with nothing on the row
+  // explaining why it stopped counting; muted rather than coloured, since unlike a transfer or a
+  // reimbursement this wasn't a link the user made or confirmed, so it shouldn't shout.
+  const reimbursementPill = linkPillLabel(item)
   const badge = transferType
     ? {
         label: item.transferSource === 'auto' ? `${transferType.shortLabel} · Auto` : transferType.shortLabel,
         color: transferType.color,
       }
-    : isInvestmentSweep(item)
-      ? { label: 'Investment', color: colors.textMuted }
-      : null
+    : reimbursementPill
+      ? { label: reimbursementPill, color: colors.reimbursed }
+      : isInvestmentSweep(item)
+        ? { label: 'Investment', color: colors.textMuted }
+        : null
   const iconColor = transferType ? transferType.color : item.isReimbursementIncome ? colors.reimbursed : categoryColor
   const iconBg = hexToRgba(iconColor, 0.18)
 
@@ -79,15 +82,11 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
 
       <View className="ml-3 items-end gap-0.5">
         <View className="flex-row items-center gap-1.5">
-          {item.reimbursedAmount != null && item.netAmount != null ? (
-            <Text className="font-mono text-base" style={{ color: colors.reimbursed }}>
-              [{formatAmount(item.amount)} → {formatAmount(item.netAmount)}]
-            </Text>
-          ) : (
-            <Text className="font-mono text-base" style={{ color: amountColor }}>
-              {isIncome ? '+' : '-'}{formatAmount(Math.abs(item.amount))}
-            </Text>
-          )}
+          {/* A reimbursed expense shows what was charged, matching the statement; the pill below
+              carries what came back and the net. */}
+          <Text className="font-mono text-base" style={{ color: amountColor }}>
+            {amountSign(item)}{formatAmount(Math.abs(item.amount))}
+          </Text>
           {institutionLogo ? (
             // Which card/bank this hit, at a glance — mirrors the amount-side bank chip in
             // apps like the reference tracker. Base64 PNG straight from Plaid. The ring
@@ -104,7 +103,9 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
           // Under the amount, not beside the title: the badge is the row's meaning ('Auto'
           // marks links made by auto-detection; unmarking is the one-tap undo) and here it
           // never competes with the category name for width.
-          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(badge.color, 0.14) }}>
+          // maxWidth so the longest label (a reimbursement's "$2,000.00 back · net -$55.32")
+          // ellipsizes instead of squeezing the category name out of the row.
+          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(badge.color, 0.14), maxWidth: 200 }}>
             <Text className="font-sansMed text-xs" numberOfLines={1} style={{ color: badge.color }}>
               {badge.label}
             </Text>

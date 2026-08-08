@@ -6,6 +6,7 @@ import { TransactionEditSheets } from '@/components/transactions/TransactionEdit
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
+import { countsTowardTotals } from '@/lib/transactions/totals'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
 import { CategoryDonut } from './CategoryDonut'
@@ -44,7 +45,12 @@ function groupByDay(transactions: FeedItem[]): DaySection[] {
     .map(([date, items]) => {
       const d = new Date(date + 'T00:00:00')
       const label = `${d.getMonth() + 1}/${d.getDate()} ${dayNames[d.getDay()]}`
-      const dayTotal = items.reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
+      // countsTowardTotals, matching the day headers on the Transactions tab and the account
+      // sheet: a reimbursement's income leg is listed here to explain the netting on the expense
+      // above it, but it was already netted out of that expense and must not be added again.
+      const dayTotal = items
+        .filter(countsTowardTotals)
+        .reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
       return { date, label, dayTotal, items }
     })
 }
@@ -52,7 +58,7 @@ function groupByDay(transactions: FeedItem[]): DaySection[] {
 export function CategoryDetailSheet({ visible, segment, allSegments, transactions, feed, onClose }: CategoryDetailSheetProps) {
   const sections = useMemo(() => groupByDay(transactions), [transactions])
   // Wired here rather than by the caller so every row this sheet shows is editable, matching
-  // AccountDetailSheet. openTransaction routes by source — Plaid rows open the category sheet,
+  // AccountDetailSheet. openTransaction routes by source — Plaid rows open the detail sheet,
   // manual rows the manual sheet — which is what keeps a manual row from being saved as a
   // transaction_override keyed on its uuid.
   const editor = useTransactionEditor(feed)

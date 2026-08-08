@@ -1,66 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
+import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { useAccounts } from '@/hooks/useAccounts'
-import { useCategories } from '@/hooks/useCategories'
-import { useSubcategories } from '@/hooks/useSubcategories'
-import { useTransactionOverrides } from '@/hooks/useTransactionOverrides'
-import { useVendorMappings } from '@/hooks/useVendorMappings'
 import { useTransfers } from '@/hooks/useTransfers'
-import { useManualTransactions } from '@/hooks/useManualTransactions'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
-import { CategorySheet } from '@/components/transactions/CategorySheet'
-import { TransferSheet } from '@/components/transfers/TransferSheet'
+import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import { TransferSuggestionsBanner, TransferSuggestionsSheet } from '@/components/transfers/TransferSuggestionsSheet'
 import { useTransferDismissals } from '@/hooks/useTransferDismissals'
-import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { countsTowardTotals } from '@/lib/transactions/totals'
-import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
-import type { ManualTransactionInput } from '@/components/transactions/ManualTransactionSheet'
 import type { TransferSuggestion } from '@/hooks/useTransactionFeed'
-import type { ManualTransaction, TransferKind } from '@/types/domain'
 
 export default function TransactionsScreen() {
   const { categoryId: categoryIdParam } = useLocalSearchParams<{ categoryId?: string }>()
   const [month, setMonth] = useState(currentMonth())
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(categoryIdParam ?? null)
-  const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
-  const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
-  const [pendingTransfer, setPendingTransfer] = useState<{ kind: TransferKind; counterpartIds: string[] } | null>(null)
-  const [transferForcedKind, setTransferForcedKind] = useState<TransferKind | undefined>(undefined)
-  const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [suggestionsSheetOpen, setSuggestionsSheetOpen] = useState(false)
-  const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  // Only for the suggestion actions below. Everything the edit sheets can fail at reports through
+  // the editor's own saveError.
+  const [suggestionError, setSuggestionError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const scrollRef = useRef<ScrollView>(null)
   const sectionOffsets = useRef(new Map<string, number>())
 
   const { feed, categoryById, transferSuggestions, isLoading, error } = useTransactionFeed()
+  // Every edit sheet — category, transfer, manual — and all the state behind them. Shared with the
+  // dashboard's category drill-down and the account sheet, so tapping a row behaves the same anywhere.
+  const editor = useTransactionEditor(feed)
   const transferDismissals = useTransferDismissals()
   const accounts = useAccounts()
-  const categories = useCategories()
-  const subcategories = useSubcategories()
-  const overrides = useTransactionOverrides()
-  const vendorMappings = useVendorMappings()
   const transfers = useTransfers()
-  const manualTransactions = useManualTransactions()
 
   const accountFilteredFeed = useMemo(
     () => (selectedAccountId ? feed.filter((item) => item.accountId === selectedAccountId) : feed),
@@ -124,59 +108,6 @@ export default function TransactionsScreen() {
 
   const { spendByDay, totalExpense, totalIncome } = useMemo(() => aggregateMonth(filteredFeed), [filteredFeed])
 
-  async function handleSaveCategory(input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) {
-    if (!activeSheetItem) return
-    try {
-      if (input.categoryId) {
-        await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        if (input.applyToVendor) {
-          await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        }
-      }
-      if (pendingTransfer) {
-        for (const transferInput of buildTransferInputs(activeSheetItem, pendingTransfer, feed)) {
-          await transfers.create(transferInput)
-        }
-        setPendingTransfer(null)
-      }
-      setActiveSheetItem(null)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
-    }
-  }
-
-  function handleOpenTransfer(forcedKind?: TransferKind) {
-    if (!activeSheetItem) return
-    const item = activeSheetItem
-    setTransferForcedKind(forcedKind)
-    setActiveSheetItem(null)
-    setTimeout(() => setTransferItem(item), 350)
-  }
-
-  function handleConfirmTransfer({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) {
-    const item = transferItem
-    setPendingTransfer({ kind, counterpartIds })
-    setTransferItem(null)
-    if (item) setTimeout(() => setActiveSheetItem(item), 350)
-  }
-
-  function handleDeclineTransfer() {
-    const item = transferItem
-    setTransferItem(null)
-    if (item) setTimeout(() => setActiveSheetItem(item), 350)
-  }
-
-  async function handleUnmarkTransfer(item: FeedItem) {
-    if (!item.transferId) return
-    try {
-      // unmark (not delete) also records a dismissal, so auto-detection can't re-create
-      // the pair the user just removed on the next scan.
-      await transfers.unmark({ id: item.transferId })
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
-    }
-  }
-
   // Suggestion legs are always Plaid-sourced (detection eligibility), so the plaid id
   // fields are correct on both sides. Confirming creates a normal manual-source transfer —
   // the user vouched for it, exactly as if they'd built it in the TransferSheet.
@@ -192,7 +123,7 @@ export default function TransactionsScreen() {
         note: null,
       })
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not link this transfer. Try again.')
+      setSuggestionError(err instanceof Error ? err.message : 'Could not link this transfer. Try again.')
     }
   }
 
@@ -200,108 +131,9 @@ export default function TransactionsScreen() {
     try {
       await transferDismissals.create({ expensePlaidTransactionId: suggestion.expense.id })
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not dismiss this suggestion. Try again.')
+      setSuggestionError(err instanceof Error ? err.message : 'Could not dismiss this suggestion. Try again.')
     }
   }
-
-  async function handleSaveManual(input: ManualTransactionInput) {
-    try {
-      if (editingManual) {
-        await manualTransactions.update({ id: editingManual.id, ...input })
-      } else {
-        await manualTransactions.create(input)
-      }
-      setManualSheetOpen(false)
-      setEditingManual(null)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save this transaction. Try again.')
-    }
-  }
-
-  function editedManualAsFeedItem(input: ManualTransactionInput): FeedItem | null {
-    if (!editingManual) return null
-    const existing = feed.find((item) => item.id === editingManual.id)
-    if (!existing) return null
-    return { ...existing, amount: Number(input.amount), date: input.date }
-  }
-
-  async function handleSaveManualAndMarkTransfer(input: ManualTransactionInput) {
-    const expenseItem = editedManualAsFeedItem(input)
-    await handleSaveManual(input)
-    if (expenseItem) setTimeout(() => setTransferItem(expenseItem), 400)
-  }
-
-  async function handleSaveManualAndUnmarkTransfer(input: ManualTransactionInput) {
-    const existing = editedManualAsFeedItem(input)
-    await handleSaveManual(input)
-    if (existing) await handleUnmarkTransfer(existing)
-  }
-
-  function handleDeleteManual() {
-    if (!editingManual) return
-    const id = editingManual.id
-    const feedItem = feed.find((item) => item.id === id)
-    const isReimbursed = feedItem?.reimbursedAmount != null || feedItem?.isReimbursementIncome === true
-    const isTransferLeg = feedItem?.transferKind != null
-
-    Alert.alert(
-      isTransferLeg
-        ? 'This transaction is part of a transfer. Deleting it also removes the transfer. Delete anyway?'
-        : isReimbursed
-          ? 'This transaction is part of a reimbursement. Delete anyway?'
-          : 'Delete this transaction?',
-      undefined,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await manualTransactions.delete({ id })
-              setManualSheetOpen(false)
-              setEditingManual(null)
-            } catch (err) {
-              setSaveError(err instanceof Error ? err.message : 'Could not delete this transaction. Try again.')
-            }
-          },
-        },
-      ],
-    )
-  }
-
-  function handleRowPress(item: FeedItem) {
-    if (item.source === 'manual') {
-      setEditingManual({
-        id: item.id,
-        amount: Math.abs(item.amount).toFixed(2),
-        type: item.amount < 0 ? 'income' : 'expense',
-        categoryId: item.categoryId,
-        subcategoryId: item.subcategoryId,
-        date: item.date,
-        note: item.note,
-      })
-      setManualSheetOpen(true)
-    } else {
-      setActiveSheetItem(item)
-    }
-  }
-
-  const transferCandidateItems = useMemo(() => {
-    if (!transferItem) return []
-    const wantExpense = transferItem.amount < 0
-    return feed.filter((item) =>
-      (wantExpense ? item.amount > 0 : item.amount < 0) && item.transferKind === null,
-    )
-  }, [feed, transferItem])
-
-  const resolvedPendingTransfer = useMemo(() => {
-    if (!pendingTransfer) return null
-    const counterpartItems = pendingTransfer.counterpartIds
-      .map((id) => feed.find((i) => i.id === id))
-      .filter((i): i is FeedItem => i != null)
-    return { kind: pendingTransfer.kind, counterpartItems }
-  }, [pendingTransfer, feed])
 
   if (isLoading) return <LoadingScreen />
 
@@ -313,7 +145,7 @@ export default function TransactionsScreen() {
         </View>
         <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
         <View className="flex-1 items-end">
-          <Pressable onPress={() => { setEditingManual(null); setManualSheetOpen(true) }} accessibilityLabel="Add Transaction">
+          <Pressable onPress={editor.openNewManual} accessibilityLabel="Add Transaction">
             <Ionicons name="add-circle-outline" size={24} color={colors.textPrimary} />
           </Pressable>
         </View>
@@ -335,7 +167,8 @@ export default function TransactionsScreen() {
       ) : null}
 
       {error ? <ErrorBanner message="Something went wrong loading your transactions." /> : null}
-      {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
+      {editor.saveError ? <ErrorBanner message={editor.saveError} onDismiss={editor.dismissSaveError} /> : null}
+      {suggestionError ? <ErrorBanner message={suggestionError} onDismiss={() => setSuggestionError(null)} /> : null}
 
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Calendar */}
@@ -427,7 +260,7 @@ export default function TransactionsScreen() {
                         categoryColor={category?.color ?? colors.textMuted}
                         categoryIcon={category?.icon ?? '❓'}
                         reimbursementCategoryName={item.reimbursementCategoryId ? categoryById.get(item.reimbursementCategoryId)?.name ?? null : null}
-                        onPress={() => handleRowPress(item)}
+                        onPress={() => editor.openTransaction(item)}
                       />
                     </View>
                   )
@@ -438,48 +271,7 @@ export default function TransactionsScreen() {
         )}
       </ScrollView>
 
-      <CategorySheet
-        visible={activeSheetItem != null}
-        item={activeSheetItem}
-        categories={categories.data ?? []}
-        subcategories={subcategories.data ?? []}
-        pendingTransfer={resolvedPendingTransfer}
-        onClose={() => { setActiveSheetItem(null); setPendingTransfer(null) }}
-        onSave={handleSaveCategory}
-        onOpenTransfer={handleOpenTransfer}
-        onClearPendingTransfer={() => setPendingTransfer(null)}
-        onUnmarkTransfer={async () => {
-          if (!activeSheetItem) return
-          await handleUnmarkTransfer(activeSheetItem)
-          setActiveSheetItem(null)
-        }}
-      />
-      <TransferSheet
-        visible={transferItem != null}
-        item={transferItem}
-        candidateItems={transferCandidateItems}
-        accounts={accounts.data ?? []}
-        isSaving={false}
-        forcedKind={transferForcedKind}
-        onClose={handleDeclineTransfer}
-        onSave={handleConfirmTransfer}
-      />
-      <ManualTransactionSheet
-        visible={manualSheetOpen}
-        transaction={editingManual ?? undefined}
-        categories={categories.data ?? []}
-        subcategories={subcategories.data ?? []}
-        isSaving={manualTransactions.isLoading}
-        onClose={() => {
-          setManualSheetOpen(false)
-          setEditingManual(null)
-        }}
-        onSave={handleSaveManual}
-        onDelete={editingManual ? handleDeleteManual : undefined}
-        isTransfer={editingManual ? feed.find((item) => item.id === editingManual.id)?.transferKind != null : false}
-        onSaveAndMarkTransfer={handleSaveManualAndMarkTransfer}
-        onSaveAndUnmarkTransfer={handleSaveManualAndUnmarkTransfer}
-      />
+      <TransactionEditSheets editor={editor} />
       <TransferSuggestionsSheet
         visible={suggestionsSheetOpen}
         suggestions={transferSuggestions}

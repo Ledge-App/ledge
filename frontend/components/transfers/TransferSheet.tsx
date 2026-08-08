@@ -72,12 +72,18 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
     })
   }
 
-  const selectedTotal = isMultiSelect
-    ? selectedIds.reduce((sum, id) => {
-        const m = matches.find((c) => c.id === id)
-        return sum + (m ? Math.abs(m.amount) : 0)
-      }, 0)
-    : null
+  // A reimbursement pairs an expense with a smaller-or-equal income, so the sheet shows what the
+  // expense actually cost after the money that came back. The marked item is the income side
+  // (registry's appliesTo), but the legs are read off the signs so the line stays right either way.
+  const isReimbursement = selectedType.kind === 'reimbursement'
+  const selectedCounterpart = matches.find((c) => c.id === selectedIds[0]) ?? null
+  const reimbursement =
+    isReimbursement && selectedCounterpart
+      ? {
+          expense: Math.abs(isStartingFromExpense ? item.amount : selectedCounterpart.amount),
+          income: Math.abs(isStartingFromExpense ? selectedCounterpart.amount : item.amount),
+        }
+      : null
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
@@ -119,7 +125,7 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
         </View>}
 
         <Text className="font-display text-base text-textPrimary">
-          {isMultiSelect ? 'Link incoming payment(s)' : isStartingFromExpense ? 'Matching income' : 'Matching expense'}
+          {isStartingFromExpense ? 'Matching income' : 'Matching expense'}
         </Text>
         {matches.length === 0 ? (
           <Text className="font-sans text-sm text-textMuted">
@@ -161,15 +167,17 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
           })
         )}
 
-        {isMultiSelect && selectedTotal != null && selectedTotal > 0 ? (
+        {reimbursement ? (
           <Text className="font-sans text-base text-textPrimary">
-            Net expense: {formatAmount(item.amount)} − {formatAmount(selectedTotal)} ={' '}
-            <Text className="font-mono text-expense">{formatAmount(Math.max(0, item.amount - selectedTotal))}</Text>
+            Net expense: {formatAmount(reimbursement.expense)} − {formatAmount(reimbursement.income)} ={' '}
+            <Text className="font-mono text-expense">
+              {formatAmount(Math.max(0, reimbursement.expense - reimbursement.income))}
+            </Text>
           </Text>
         ) : null}
 
         <Button
-          label={selectedIds.length > 0 ? (isMultiSelect ? `Link ${selectedIds.length} payment${selectedIds.length > 1 ? 's' : ''}` : 'Save Transfer') : 'Save without match'}
+          label={selectedIds.length > 0 ? (isReimbursement ? 'Save Reimbursement' : 'Save Transfer') : 'Save without match'}
           onPress={() => onSave({ kind: selectedType.kind, counterpartIds: selectedIds })}
           disabled={!canSave}
           loading={isSaving}

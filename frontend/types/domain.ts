@@ -13,7 +13,6 @@ export type VendorMapping = RouterOutputs['vendorMappings']['list'][number]
 export type TransactionOverride = RouterOutputs['transactionOverrides']['list'][number]
 export type ManualTransaction = RouterOutputs['manualTransactions']['list'][number]
 export type Budget = RouterOutputs['budgets']['list'][number]
-export type Reimbursement = RouterOutputs['reimbursements']['list'][number]
 export type Transfer = RouterOutputs['transfers']['list'][number]
 export type TransferDismissal = RouterOutputs['transferDismissals']['list'][number]
 // Inferred from the router input rather than redeclared, so the backend's TRANSFER_KINDS stays

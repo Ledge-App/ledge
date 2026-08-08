@@ -62,8 +62,18 @@ export default function DashboardScreen() {
     if (!detailState) return []
     return monthFeed
       .filter((item) => {
-        if (item.isReimbursementIncome) return false
         const isUncategorized = detailState.segment.categoryId === UNCATEGORIZED_ID
+        // A reimbursement's income leg keeps its place in the list, under the expense it paid
+        // back — that netting is the reason the expense above it reads lower than the charge, and
+        // dropping the row left it unexplained. It adds nothing to the totals (the day header
+        // filters on countsTowardTotals), and it's matched on the expense's category rather than
+        // its own, which is where the money it offsets sits.
+        if (item.isReimbursementIncome) {
+          if (detailState.mode !== 'expense') return false
+          return isUncategorized
+            ? item.reimbursementCategoryId === null
+            : item.reimbursementCategoryId === detailState.segment.categoryId
+        }
         if (isUncategorized ? item.categoryId !== null : item.categoryId !== detailState.segment.categoryId)
           return false
         const net = item.netAmount ?? item.amount

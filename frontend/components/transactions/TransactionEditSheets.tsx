@@ -1,4 +1,4 @@
-import { CategorySheet } from '@/components/transactions/CategorySheet'
+import { TransactionDetailSheet } from '@/components/transactions/TransactionDetailSheet'
 import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { TransferSheet } from '@/components/transfers/TransferSheet'
 import type { TransactionEditor } from '@/hooks/useTransactionEditor'
@@ -10,17 +10,18 @@ interface TransactionEditSheetsProps {
 export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
   return (
     <>
-      <CategorySheet
+      <TransactionDetailSheet
         visible={editor.activeSheetItem != null}
         item={editor.activeSheetItem}
         categories={editor.categories}
         subcategories={editor.subcategories}
         pendingTransfer={editor.pendingTransfer}
-        onClose={editor.closeCategorySheet}
+        onClose={editor.closeDetailSheet}
         onSave={editor.saveCategory}
         onOpenTransfer={editor.openTransfer}
         onClearPendingTransfer={editor.clearPendingTransfer}
         onUnmarkTransfer={editor.unmarkTransfer}
+        onUnlink={editor.unlink}
       />
       <TransferSheet
         visible={editor.transferItem != null}

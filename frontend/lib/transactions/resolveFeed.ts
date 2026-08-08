@@ -1,5 +1,5 @@
 import { isBrokerageCashAccount } from '@/lib/accounts/accountType'
-import type { ManualTransaction, PlaidCategoryMapping, PlaidTransaction, Reimbursement, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
+import type { ManualTransaction, PlaidCategoryMapping, PlaidTransaction, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'uncategorized'
 
@@ -66,6 +66,31 @@ export function resolveCategory(
   return { categoryId: null, subcategoryId: null, categorySource: 'uncategorized' }
 }
 
+/**
+ * One link this transaction is part of — the other leg of a transfer, or one of the
+ * reimbursements paid against an expense.
+ *
+ * Carries a snapshot of the counterpart (merchant, date, amount, account) rather than just its id: the
+ * surfaces that display links are usually handed a filtered slice of the feed — one account's
+ * rows, one category's rows — in which the counterpart isn't present to look up. Rebuilt on every
+ * feed derivation, so the snapshot can't drift, and it never nests (a link carries no links).
+ */
+export interface FeedLink {
+  /** The transfer row's own id, so one link can be removed without disturbing the others. */
+  recordId: string
+  kind: TransferKind
+  /** The counterpart's feed id, or null when the other leg isn't in the feed: an unpaired
+   *  transfer, or a counterpart outside the synced window. */
+  itemId: string | null
+  merchantName: string | null
+  date: string | null
+  /** The counterpart's account, so link rows can show the same bank chip the feed row does. */
+  accountId: string | null
+  /** What this link recorded: the reimbursed amount for a reimbursement, the moved amount
+   *  otherwise. Always positive. */
+  amount: number
+}
+
 export interface FeedItem {
   id: string
   source: 'plaid' | 'manual'
@@ -100,6 +125,8 @@ export interface FeedItem {
   // Set by applySweepExclusion (runs last): this outflow only mirrors an equal inflow on the same
   // brokerage cash account, i.e. a sweep into holdings rather than spending.
   isSweptOutflow: boolean
+  /** Every link this transaction is part of, either leg. Empty when it isn't linked to anything. */
+  links: FeedLink[]
 }
 
 export function mergeFeed(
@@ -150,6 +177,7 @@ export function mergeFeed(
       transferSource: null,
       isBrokerageCashAccount: brokerageCashAccountIds.has(txn.account_id),
       isSweptOutflow: false,
+      links: [],
     }
   })
 
@@ -177,49 +205,53 @@ export function mergeFeed(
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    links: [],
   }))
 
   return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 }
 
-export function applyReimbursements(feed: FeedItem[], reimbursements: Reimbursement[]): FeedItem[] {
-  const reimbursementsByExpenseId = new Map<string, Reimbursement[]>()
-  for (const r of reimbursements) {
-    const expenseId = r.expensePlaidTransactionId ?? r.expenseManualTransactionId
-    if (!expenseId) continue
-    const list = reimbursementsByExpenseId.get(expenseId) ?? []
-    list.push(r)
-    reimbursementsByExpenseId.set(expenseId, list)
+/**
+ * Builds one leg's view of a link. The counterpart is looked up rather than trusted: an id can
+ * point outside the synced window, which reads the same as an unpaired leg — a link the sheet
+ * shows but can't name.
+ */
+function toLink(
+  recordId: string,
+  kind: TransferKind,
+  counterpartId: string | null | undefined,
+  amount: number,
+  itemById: Map<string, FeedItem>,
+): FeedLink {
+  const counterpart = counterpartId ? itemById.get(counterpartId) ?? null : null
+  return {
+    recordId,
+    kind,
+    itemId: counterpart?.id ?? null,
+    merchantName: counterpart?.merchantName ?? null,
+    date: counterpart?.date ?? null,
+    accountId: counterpart?.accountId ?? null,
+    amount: Math.abs(amount),
   }
+}
 
-  const categoryByFeedId = new Map(feed.map((item) => [item.id, item.categoryId]))
-  const incomeIdToExpenseCategoryId = new Map<string, string | null>()
-  for (const r of reimbursements) {
-    const incomeId = r.incomePlaidTransactionId ?? r.incomeManualTransactionId
-    if (!incomeId) continue
-    const expenseId = r.expensePlaidTransactionId ?? r.expenseManualTransactionId
-    incomeIdToExpenseCategoryId.set(incomeId, expenseId ? categoryByFeedId.get(expenseId) ?? null : null)
+function legIds(record: {
+  expensePlaidTransactionId: string | null
+  expenseManualTransactionId: string | null
+  incomePlaidTransactionId: string | null
+  incomeManualTransactionId: string | null
+}): { expenseId: string | null; incomeId: string | null } {
+  return {
+    expenseId: record.expensePlaidTransactionId ?? record.expenseManualTransactionId,
+    incomeId: record.incomePlaidTransactionId ?? record.incomeManualTransactionId,
   }
-
-  return feed.map((item) => {
-    const linked = reimbursementsByExpenseId.get(item.id)
-    if (linked) {
-      const reimbursedAmount = linked.reduce((sum, r) => sum + Number(r.amount), 0)
-      const netAmount = Math.max(0, item.amount - reimbursedAmount)
-      return { ...item, reimbursedAmount, netAmount }
-    }
-    if (incomeIdToExpenseCategoryId.has(item.id)) {
-      return { ...item, isReimbursementIncome: true, reimbursementCategoryId: incomeIdToExpenseCategoryId.get(item.id) ?? null }
-    }
-    return item
-  })
 }
 
 // Stamps both legs of every transfer so downstream code can badge them and leave them out of
 // totals. A transfer may be unpaired (no income leg), in which case only the expense is stamped.
 // Reimbursement-kind transfers are handled differently: the expense leg gets reimbursedAmount /
-// netAmount (like the old reimbursements table), and the income leg is marked as reimbursement
-// income — they are NOT excluded from totals the way other transfer kinds are.
+// netAmount, and the income leg is marked as reimbursement income — they are NOT excluded from
+// totals the way other transfer kinds are.
 export function applyTransfers(feed: FeedItem[], transfers: Transfer[]): FeedItem[] {
   const nonReimbursement: Transfer[] = []
   const reimbursementTransfers: Transfer[] = []
@@ -253,32 +285,54 @@ export function applyTransfers(feed: FeedItem[], transfers: Transfer[]): FeedIte
   }
 
   const categoryByFeedId = new Map(feed.map((item) => [item.id, item.categoryId]))
+  const itemById = new Map(feed.map((item) => [item.id, item]))
 
   return feed.map((item) => {
     // Non-reimbursement transfer legs
     const asExpense = byExpenseId.get(item.id)
     if (asExpense) {
-      return { ...item, transferId: asExpense.id, transferKind: asExpense.kind, transferRole: 'expense' as const, transferSource: asExpense.source }
+      return {
+        ...item,
+        transferId: asExpense.id,
+        transferKind: asExpense.kind,
+        transferRole: 'expense' as const,
+        transferSource: asExpense.source,
+        links: [toLink(asExpense.id, asExpense.kind, legIds(asExpense).incomeId, Number(asExpense.amount), itemById)],
+      }
     }
     const asIncome = byIncomeId.get(item.id)
     if (asIncome) {
-      return { ...item, transferId: asIncome.id, transferKind: asIncome.kind, transferRole: 'income' as const, transferSource: asIncome.source }
+      return {
+        ...item,
+        transferId: asIncome.id,
+        transferKind: asIncome.kind,
+        transferRole: 'income' as const,
+        transferSource: asIncome.source,
+        links: [toLink(asIncome.id, asIncome.kind, legIds(asIncome).expenseId, Number(asIncome.amount), itemById)],
+      }
     }
 
-    // Reimbursement expense side: accumulate amounts, set netAmount
+    // Reimbursement expense side: accumulate amounts, set netAmount. One expense can be paid back
+    // by several incomes, so this leg carries a link per reimbursement, each with its own amount.
     const reimbLinks = reimbByExpenseId.get(item.id)
     if (reimbLinks) {
       const reimbursedAmount = reimbLinks.reduce((sum, t) => sum + Number(t.amount), 0)
       const netAmount = Math.max(0, item.amount - reimbursedAmount)
-      return { ...item, reimbursedAmount, netAmount }
+      const links = reimbLinks.map((t) => toLink(t.id, t.kind, legIds(t).incomeId, Number(t.amount), itemById))
+      return { ...item, reimbursedAmount, netAmount, links }
     }
 
     // Reimbursement income side: mark as reimbursement income, carry expense's category
     const reimbIncome = reimbByIncomeId.get(item.id)
     if (reimbIncome) {
-      const expenseId = reimbIncome.expensePlaidTransactionId ?? reimbIncome.expenseManualTransactionId
+      const { expenseId } = legIds(reimbIncome)
       const expenseCategoryId = expenseId ? categoryByFeedId.get(expenseId) ?? null : null
-      return { ...item, isReimbursementIncome: true, reimbursementCategoryId: expenseCategoryId }
+      return {
+        ...item,
+        isReimbursementIncome: true,
+        reimbursementCategoryId: expenseCategoryId,
+        links: [toLink(reimbIncome.id, reimbIncome.kind, expenseId, Number(reimbIncome.amount), itemById)],
+      }
     }
 
     return item

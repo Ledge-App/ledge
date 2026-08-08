@@ -24,6 +24,7 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    links: [],
     ...overrides,
   }
 }
@@ -67,15 +68,27 @@ describe('buildTransferInputs', () => {
     expect(inputs[0].amount).toBe('500.00')
   })
 
-  it('records the counterpart amount for reimbursements, one row per linked income', () => {
-    const partial = item({ id: 'i2', amount: -120, date: '2026-08-12' })
-    const other = item({ id: 'i3', amount: -80, date: '2026-08-13' })
-    const inputs = buildTransferInputs(
-      expense,
-      { kind: 'reimbursement', counterpartIds: ['i2', 'i3'] },
-      [expense, partial, other],
+  // A reimbursement records what came back, never what was spent: the income leg's amount. The
+  // flow is entered from the income side (registry's appliesTo), so the marked item is the income
+  // and the counterpart is the expense — the opposite of every other kind, where the marked item
+  // carries the amount.
+  it('records the income amount for a reimbursement marked from the income side', () => {
+    const reimbursedExpense = item({ id: 'e2', amount: 2055.32, date: '2026-08-12' })
+    const reimbursementIncome = item({ id: 'i2', amount: -2000, date: '2026-08-13', accountId: 'savings' })
+    const [input] = buildTransferInputs(
+      reimbursementIncome,
+      { kind: 'reimbursement', counterpartIds: ['e2'] },
+      [reimbursedExpense, reimbursementIncome],
     )
-    expect(inputs.map((i) => i.amount)).toEqual(['120.00', '80.00'])
+    expect(input.expensePlaidTransactionId).toBe('e2')
+    expect(input.incomePlaidTransactionId).toBe('i2')
+    expect(input.amount).toBe('2000.00')
+  })
+
+  it('records the counterpart amount for a reimbursement marked from the expense side', () => {
+    const partial = item({ id: 'i2', amount: -120, date: '2026-08-12' })
+    const [input] = buildTransferInputs(expense, { kind: 'reimbursement', counterpartIds: ['i2'] }, [expense, partial])
+    expect(input.amount).toBe('120.00')
   })
 
   it('falls back to the marked item amount for a reimbursement with no counterpart', () => {

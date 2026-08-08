@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
+import { LinkedTransactions } from '@/components/transactions/LinkedTransactions'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
+import { formatFullDate } from '@/lib/format/date'
+import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
+import { linkPillLabel } from '@/lib/transactions/linkSummary'
+import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
 import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
-import type { FeedItem } from '@/lib/transactions/resolveFeed'
+import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Category, Subcategory, TransferKind } from '@/types/domain'
 
-interface CategorySheetProps {
+interface TransactionDetailSheetProps {
   visible: boolean
   item: FeedItem | null
   categories: Category[]
@@ -21,14 +26,17 @@ interface CategorySheetProps {
   onOpenTransfer: (forcedKind?: TransferKind) => void
   onClearPendingTransfer: () => void
   onUnmarkTransfer: () => void
+  onUnlink: (link: FeedLink) => void
 }
 
-export function CategorySheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer }: CategorySheetProps) {
+export function TransactionDetailSheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
   const [markReimbursed, setMarkReimbursed] = useState(false)
   const [markTransfer, setMarkTransfer] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const institutionLogos = useInstitutionLogos()
 
   useEffect(() => {
     setCategoryId(item?.categoryId ?? null)
@@ -36,10 +44,15 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
     setApplyToVendor(true)
     setMarkReimbursed(item?.reimbursedAmount != null)
     setMarkTransfer(item?.transferKind != null)
+    setPickerOpen(false)
   }, [item?.id])
 
   if (!item) return null
 
+  const institutionLogo = item.accountId ? institutionLogos.get(item.accountId) ?? null : null
+  const amountColor = transactionAmountColor(item)
+  const pillLabel = linkPillLabel(item)
+  const selectedCategory = categories.find((c) => c.id === categoryId) ?? null
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
   const wasTransfer = item.transferKind != null
   const wasReimbursed = item.reimbursedAmount != null
@@ -66,26 +79,81 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      <View className="flex-row items-center justify-between px-5 py-3">
+      <View className="flex-row items-center gap-3 px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
-        <Text className="mx-3 flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>
+        <Text className="flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>
           {item.merchantName}
         </Text>
+        {/* Balances the close button so the title centres on the sheet, not on the space left over. */}
         <View style={{ width: 22 }} />
       </View>
 
       <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
-        <Text className="font-sans text-sm text-textSecondary">
-          {item.date} · {formatAmount(item.amount)}
-        </Text>
+        {/* The transaction itself, centred: which card it hit, what it came to, when. */}
+        <View className="items-center gap-3 pt-1">
+          {institutionLogo ? (
+            // Ring in the amount's colour, the same signal the feed rows carry: green in, red out,
+            // muted for anything the totals leave out.
+            <View style={{ borderWidth: 2, borderColor: amountColor, borderRadius: 33, padding: 3 }}>
+              <Image
+                source={{ uri: `data:image/png;base64,${institutionLogo}` }}
+                style={{ width: 56, height: 56, borderRadius: 28 }}
+              />
+            </View>
+          ) : null}
 
-        <Text className="font-sansMed text-sm text-textSecondary">Category</Text>
-        <CategoryPicker categories={categories} selectedCategoryId={categoryId} onSelect={(id) => {
-          setCategoryId(id)
-          setSubcategoryId(null)
-        }} />
+          <Text className="font-display text-2xl" style={{ color: amountColor }}>
+            {amountSign(item)}{formatAmount(Math.abs(item.amount))}
+          </Text>
+          <Text className="font-sansMed text-sm text-textSecondary">{formatFullDate(item.date)}</Text>
+
+          {pillLabel ? (
+            <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: hexToRgba(colors.reimbursed, 0.14) }}>
+              <Text className="font-sansMed text-xs" style={{ color: colors.reimbursed }}>{pillLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* The category is settled far more often than it's changed, so the sheet shows what it
+            currently is and keeps the picker — a wide scrolling strip of tiles — behind a tap. */}
+        <View className="gap-2">
+          <Text className="font-sansMed text-sm text-textSecondary">Category</Text>
+          <Pressable
+            onPress={() => setPickerOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: pickerOpen }}
+            className="flex-row items-center justify-between rounded-md border border-border px-3 py-3"
+          >
+            <View className="flex-row items-center gap-2">
+              <View
+                className="h-8 w-8 items-center justify-center rounded-full"
+                style={{ backgroundColor: hexToRgba(selectedCategory?.color ?? colors.textMuted, 0.18) }}
+              >
+                <Text style={{ fontSize: 16 }}>{selectedCategory?.icon ?? '❓'}</Text>
+              </View>
+              <Text className="font-sansMed text-base text-textPrimary">
+                {selectedCategory?.name ?? 'Uncategorized'}
+              </Text>
+            </View>
+            <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
+          </Pressable>
+
+          {pickerOpen ? (
+            <CategoryPicker
+              categories={categories}
+              selectedCategoryId={categoryId}
+              onSelect={(id) => {
+                setCategoryId(id)
+                setSubcategoryId(null)
+                // Collapse on choice: the answer is now on the row above, and leaving the strip
+                // open pushes everything below it off screen.
+                setPickerOpen(false)
+              }}
+            />
+          ) : null}
+        </View>
 
         {availableSubcategories.length > 0 ? (
           <View className="flex-row flex-wrap gap-2">
@@ -179,6 +247,8 @@ export function CategorySheet({ visible, item, categories, subcategories, pendin
             )}
           </View>
         ) : null}
+
+        <LinkedTransactions item={item} onUnlink={onUnlink} />
 
         <Button label="Save Changes" onPress={handleSave} />
       </ScrollView>
