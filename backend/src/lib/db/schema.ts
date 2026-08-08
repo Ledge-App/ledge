@@ -157,6 +157,9 @@ export const transfers = pgTable('transfers', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id),
   kind: text('kind').notNull(),
+  // 'manual' = created through the TransferSheet; 'auto' = created by transfer auto-detection
+  // (docs/credit-card-payment-auto-transfer.md). Lets the UI badge auto matches and offer undo.
+  source: text('source').notNull().default('manual'),
   expensePlaidTransactionId: text('expense_plaid_transaction_id'),
   // Cascade, unlike reimbursements: deleting a manual transaction must not be blocked by the
   // transfer row that references it. Removing a leg removes the transfer entirely, which is
@@ -181,6 +184,9 @@ export const transfers = pgTable('transfers', {
   // The literals are inlined rather than imported because drizzle-kit loads this file through
   // CJS and cannot resolve the ESM '.js' specifier the rest of the backend uses.
   kindValid: check('transfer_kind_valid', sql`${table.kind} IN ('account_transfer', 'credit_card_payment', 'refund', 'reimbursement')`),
+  // Kept in sync with TRANSFER_SOURCES in lib/transfers/kinds.ts by a test in kinds.test.ts;
+  // literals inlined for the same drizzle-kit CJS reason as transfer_kind_valid above.
+  sourceValid: check('transfer_source_valid', sql`${table.source} IN ('manual', 'auto')`),
   // Partial uniques so no transaction can be pulled into two transfers from either side.
   // Reimbursements are excluded on the expense side because one expense can have multiple
   // reimbursement income links (partial reimbursements).
@@ -196,4 +202,18 @@ export const transfers = pgTable('transfers', {
   incomeManualUnique: uniqueIndex('transfers_income_manual_unique')
     .on(table.userId, table.incomeManualTransactionId)
     .where(sql`${table.incomeManualTransactionId} IS NOT NULL`),
+}))
+
+// Remembers that the user unmarked a transfer on this expense leg, so auto-detection never
+// re-creates the pair on the next scan (the scan is otherwise idempotent and would resurrect
+// it every sync). Plaid ids only: auto-detection never touches manual transactions. Keyed on
+// the expense (outflow) leg — the stable anchor; the income leg it pairs with may change.
+// The full (non-partial) unique index is what lets creation be an ON CONFLICT-ignoring upsert.
+export const transferDismissals = pgTable('transfer_dismissals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => authUsers.id),
+  expensePlaidTransactionId: text('expense_plaid_transaction_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniquePerUser: uniqueIndex('transfer_dismissals_unique').on(table.userId, table.expensePlaidTransactionId),
 }))

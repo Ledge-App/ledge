@@ -15,6 +15,7 @@ describe('schema', () => {
       'budgets',
       'reimbursements',
       'transfers',
+      'transferDismissals',
     ] as const
     for (const name of tableNames) {
       expect(schema[name]).toBeDefined()
@@ -39,5 +40,15 @@ describe('schema', () => {
     expect(schema.transfers.incomePlaidTransactionId).toBeDefined()
     expect(schema.transfers.incomeManualTransactionId).toBeDefined()
     expect(schema.transfers.kind).toBeDefined()
+  })
+
+  it('gives transfers a source discriminator defaulting to manual', () => {
+    expect(schema.transfers.source).toBeDefined()
+    expect(schema.transfers.source.default).toBe('manual')
+  })
+
+  it('gives transfer_dismissals its expense leg key', () => {
+    expect(schema.transferDismissals.expensePlaidTransactionId).toBeDefined()
+    expect(schema.transferDismissals.userId).toBeDefined()
   })
 })

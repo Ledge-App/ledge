@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api/client'
 import { useAccounts } from './useAccounts'
 import { useManualTransactions } from './useManualTransactions'
@@ -7,10 +7,37 @@ import { useVendorMappings } from './useVendorMappings'
 import { useCategories } from './useCategories'
 import { useReimbursements } from './useReimbursements'
 import { useTransfers } from './useTransfers'
-import { getCachedTransactions, setCachedTransactions, getCursor, setCursor } from '@/lib/storage/mmkv'
+import {
+  appendPendingRemovedTransactionIds,
+  getCachedTransactions,
+  getCursor,
+  getPendingRemovedTransactionIds,
+  setCachedTransactions,
+  setCursor,
+  setPendingRemovedTransactionIds,
+} from '@/lib/storage/mmkv'
 import { applyReimbursements, applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
+import { detectTransfers } from '@/lib/transfers/autoMatch'
+import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
+import { useTransferDismissals } from './useTransferDismissals'
+import type { AutoMatchResult, TransferDraft } from '@/lib/transfers/autoMatch'
 import type { PlaidTransaction } from '@/types/domain'
+
+export interface TransferSuggestion extends TransferDraft {
+  /**
+   * 'high' drafts auto-apply (persisted as source-'auto' transfers without a tap); what
+   * surfaces here is the 'medium' tier — plausible pairs that need a one-tap confirm.
+   */
+  confidence: 'high' | 'medium'
+}
+
+// Stable identity so the auto-apply effect doesn't re-fire while data is still loading.
+const NO_DETECTION: AutoMatchResult = { autoApply: [], suggestions: [] }
+
+function pairKey(draft: TransferDraft): string {
+  return `${draft.expense.id}::${draft.income.id}`
+}
 
 export function useTransactionFeed() {
   const accounts = useAccounts()
@@ -33,6 +60,14 @@ export function useTransactionFeed() {
   // rawTransactions memo below re-reads the cache. MMKV writes are a side effect
   // outside React state, so this timestamp is what makes them observable.
   const [syncCompletedAt, setSyncCompletedAt] = useState(0)
+
+  // The backend bounds each sync request's pages per item and reports per-item hasMore
+  // when an item isn't drained (e.g. a freshly linked account's full history). onSuccess
+  // keeps re-syncing until every item is drained. The counter is a backstop against a
+  // server that never stops reporting hasMore; it resets on every user/effect-initiated
+  // sync. 20 rounds x 10 pages x 500 transactions is far beyond any real backlog.
+  const drainRoundsRef = useRef(0)
+  const MAX_DRAIN_ROUNDS = 20
 
   // transactions.sync is a mutation, not a query: it advances a stateful per-item Plaid
   // cursor. As a useQuery, the cursors input was part of the react-query cache key, so
@@ -67,7 +102,27 @@ export function useTransactionFeed() {
 
       for (const [itemId, map] of mergedByItem) setCachedTransactions(itemId, Array.from(map.values()))
       for (const [itemId, cursor] of Object.entries(result.cursors)) setCursor(itemId, cursor)
+      // Queue removals durably BEFORE announcing the sync: Plaid emits each removal exactly
+      // once, and after the merge above the transaction is gone from the cache — this queue
+      // is the only remaining evidence a transfer referencing it must be dissolved (orphan
+      // sweep below). MMKV so an app death here can't lose it.
+      appendPendingRemovedTransactionIds(result.removed.map((r) => r.transaction_id))
       setSyncCompletedAt(Date.now())
+
+      // Keep draining while the backend reports any item has more pages. Cursors were
+      // just persisted above, so this continuation resumes exactly where this response
+      // ended. All items' cursors are sent (not only the undrained ones): the backend
+      // syncs every linked item, and an omitted cursor would re-download that item's
+      // entire history from scratch.
+      if (Object.values(result.hasMore ?? {}).some(Boolean) && drainRoundsRef.current < MAX_DRAIN_ROUNDS) {
+        drainRoundsRef.current += 1
+        const cursors: Record<string, string> = {}
+        for (const itemId of itemIds) {
+          const cursor = getCursor(itemId)
+          if (cursor) cursors[itemId] = cursor
+        }
+        runSync({ cursors })
+      }
     },
   })
 
@@ -78,6 +133,8 @@ export function useTransactionFeed() {
   const triggerSync = useCallback(
     (ids: string[]) => {
       if (ids.length === 0) return
+      // A fresh user/effect-initiated sync starts a new drain sequence.
+      drainRoundsRef.current = 0
       const cursors: Record<string, string> = {}
       for (const itemId of ids) {
         const cursor = getCursor(itemId)
@@ -113,9 +170,104 @@ export function useTransactionFeed() {
   // can never drift from what Dashboard, Budgets and the Transactions calendar show.
   const aggregate = useMemo(() => aggregateMonth(feed), [feed])
 
+  // Automatic internal-transfer detection over the FULL cache, not just the sync delta
+  // (docs/credit-card-payment-auto-transfer.md). Full-cache detection is what makes the
+  // account-link scan automatic — a newly linked account's history lands in the cache via
+  // sync and the next pass pairs it against everything, old or new, whichever leg carries
+  // the tag — and it closes the cross-session gap where the tagged leg synced in an earlier
+  // session and delta-only driving would never revisit it. Cost is fine: the index build is
+  // O(eligible) either way and drivers are pre-filtered to transfer-tagged items.
+  //
+  // The gate on loaded data is load-bearing: detecting before transfers/dismissals/
+  // reimbursements arrive would see already-linked legs as unlinked and re-create them
+  // (the DB's partial-unique indexes are the backstop, but don't lean on the backstop).
+  const dismissals = useTransferDismissals()
+  const detection = useMemo<AutoMatchResult>(() => {
+    if (feed.length === 0 || !accounts.data?.length) return NO_DETECTION
+    if (!transfers.data || !reimbursements.data || !dismissals.data) return NO_DETECTION
+    const dismissedIds = new Set(dismissals.data.map((d) => d.expensePlaidTransactionId))
+    return detectTransfers({ feed, accounts: accounts.data, dismissedIds })
+  }, [feed, accounts.data, transfers.data, reimbursements.data, dismissals.data])
+
+  // AUTO-APPLY: persist high-confidence drafts as source-'auto' transfers. postedPairsRef
+  // stops re-posting the same pair while the transfers.list invalidation is in flight
+  // (fresh list data re-stamps the legs and detection stops producing the draft). A pair
+  // whose POST fails stays counted and is retried next session — the safe direction.
+  const postedPairsRef = useRef(new Set<string>())
+  const createManyTransfers = transfers.createMany
+  useEffect(() => {
+    const fresh = detection.autoApply.filter((draft) => !postedPairsRef.current.has(pairKey(draft)))
+    if (fresh.length === 0) return
+    for (const draft of fresh) postedPairsRef.current.add(pairKey(draft))
+    const rows = fresh.map((draft) => ({
+      kind: draft.kind,
+      expensePlaidTransactionId: draft.expense.id,
+      incomePlaidTransactionId: draft.income.id,
+      amount: draft.amount.toFixed(2),
+    }))
+    void (async () => {
+      // Chunked to the router's batch bound; sequential so a backfill can't stampede.
+      for (let i = 0; i < rows.length; i += 100) {
+        try {
+          await createManyTransfers({ transfers: rows.slice(i, i + 100) })
+        } catch {
+          // Best-effort by design: the pairs stay counted (never wrongly hidden) and the
+          // next app session re-detects and retries them.
+          break
+        }
+      }
+    })()
+  }, [detection, createManyTransfers])
+
+  // The medium tier: plausible pairs that need a one-tap confirm, never auto-persisted.
+  const transferSuggestions = useMemo<TransferSuggestion[]>(
+    () => detection.suggestions.map((draft) => ({ ...draft, confidence: 'medium' as const })),
+    [detection],
+  )
+
+  // ORPHAN SWEEP (phase 6): dissolve transfers whose leg Plaid retracted (queued durably in
+  // onSuccess above) or whose auto-paired amounts drifted after a `modified`. Deleting goes
+  // through transfers.delete, NOT unmark — no dismissal is written, because the pair wasn't
+  // rejected by the user, it ceased to exist; a corrected re-post must be free to re-match.
+  // Convergence: a queued id stays until no transfer references it, which only becomes true
+  // through the refetched list after a successful delete — so a failed delete retries on the
+  // next pass instead of being lost.
+  const orphanSweepBusyRef = useRef(false)
+  const deleteTransfer = transfers.delete
+  useEffect(() => {
+    if (!transfers.data) return
+    const pendingRemovedIds = getPendingRemovedTransactionIds()
+    const feedById = new Map(feed.map((item) => [item.id, item]))
+    const { dissolveTransferIds, clearableRemovedIds } = findOrphanedTransfers({
+      transfers: transfers.data,
+      feedById,
+      pendingRemovedIds,
+    })
+    if (clearableRemovedIds.length > 0) {
+      const clearable = new Set(clearableRemovedIds)
+      setPendingRemovedTransactionIds(pendingRemovedIds.filter((id) => !clearable.has(id)))
+    }
+    if (dissolveTransferIds.length === 0 || orphanSweepBusyRef.current) return
+    orphanSweepBusyRef.current = true
+    void (async () => {
+      try {
+        for (const id of dissolveTransferIds) {
+          try {
+            await deleteTransfer({ id })
+          } catch {
+            // Leave the queue untouched; the next pass retries this transfer.
+          }
+        }
+      } finally {
+        orphanSweepBusyRef.current = false
+      }
+    })()
+  }, [feed, transfers.data, deleteTransfer])
+
   return {
     feed,
     categoryById,
+    transferSuggestions,
     spendByCategory: aggregate.spendByCategory,
     spendByDay: aggregate.spendByDay,
     isLoading:

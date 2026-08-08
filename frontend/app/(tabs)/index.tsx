@@ -139,7 +139,9 @@ export default function DashboardScreen() {
   async function handleUnmarkTransfer() {
     if (!activeSheetItem?.transferId) return
     try {
-      await transfers.delete({ id: activeSheetItem.transferId })
+      // unmark (not delete) also records a dismissal, so auto-detection can't re-create
+      // the pair the user just removed on the next scan.
+      await transfers.unmark({ id: activeSheetItem.transferId })
       setActiveSheetItem(null)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')

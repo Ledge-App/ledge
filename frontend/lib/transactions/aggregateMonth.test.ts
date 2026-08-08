@@ -12,6 +12,7 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     subcategoryId: null,
     categorySource: 'uncategorized',
     confidenceLevel: null,
+    pfcDetailed: null,
     accountId: null,
     pending: false,
     note: null,
@@ -22,6 +23,7 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     transferId: null,
     transferKind: null,
     transferRole: null,
+    transferSource: null,
     ...overrides,
   }
 }

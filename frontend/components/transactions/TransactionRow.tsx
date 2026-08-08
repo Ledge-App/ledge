@@ -39,24 +39,16 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       </View>
 
       <View className="flex-1 gap-0.5">
-        {transferType ? (
-          <View className="flex-row items-center gap-2">
-            <Text className="font-sansSemi text-base text-textSecondary">{categoryName}</Text>
-            <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(transferType.color, 0.14) }}>
-              <Text className="font-sansMed text-xs" style={{ color: transferType.color }}>
-                {transferType.label}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <Text className="font-sansSemi text-base text-textPrimary">
-            {item.isReimbursementIncome
-              ? reimbursementCategoryName
-                ? `Reimbursement · ${reimbursementCategoryName}`
-                : 'Reimbursement'
-              : categoryName}
-          </Text>
-        )}
+        <Text
+          className={`font-sansSemi text-base ${transferType ? 'text-textSecondary' : 'text-textPrimary'}`}
+          numberOfLines={1}
+        >
+          {item.isReimbursementIncome
+            ? reimbursementCategoryName
+              ? `Reimbursement · ${reimbursementCategoryName}`
+              : 'Reimbursement'
+            : categoryName}
+        </Text>
         <Text className="font-sans text-sm text-textSecondary" numberOfLines={1}>
           {item.merchantName}
         </Text>
@@ -72,6 +64,16 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
             {isIncome ? '+' : '-'}{formatAmount(Math.abs(item.amount))}
           </Text>
         )}
+        {transferType ? (
+          // Under the amount, not beside the title: the badge is the row's meaning ('Auto'
+          // marks links made by auto-detection; unmarking is the one-tap undo) and here it
+          // never competes with the category name for width.
+          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(transferType.color, 0.14) }}>
+            <Text className="font-sansMed text-xs" numberOfLines={1} style={{ color: transferType.color }}>
+              {item.transferSource === 'auto' ? `${transferType.shortLabel} · Auto` : transferType.shortLabel}
+            </Text>
+          </View>
+        ) : null}
         {item.confidenceLevel === 'MEDIUM' ? <Text style={{ fontSize: 11 }}>❓</Text> : null}
       </View>
     </Pressable>
