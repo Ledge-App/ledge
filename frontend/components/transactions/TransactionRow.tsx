@@ -73,11 +73,14 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
           )}
           {institutionLogo ? (
             // Which card/bank this hit, at a glance — mirrors the amount-side bank chip in
-            // apps like the reference tracker. Base64 PNG straight from Plaid.
-            <Image
-              source={{ uri: `data:image/png;base64,${institutionLogo}` }}
-              style={{ width: 16, height: 16, borderRadius: 8 }}
-            />
+            // apps like the reference tracker. Base64 PNG straight from Plaid. The ring
+            // repeats the amount's meaning: green in, red out, muted for transfer legs.
+            <View style={{ borderWidth: 1.5, borderColor: amountColor, borderRadius: 12, padding: 1 }}>
+              <Image
+                source={{ uri: `data:image/png;base64,${institutionLogo}` }}
+                style={{ width: 17, height: 17, borderRadius: 8.5 }}
+              />
+            </View>
           ) : null}
         </View>
         {transferType ? (
