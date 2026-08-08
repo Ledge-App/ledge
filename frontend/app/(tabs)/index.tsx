@@ -17,13 +17,14 @@ import { ViewTogglePill } from '@/components/visualizations/ViewTogglePill'
 import { VisualizationPager } from '@/components/visualizations/VisualizationPager'
 import { CategoryDetailSheet } from '@/components/visualizations/CategoryDetailSheet'
 import { formatAmount } from '@/lib/format/money'
-import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { useSelectedMonth } from '@/hooks/useSelectedMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { UNCATEGORIZED_ID, computeDonutSegments } from '@/lib/transactions/visualizationData'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
 
 export default function DashboardScreen() {
-  const [month, setMonth] = useState(currentMonth())
+  const [month, setMonth] = useSelectedMonth()
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [expensesOpen, setExpensesOpen] = useState(true)
   const [incomeOpen, setIncomeOpen] = useState(true)
@@ -124,7 +125,7 @@ export default function DashboardScreen() {
       <View className="flex-1 flex-row">
         <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
       </View>
-      <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
+      <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onSelect={setMonth} />
       <View className="flex-1 items-end">
         <Ionicons name="paw" size={22} color={colors.textMuted} style={{ opacity: 0.4 }} />
       </View>

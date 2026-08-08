@@ -18,12 +18,13 @@ import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
-import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { useSelectedMonth } from '@/hooks/useSelectedMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { Budget } from '@/types/domain'
 
 export default function BudgetsScreen() {
-  const [month, setMonth] = useState(currentMonth())
+  const [month, setMonth] = useSelectedMonth()
   const [settingCategoryId, setSettingCategoryId] = useState<string | null>(null)
   const [newAmount, setNewAmount] = useState('')
   const [newPeriod, setNewPeriod] = useState<Budget['period']>('monthly')
@@ -89,7 +90,7 @@ export default function BudgetsScreen() {
       <ScrollView contentContainerClassName="gap-4 px-5 py-4">
         <View className="flex-row items-center justify-between">
           <Text className="font-sansSemi text-lg text-textPrimary">Budgets</Text>
-          <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
+          <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onSelect={setMonth} />
         </View>
 
         {error ? <ErrorBanner message="Something went wrong loading your budgets." /> : null}
