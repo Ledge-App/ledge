@@ -58,7 +58,7 @@ export function AccountDetailSheet({
   const insets = useSafeAreaInsets()
   const sheetScroll = useSheetScroll()
   // Wired here rather than by the caller so every row this sheet shows is editable — a linked
-  // account's Plaid rows open the category sheet, the built-in Cash row's manual rows open the
+  // account's Plaid rows open the detail sheet, the built-in Cash row's manual rows open the
   // manual sheet — without each call site having to opt in.
   const editor = useTransactionEditor(feed)
 

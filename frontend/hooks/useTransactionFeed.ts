@@ -6,7 +6,6 @@ import { useTransactionOverrides } from './useTransactionOverrides'
 import { useVendorMappings } from './useVendorMappings'
 import { usePlaidCategoryMappings } from './usePlaidCategoryMappings'
 import { useCategories } from './useCategories'
-import { useReimbursements } from './useReimbursements'
 import { useTransfers } from './useTransfers'
 import {
   appendPendingRemovedTransactionIds,
@@ -17,7 +16,7 @@ import {
   setCursor,
   setPendingRemovedTransactionIds,
 } from '@/lib/storage/mmkv'
-import { applyReimbursements, applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { detectTransfers } from '@/lib/transfers/autoMatch'
@@ -48,7 +47,6 @@ export function useTransactionFeed() {
   const vendorMappings = useVendorMappings()
   const plaidCategoryMappings = usePlaidCategoryMappings()
   const categories = useCategories()
-  const reimbursements = useReimbursements()
   const transfers = useTransfers()
 
   const itemIds = useMemo(() => Array.from(new Set((accounts.data ?? []).map((a) => a.itemId))), [accounts.data])
@@ -176,8 +174,7 @@ export function useTransactionFeed() {
       // since itemIds comes from the same query.
       accounts.data ?? [],
     )
-    const reimbursed = applyReimbursements(merged, reimbursements.data ?? [])
-    const withTransfers = applyTransfers(reimbursed, transfers.data ?? [])
+    const withTransfers = applyTransfers(merged, transfers.data ?? [])
     // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
     // left unpaired, so it can never override a transfer that auto-applied or the user confirmed.
     return applySweepExclusion(withTransfers)
@@ -188,7 +185,6 @@ export function useTransactionFeed() {
     vendorMappings.data,
     plaidCategoryMappings.data,
     accounts.data,
-    reimbursements.data,
     transfers.data,
   ])
 
@@ -206,16 +202,16 @@ export function useTransactionFeed() {
   // session and delta-only driving would never revisit it. Cost is fine: the index build is
   // O(eligible) either way and drivers are pre-filtered to transfer-tagged items.
   //
-  // The gate on loaded data is load-bearing: detecting before transfers/dismissals/
-  // reimbursements arrive would see already-linked legs as unlinked and re-create them
+  // The gate on loaded data is load-bearing: detecting before transfers/dismissals
+  // arrive would see already-linked legs as unlinked and re-create them
   // (the DB's partial-unique indexes are the backstop, but don't lean on the backstop).
   const dismissals = useTransferDismissals()
   const detection = useMemo<AutoMatchResult>(() => {
     if (feed.length === 0 || !accounts.data?.length) return NO_DETECTION
-    if (!transfers.data || !reimbursements.data || !dismissals.data) return NO_DETECTION
+    if (!transfers.data || !dismissals.data) return NO_DETECTION
     const dismissedIds = new Set(dismissals.data.map((d) => d.expensePlaidTransactionId))
     return detectTransfers({ feed, accounts: accounts.data, dismissedIds })
-  }, [feed, accounts.data, transfers.data, reimbursements.data, dismissals.data])
+  }, [feed, accounts.data, transfers.data, dismissals.data])
 
   // AUTO-APPLY: persist high-confidence drafts as source-'auto' transfers. postedPairsRef
   // stops re-posting the same pair while the transfers.list invalidation is in flight

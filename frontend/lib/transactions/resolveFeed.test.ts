@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCategory, mergeFeed, applyReimbursements, applyTransfers } from './resolveFeed'
-import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Reimbursement, Transfer } from '@/types/domain'
+import { resolveCategory, mergeFeed, applyTransfers } from './resolveFeed'
+import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Transfer } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -231,7 +231,7 @@ describe('mergeFeed', () => {
   })
 })
 
-// Shared by the applyReimbursements suite and the end-to-end pipeline suite below: the
+// Shared by the reimbursement suite and the end-to-end pipeline suite below: the
 // product.md $100 dinner split three ways, in raw Plaid shape rather than pre-built FeedItems.
 const dinnerPlaidTxns = [
   {
@@ -257,45 +257,45 @@ const dinnerVendorMappings: VendorMapping[] = [
   { id: 'vm-bob', vendorName: 'Zelle from Bob', categoryId: 'cat-transfers-in', subcategoryId: null, source: 'plaid_auto' },
 ]
 
-describe('applyReimbursements', () => {
+describe('applyTransfers — reimbursements', () => {
   // Built by actually running mergeFeed, so a FeedItem shape change breaks these tests
   // instead of silently passing behind a cast.
   const baseFeed = mergeFeed(dinnerPlaidTxns, [], [], dinnerVendorMappings)
 
-  const reimbursements: Reimbursement[] = [
-    { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
-    { id: 'r2', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
+  const reimbursements: Transfer[] = [
+    { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
+    { id: 'r2', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
   ]
 
   it('computes net expense as original minus the sum of all linked reimbursements', () => {
-    const result = applyReimbursements(baseFeed, reimbursements)
+    const result = applyTransfers(baseFeed, reimbursements)
     const expense = result.find((item) => item.id === 'expense-1')!
     expect(expense.reimbursedAmount).toBe(60)
     expect(expense.netAmount).toBe(40)
   })
 
   it('tags each linked income row as a reimbursement, carrying the expense category', () => {
-    const result = applyReimbursements(baseFeed, reimbursements)
+    const result = applyTransfers(baseFeed, reimbursements)
     const alice = result.find((item) => item.id === 'income-alice')!
     expect(alice.isReimbursementIncome).toBe(true)
     expect(alice.reimbursementCategoryId).toBe('cat-food')
   })
 
   it('never lets net expense go negative when reimbursements exceed the original amount', () => {
-    const overReimbursed: Reimbursement[] = [
-      { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '150.00', note: null },
+    const overReimbursed: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '150.00', note: null },
     ]
-    const result = applyReimbursements(baseFeed, overReimbursed)
+    const result = applyTransfers(baseFeed, overReimbursed)
     expect(result.find((item) => item.id === 'expense-1')!.netAmount).toBe(0)
   })
 
   it('leaves unrelated feed items unchanged', () => {
-    const result = applyReimbursements(baseFeed, [])
+    const result = applyTransfers(baseFeed, [])
     expect(result).toEqual(baseFeed)
   })
 })
 
-// End-to-end: resolveCategory -> mergeFeed -> applyReimbursements chained on one realistic
+// End-to-end: resolveCategory -> mergeFeed -> applyTransfers chained on one realistic
 // dataset, starting from raw Plaid/manual shapes rather than hand-built FeedItems. This is
 // the product.md $100 dinner / $30 Alice / $30 Bob / $40 net scenario.
 describe('resolveFeed pipeline', () => {
@@ -308,14 +308,14 @@ describe('resolveFeed pipeline', () => {
     { id: 'm-coffee', amount: '4.75', type: 'expense', categoryId: 'cat-food', subcategoryId: null, date: '2026-06-22', note: 'Coffee cart' },
   ] as ManualTransaction[]
 
-  const pipelineReimbursements: Reimbursement[] = [
-    { id: 'r1', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
-    { id: 'r2', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
+  const pipelineReimbursements: Transfer[] = [
+    { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-alice', incomeManualTransactionId: null, amount: '30.00', note: null },
+    { id: 'r2', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'expense-1', expenseManualTransactionId: null, incomePlaidTransactionId: 'income-bob', incomeManualTransactionId: null, amount: '30.00', note: null },
   ]
 
   function runPipeline() {
     const merged = mergeFeed(dinnerPlaidTxns, manualTxns, pipelineOverrides, dinnerVendorMappings)
-    return applyReimbursements(merged, pipelineReimbursements)
+    return applyTransfers(merged, pipelineReimbursements)
   }
 
   it('sorts the merged Plaid + manual feed by date descending', () => {
@@ -475,5 +475,75 @@ describe('applyTransfers', () => {
     const result = applyTransfers(catFeed, transfers)
 
     expect(find(result, 'in').reimbursementCategoryId).toBe('food')
+  })
+})
+
+// Every leg carries a snapshot of what it's linked to, because the sheets that display links are
+// often handed a filtered slice of the feed (one account, one category) in which the counterpart
+// isn't present. Resolved here, where the whole feed is in hand, so no caller has to look it up.
+describe('link stamping', () => {
+  const plaidTxns = [
+    { transaction_id: 'flight', account_id: 'visa', amount: 2055.32, date: '2026-08-12', name: 'UNITED', merchant_name: 'United Airlines', pending: false },
+    { transaction_id: 'payout', account_id: 'checking', amount: -2000, date: '2026-08-13', name: 'EXPENSIFY', merchant_name: 'Expensify', pending: false },
+    { transaction_id: 'payout2', account_id: 'checking', amount: -55.32, date: '2026-08-20', name: 'EXPENSIFY', merchant_name: 'Expensify', pending: false },
+    { transaction_id: 'lunch', account_id: 'checking', amount: 12, date: '2026-08-10', name: 'DELI', merchant_name: 'Deli', pending: false },
+  ] as unknown as PlaidTransaction[]
+
+  const feed = mergeFeed(plaidTxns, [], [], [])
+  const find = (items: ReturnType<typeof mergeFeed>, id: string) => items.find((item) => item.id === id)!
+
+  it('links both legs of a transfer to each other', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'flight', expenseManualTransactionId: null, incomePlaidTransactionId: 'payout', incomeManualTransactionId: null, amount: '2055.32', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'flight').links).toEqual([
+      { recordId: 't1', kind: 'account_transfer', itemId: 'payout', merchantName: 'Expensify', date: '2026-08-13', accountId: 'checking', amount: 2055.32 },
+    ])
+    expect(find(result, 'payout').links).toEqual([
+      { recordId: 't1', kind: 'account_transfer', itemId: 'flight', merchantName: 'United Airlines', date: '2026-08-12', accountId: 'visa', amount: 2055.32 },
+    ])
+  })
+
+  it('gives an unpaired transfer a link with no counterpart, so the sheet can say so', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'credit_card_payment', source: 'auto', expensePlaidTransactionId: 'flight', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '2055.32', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'flight').links).toEqual([
+      { recordId: 't1', kind: 'credit_card_payment', itemId: null, merchantName: null, date: null, accountId: null, amount: 2055.32 },
+    ])
+  })
+
+  it('treats a counterpart outside the loaded window as unpaired rather than dropping the link', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'flight', expenseManualTransactionId: null, incomePlaidTransactionId: 'not-loaded', incomeManualTransactionId: null, amount: '2055.32', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'flight').links).toMatchObject([{ recordId: 't1', itemId: null, merchantName: null }])
+  })
+
+  it('links an expense to every reimbursement paid against it, each with its own amount', () => {
+    const transfers: Transfer[] = [
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'flight', expenseManualTransactionId: null, incomePlaidTransactionId: 'payout', incomeManualTransactionId: null, amount: '2000.00', note: null },
+      { id: 'r2', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'flight', expenseManualTransactionId: null, incomePlaidTransactionId: 'payout2', incomeManualTransactionId: null, amount: '55.32', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'flight').links).toEqual([
+      { recordId: 'r1', kind: 'reimbursement', itemId: 'payout', merchantName: 'Expensify', date: '2026-08-13', accountId: 'checking', amount: 2000 },
+      { recordId: 'r2', kind: 'reimbursement', itemId: 'payout2', merchantName: 'Expensify', date: '2026-08-20', accountId: 'checking', amount: 55.32 },
+    ])
+    // Each income leg knows only about its own link back to the expense.
+    expect(find(result, 'payout').links).toMatchObject([{ recordId: 'r1', itemId: 'flight', amount: 2000 }])
+    expect(find(result, 'payout2').links).toMatchObject([{ recordId: 'r2', itemId: 'flight', amount: 55.32 }])
+  })
+
+  it('leaves unlinked transactions with an empty list', () => {
+    expect(find(mergeFeed(plaidTxns, [], [], []), 'lunch').links).toEqual([])
+    expect(find(applyTransfers(feed, []), 'lunch').links).toEqual([])
   })
 })

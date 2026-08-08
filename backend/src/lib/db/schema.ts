@@ -132,32 +132,14 @@ export const budgets = pgTable('budgets', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-export const reimbursements = pgTable('reimbursements', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => authUsers.id),
-  expensePlaidTransactionId: text('expense_plaid_transaction_id'),
-  expenseManualTransactionId: uuid('expense_manual_transaction_id').references(() => manualTransactions.id),
-  incomePlaidTransactionId: text('income_plaid_transaction_id'),
-  incomeManualTransactionId: uuid('income_manual_transaction_id').references(() => manualTransactions.id),
-  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-  note: text('note'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  expenseXor: check(
-    'expense_xor',
-    sql`(${table.expensePlaidTransactionId} IS NOT NULL) <> (${table.expenseManualTransactionId} IS NOT NULL)`,
-  ),
-  incomeXor: check(
-    'income_xor',
-    sql`(${table.incomePlaidTransactionId} IS NOT NULL) <> (${table.incomeManualTransactionId} IS NOT NULL)`,
-  ),
-}))
-
 // A transfer between the user's own accounts (or a credit card payment) shows up twice in the
 // feed — once as an expense on the source account, once as income on the destination. Both legs
-// are excluded from spend/income totals. Shaped like `reimbursements`, with two differences:
-// the income leg is OPTIONAL (transfers to an account the user hasn't connected have no second
-// leg to link), and `kind` records which transfer type it is.
+// are excluded from spend/income totals.
+//
+// Every kind of link between two transactions lives here, reimbursements included: this table
+// replaced the original `reimbursements` one, which is why `kind` carries 'reimbursement' and why
+// the expense-side unique indexes below exempt it. The income leg is OPTIONAL — a transfer to an
+// account the user hasn't connected has no second leg to link.
 export const transfers = pgTable('transfers', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id),
@@ -166,9 +148,9 @@ export const transfers = pgTable('transfers', {
   // (docs/credit-card-payment-auto-transfer.md). Lets the UI badge auto matches and offer undo.
   source: text('source').notNull().default('manual'),
   expensePlaidTransactionId: text('expense_plaid_transaction_id'),
-  // Cascade, unlike reimbursements: deleting a manual transaction must not be blocked by the
-  // transfer row that references it. Removing a leg removes the transfer entirely, which is
-  // what unmarking means anyway.
+  // Cascade: deleting a manual transaction must not be blocked by the transfer row that
+  // references it. Removing a leg removes the transfer entirely, which is what unmarking
+  // means anyway.
   expenseManualTransactionId: uuid('expense_manual_transaction_id').references(() => manualTransactions.id, { onDelete: 'cascade' }),
   incomePlaidTransactionId: text('income_plaid_transaction_id'),
   incomeManualTransactionId: uuid('income_manual_transaction_id').references(() => manualTransactions.id, { onDelete: 'cascade' }),

@@ -5,15 +5,15 @@ import { useCategories } from './useCategories'
 import { useSubcategories } from './useSubcategories'
 import { useTransactionOverrides } from './useTransactionOverrides'
 import { useVendorMappings } from './useVendorMappings'
-import { useReimbursements } from './useReimbursements'
 import { useTransfers } from './useTransfers'
 import { useManualTransactions } from './useManualTransactions'
 import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
+import { transferCandidates } from '@/lib/transfers/candidates'
 import type { PendingTransfer } from '@/lib/transfers/buildTransferInputs'
-import type { FeedItem } from '@/lib/transactions/resolveFeed'
+import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Account, Category, ManualTransaction, Subcategory, TransferKind } from '@/types/domain'
 
-// The category sheet and the transfer sheet are both bottom sheets. Reopening one the instant the
+// The detail sheet and the transfer sheet are both bottom sheets. Reopening one the instant the
 // other closes fights the dismiss animation, so the handoff waits for it to finish.
 const SHEET_HANDOFF_MS = 350
 // Marking a manual transaction as a transfer saves first, so its sheet has further to travel.
@@ -33,32 +33,29 @@ export interface TransactionEditor {
   categories: Category[]
   subcategories: Subcategory[]
   activeSheetItem: FeedItem | null
-  reimbursementItem: FeedItem | null
   manualSheetOpen: boolean
   editingManual: ManualTransaction | null
-  candidateIncomeItems: FeedItem[]
   isSavingManual: boolean
   saveError: string | null
   dismissSaveError: () => void
-  /** Opens the category sheet for Plaid items, the manual edit sheet for manual ones. */
+  /** Opens the detail sheet for Plaid items, the manual edit sheet for manual ones. */
   openTransaction: (item: FeedItem) => void
   openNewManual: () => void
-  closeCategorySheet: () => void
-  closeReimbursementSheet: () => void
+  closeDetailSheet: () => void
   closeManualSheet: () => void
   saveCategory: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => Promise<void>
-  openReimbursement: (input: { categoryId: string; subcategoryId: string | null }) => Promise<void>
-  saveReimbursement: (linkedIncomeIds: string[]) => Promise<void>
   saveManual: (input: ManualInput) => Promise<void>
   deleteManual: () => void
+  /** Removes a single link from the open transaction, leaving its other links in place. */
+  unlink: (link: FeedLink) => Promise<void>
 
-  // Transfer flow. The category sheet's "Mark as Transfer"/"Mark as Reimbursement" toggles hand
+  // Transfer flow. The detail sheet's "Mark as Transfer"/"Mark as Reimbursement" toggles hand
   // off to the transfer sheet, which hands a pending choice back to be saved with the category.
   transferItem: FeedItem | null
   transferCandidateItems: FeedItem[]
   transferForcedKind: TransferKind | undefined
   isSavingTransfer: boolean
-  /** The pending choice, with counterpart ids resolved to items for the category sheet's summary. */
+  /** The pending choice, with counterpart ids resolved to items for the detail sheet's summary. */
   pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
   openTransfer: (forcedKind?: TransferKind) => void
   confirmTransfer: (input: { kind: TransferKind; counterpartIds: string[] }) => void
@@ -76,7 +73,6 @@ export interface TransactionEditor {
 // editing behaviour by pairing this with <TransactionEditSheets />.
 export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const [activeSheetItem, setActiveSheetItem] = useState<FeedItem | null>(null)
-  const [reimbursementItem, setReimbursementItem] = useState<FeedItem | null>(null)
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -89,13 +85,14 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const subcategories = useSubcategories()
   const overrides = useTransactionOverrides()
   const vendorMappings = useVendorMappings()
-  const reimbursements = useReimbursements()
   const transfers = useTransfers()
   const manualTransactions = useManualTransactions()
 
-  const candidateIncomeItems = useMemo(
-    () => feed.filter((item) => item.amount < 0 && item.id !== reimbursementItem?.id && !item.isReimbursementIncome),
-    [feed, reimbursementItem?.id],
+  // The sheet holds the item it was opened with, but unlinking rewrites that item's links a moment
+  // later. Re-resolving against the current feed keeps the open sheet showing the truth.
+  const liveActiveSheetItem = useMemo(
+    () => (activeSheetItem ? feed.find((i) => i.id === activeSheetItem.id) ?? activeSheetItem : null),
+    [activeSheetItem, feed],
   )
 
   const openTransaction = useCallback((item: FeedItem) => {
@@ -149,45 +146,6 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [activeSheetItem, feed, overrides, pendingTransfer, transfers, vendorMappings],
   )
 
-  const openReimbursement = useCallback(
-    async (input: { categoryId: string; subcategoryId: string | null }) => {
-      if (!activeSheetItem) return
-      const item = activeSheetItem
-      try {
-        await overrides.upsert({ plaidTransactionId: item.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-        setReimbursementItem(item)
-        setActiveSheetItem(null)
-      } catch (err) {
-        setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
-      }
-    },
-    [activeSheetItem, overrides],
-  )
-
-  const saveReimbursement = useCallback(
-    async (linkedIncomeIds: string[]) => {
-      if (!reimbursementItem) return
-      try {
-        for (const incomeId of linkedIncomeIds) {
-          const incomeItem = feed.find((i) => i.id === incomeId)
-          if (!incomeItem) continue
-          await reimbursements.create({
-            expensePlaidTransactionId: reimbursementItem.source === 'plaid' ? reimbursementItem.id : null,
-            expenseManualTransactionId: reimbursementItem.source === 'manual' ? reimbursementItem.id : null,
-            incomePlaidTransactionId: incomeItem.source === 'plaid' ? incomeItem.id : null,
-            incomeManualTransactionId: incomeItem.source === 'manual' ? incomeItem.id : null,
-            amount: Math.abs(incomeItem.amount).toFixed(2),
-            note: null,
-          })
-        }
-        setReimbursementItem(null)
-      } catch (err) {
-        setSaveError(err instanceof Error ? err.message : 'Could not save this reimbursement. Try again.')
-      }
-    },
-    [feed, reimbursementItem, reimbursements],
-  )
-
   const saveManual = useCallback(
     async (input: ManualInput) => {
       try {
@@ -216,7 +174,7 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [activeSheetItem],
   )
 
-  // Confirming doesn't write anything yet — it hands the choice back to the category sheet, which
+  // Confirming doesn't write anything yet — it hands the choice back to the detail sheet, which
   // saves the category and the transfer together.
   const confirmTransfer = useCallback(
     ({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) => {
@@ -234,16 +192,27 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     if (item) setTimeout(() => setActiveSheetItem(item), SHEET_HANDOFF_MS)
   }, [transferItem])
 
-  const unmarkTransferItem = useCallback(
-    async (item: FeedItem) => {
-      if (!item.transferId) return
+  // Removes one link. unmark rather than delete, so the dismissal it writes stops the next
+  // detection pass re-creating the pair the user just took apart.
+  const unlink = useCallback(
+    async (link: FeedLink) => {
       try {
-        await transfers.delete({ id: item.transferId })
+        await transfers.unmark({ id: link.recordId })
       } catch (err) {
-        setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
+        setSaveError(err instanceof Error ? err.message : 'Could not remove this link. Try again.')
       }
     },
     [transfers],
+  )
+
+  // Unmarking drops every link the item has. Driven off item.links rather than item.transferId:
+  // a reimbursed expense can hold several links and is never stamped with a transferId at all, so
+  // the old guard on transferId made unmarking one silently do nothing.
+  const unmarkTransferItem = useCallback(
+    async (item: FeedItem) => {
+      for (const link of item.links) await unlink(link)
+    },
+    [unlink],
   )
 
   const unmarkTransfer = useCallback(async () => {
@@ -282,13 +251,10 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [editedManualAsFeedItem, saveManual, unmarkTransferItem],
   )
 
-  // Only the opposite sign can be the other leg, and an item already in a transfer can't join a
-  // second one.
-  const transferCandidateItems = useMemo(() => {
-    if (!transferItem) return []
-    const wantExpense = transferItem.amount < 0
-    return feed.filter((item) => (wantExpense ? item.amount > 0 : item.amount < 0) && item.transferKind === null)
-  }, [feed, transferItem])
+  const transferCandidateItems = useMemo(
+    () => (transferItem ? transferCandidates(feed, transferItem) : []),
+    [feed, transferItem],
+  )
 
   const resolvedPendingTransfer = useMemo(() => {
     if (!pendingTransfer) return null
@@ -335,29 +301,25 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     accounts: accounts.data ?? [],
     categories: categories.data ?? [],
     subcategories: subcategories.data ?? [],
-    activeSheetItem,
-    reimbursementItem,
+    activeSheetItem: liveActiveSheetItem,
     manualSheetOpen,
     editingManual,
-    candidateIncomeItems,
     isSavingManual: manualTransactions.isLoading,
     saveError,
     dismissSaveError: useCallback(() => setSaveError(null), []),
     openTransaction,
     openNewManual,
-    // Dismissing the category sheet discards the transfer chosen alongside it — nothing was
+    // Dismissing the detail sheet discards the transfer chosen alongside it — nothing was
     // written yet, and leaving it pending would attach it to the next item opened.
-    closeCategorySheet: useCallback(() => {
+    closeDetailSheet: useCallback(() => {
       setActiveSheetItem(null)
       setPendingTransfer(null)
     }, []),
-    closeReimbursementSheet: useCallback(() => setReimbursementItem(null), []),
     closeManualSheet,
     saveCategory,
-    openReimbursement,
-    saveReimbursement,
     saveManual,
     deleteManual,
+    unlink,
 
     transferItem,
     transferCandidateItems,

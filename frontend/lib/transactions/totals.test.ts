@@ -27,6 +27,7 @@ function item(overrides: Partial<FeedItem>): FeedItem {
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    links: [],
     ...overrides,
   }
 }

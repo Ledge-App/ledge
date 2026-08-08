@@ -117,12 +117,14 @@ export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
     shortLabel: 'Reimbursed',
     icon: 'arrow-undo',
     color: colors.reimbursed,
+    // Entered from the income side: you mark the money that came back, then pick the expense it
+    // paid you back for. One income pays back one expense — a single income split across several
+    // expenses has no defined allocation, so this kind stays single-select.
     appliesTo: (item) => !isExpense(item),
     matches: (item, candidate) =>
       isOppositeSign(item, candidate) &&
       candidate.id !== item.id,
     allowsUnpaired: false,
-    multiSelect: true,
   },
 }
 

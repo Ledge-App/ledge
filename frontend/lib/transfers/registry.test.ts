@@ -26,6 +26,7 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    links: [],
     ...overrides,
   }
 }
@@ -232,8 +233,10 @@ describe('reimbursement', () => {
     expect(TRANSFER_TYPES.reimbursement.allowsUnpaired).toBe(false)
   })
 
-  it('supports multi-select', () => {
-    expect(TRANSFER_TYPES.reimbursement.multiSelect).toBe(true)
+  // One reimbursement income pays back exactly one expense. Linking several expenses to a single
+  // income has no defined split, and every row would record the full income amount.
+  it('is single-select', () => {
+    expect(TRANSFER_TYPES.reimbursement.multiSelect).toBeFalsy()
   })
 })
 

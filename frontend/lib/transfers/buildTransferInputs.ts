@@ -36,8 +36,10 @@ export function buildTransferInputs(item: FeedItem, pending: PendingTransfer, fe
       expenseManualTransactionId: expenseItem?.source === 'manual' ? expenseItem.id : null,
       incomePlaidTransactionId: incomeItem?.source === 'plaid' ? incomeItem.id : null,
       incomeManualTransactionId: incomeItem?.source === 'manual' ? incomeItem.id : null,
-      // A reimbursement is only partial — it records what came back, not what was spent.
-      amount: isReimbursement && counterpart ? Math.abs(counterpart.amount).toFixed(2) : Math.abs(item.amount).toFixed(2),
+      // A reimbursement is only partial — it records what came back, not what was spent, so its
+      // amount always comes off the income leg whichever side the user started from. Every other
+      // kind pairs equal amounts, so the marked item's own amount is fine.
+      amount: isReimbursement && incomeItem ? Math.abs(incomeItem.amount).toFixed(2) : Math.abs(item.amount).toFixed(2),
       note: null,
     }
   })

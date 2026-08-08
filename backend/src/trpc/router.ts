@@ -10,7 +10,6 @@ import { vendorMappingsRouter } from '../routers/vendorMappings.js'
 import { manualTransactionsRouter } from '../routers/manualTransactions.js'
 import { transactionOverridesRouter } from '../routers/transactionOverrides.js'
 import { budgetsRouter } from '../routers/budgets.js'
-import { reimbursementsRouter } from '../routers/reimbursements.js'
 import { transfersRouter } from '../routers/transfers.js'
 import { transferDismissalsRouter } from '../routers/transferDismissals.js'
 import { investmentsRouter } from '../routers/investments.js'
@@ -28,7 +27,6 @@ export const appRouter = router({
   manualTransactions: manualTransactionsRouter,
   transactionOverrides: transactionOverridesRouter,
   budgets: budgetsRouter,
-  reimbursements: reimbursementsRouter,
   transfers: transfersRouter,
   transferDismissals: transferDismissalsRouter,
   investments: investmentsRouter,

@@ -24,6 +24,7 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    links: [],
     ...overrides,
   }
 }

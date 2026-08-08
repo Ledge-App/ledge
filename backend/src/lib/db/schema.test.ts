@@ -13,7 +13,6 @@ describe('schema', () => {
       'manualTransactions',
       'transactionOverrides',
       'budgets',
-      'reimbursements',
       'transfers',
       'transferDismissals',
     ] as const
@@ -27,11 +26,10 @@ describe('schema', () => {
     expect(schema.categories.icon).toBeDefined()
   })
 
-  it('gives reimbursements the four nullable linkage columns', () => {
-    expect(schema.reimbursements.expensePlaidTransactionId).toBeDefined()
-    expect(schema.reimbursements.expenseManualTransactionId).toBeDefined()
-    expect(schema.reimbursements.incomePlaidTransactionId).toBeDefined()
-    expect(schema.reimbursements.incomeManualTransactionId).toBeDefined()
+  // The original `reimbursements` table was dropped in 0007: reimbursements are rows in
+  // `transfers` with kind = 'reimbursement', and have been since 0003.
+  it('no longer exports a reimbursements table', () => {
+    expect('reimbursements' in schema).toBe(false)
   })
 
   it('gives transfers the four linkage columns plus a kind discriminator', () => {
