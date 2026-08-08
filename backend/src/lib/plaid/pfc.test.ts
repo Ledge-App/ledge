@@ -20,6 +20,26 @@ describe('pfc taxonomy', () => {
     }
   })
 
+  it('gives every entry a distinct Plaid primary, so the primary fallback is unambiguous', () => {
+    const primaries = DEFAULT_PFC_MAPPING.map((e) => e.primary)
+    expect(new Set(primaries).size).toBe(primaries.length)
+  })
+
+  // transactionRepository.sync pins the taxonomy to v2, and LOAN_DISBURSEMENTS is a primary that
+  // exists only in v2. An unmapped primary can't be rescued by the client's primary fallback, so
+  // these codes would go straight to Uncategorized if this entry were dropped.
+  it('maps the LOAN_DISBURSEMENTS primary that PFCv2 introduced', () => {
+    const entry = DEFAULT_PFC_MAPPING.find((e) => e.primary === 'LOAN_DISBURSEMENTS')
+    expect(entry).toBeDefined()
+    expect(entry?.detailedCodes).toContain('LOAN_DISBURSEMENTS_STUDENT')
+  })
+
+  // Plaid's taxonomy has no peer-to-peer code in v1 or v2; two invented ones were mapped here
+  // until the v2 pin. Venmo/Zelle to a person arrives as *_ACCOUNT_TRANSFER instead.
+  it('maps no peer-to-peer code, which Plaid does not define', () => {
+    expect(ALL_PFC_DETAILED_CODES.filter((c) => c.includes('PEER_TO_PEER'))).toEqual([])
+  })
+
   it('includes the Food & Drink category with its documented codes', () => {
     const foodAndDrink = DEFAULT_PFC_MAPPING.find((e) => e.ledgeCategory === 'Food & Drink')
     expect(foodAndDrink?.detailedCodes).toEqual(

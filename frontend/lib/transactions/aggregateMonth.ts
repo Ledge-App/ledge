@@ -1,4 +1,4 @@
-import { isTransfer } from './totals'
+import { isInternalMovement } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 export interface MonthAggregate {
@@ -27,10 +27,11 @@ export function aggregateMonth(feed: FeedItem[]): MonthAggregate {
   let totalIncome = 0
 
   for (const item of feed) {
-    // Both legs of a transfer are money moved between the user's own accounts. Unlike a
-    // reimbursement's income leg below, neither leg marks the calendar day either — there is
+    // Internal movement is money shifted between the user's own accounts or holdings — both
+    // legs of a paired transfer, and sweeps whose counterpart the feed can never see. Unlike a
+    // reimbursement's income leg below, none of it marks the calendar day either — there is
     // nothing about the day for the user to notice.
-    if (isTransfer(item)) continue
+    if (isInternalMovement(item)) continue
 
     const net = item.netAmount ?? item.amount
     const existingDay = spendByDay.get(item.date) ?? { net: 0, hasReimbursement: false }

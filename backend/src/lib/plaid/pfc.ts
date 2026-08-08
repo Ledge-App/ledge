@@ -1,7 +1,14 @@
-// Source: Plaid's Personal Finance Category (PFC) taxonomy, `personal_finance_category_version: 'v2'`.
-// Verify against https://plaid.com/docs/api/products/transactions/#personal-finance-category-taxonomy
-// whenever Plaid revises the taxonomy — this list is the single source of truth for onboarding
-// category seeding (see onboardingService, Task 20).
+// Source: Plaid's Personal Finance Category (PFC) taxonomy, `personal_finance_category_version: 'v2'`,
+// which transactionRepository.sync pins explicitly — do not add codes from a different version.
+// Verify against https://plaid.com/documents/pfc-taxonomy-all.csv (v2/v1 side by side) whenever
+// Plaid revises the taxonomy; this list is the single source of truth for onboarding category
+// seeding (see onboardingService, Task 20).
+//
+// Note that pfc.test.ts's coverage check is self-referential — it derives the expected code list
+// from this table — so it cannot catch a code that Plaid has but this table lacks, nor one this
+// table has that Plaid doesn't. Both had accumulated: v2's 22 additions were missing, and two
+// invented codes (TRANSFER_{IN,OUT}_PEER_TO_PEER_PAYMENT — Plaid's taxonomy has no peer-to-peer
+// code in any version) were present. Diff against the CSV by hand when revising.
 
 export interface PfcMappingEntry {
   ledgeCategory: string
@@ -190,6 +197,13 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
       'INCOME_RETIREMENT_PENSION',
       'INCOME_TAX_REFUND',
       'INCOME_UNEMPLOYMENT',
+      // v2 additions
+      'INCOME_CHILD_SUPPORT',
+      'INCOME_CONTRACTOR',
+      'INCOME_GIG_ECONOMY',
+      'INCOME_LONG_TERM_DISABILITY',
+      'INCOME_MILITARY',
+      'INCOME_RENTAL',
     ],
   },
   {
@@ -200,12 +214,14 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     subcategories: ['Zelle', 'Venmo'],
     detailedCodes: [
       'TRANSFER_IN_ACCOUNT_TRANSFER',
-      'TRANSFER_IN_PEER_TO_PEER_PAYMENT',
       'TRANSFER_IN_CASH_ADVANCES_AND_LOANS',
       'TRANSFER_IN_DEPOSIT',
       'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS',
       'TRANSFER_IN_SAVINGS',
       'TRANSFER_IN_OTHER_TRANSFER_IN',
+      // v2 additions
+      'TRANSFER_IN_TRANSFER_IN_FROM_APPS',
+      'TRANSFER_IN_WIRE',
     ],
   },
   {
@@ -216,15 +232,20 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     subcategories: ['Zelle', 'Venmo'],
     detailedCodes: [
       'TRANSFER_OUT_ACCOUNT_TRANSFER',
-      'TRANSFER_OUT_PEER_TO_PEER_PAYMENT',
       'TRANSFER_OUT_SAVINGS',
       'TRANSFER_OUT_WITHDRAWAL',
       'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
       'TRANSFER_OUT_OTHER_TRANSFER_OUT',
+      // v2 additions
+      'TRANSFER_OUT_CRYPTO',
+      'TRANSFER_OUT_TRANSFER_OUT_FROM_APPS',
+      'TRANSFER_OUT_WIRE',
     ],
   },
   {
-    ledgeCategory: 'Loans',
+    // Named 'Payments' rather than 'Loans' because Plaid files credit card payments under the
+    // LOAN_PAYMENTS primary, and a card payment isn't a loan — it's paying off a balance.
+    ledgeCategory: 'Payments',
     primary: 'LOAN_PAYMENTS',
     color: '#F87171',
     icon: '🏦',
@@ -236,6 +257,28 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
       'LOAN_PAYMENTS_CAR_PAYMENT',
       'LOAN_PAYMENTS_PERSONAL_LOAN_PAYMENT',
       'LOAN_PAYMENTS_OTHER_PAYMENT',
+      // v2 additions
+      'LOAN_PAYMENTS_BNPL',
+      'LOAN_PAYMENTS_CASH_ADVANCES',
+      'LOAN_PAYMENTS_EWA',
+    ],
+  },
+  {
+    // New primary in PFCv2 — money the user *received* as loan proceeds, which is neither income
+    // (it's debt) nor a payment. Without an entry here these six codes have no mapped primary at
+    // all, so they'd fall through even the primary fallback and land in Uncategorized.
+    ledgeCategory: 'Loans Received',
+    primary: 'LOAN_DISBURSEMENTS',
+    color: '#FBBF24',
+    icon: '🧾',
+    subcategories: ['Student', 'Auto', 'Personal'],
+    detailedCodes: [
+      'LOAN_DISBURSEMENTS_AUTO',
+      'LOAN_DISBURSEMENTS_CASH_ADVANCES',
+      'LOAN_DISBURSEMENTS_EWA',
+      'LOAN_DISBURSEMENTS_MORTGAGE',
+      'LOAN_DISBURSEMENTS_PERSONAL',
+      'LOAN_DISBURSEMENTS_STUDENT',
     ],
   },
   {
@@ -245,6 +288,9 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     icon: '⚠️',
     subcategories: [],
     detailedCodes: [
+      // v2 additions
+      'BANK_FEES_LATE_FEES',
+      'BANK_FEES_CASH_ADVANCE',
       'BANK_FEES_ATM_FEES',
       'BANK_FEES_FOREIGN_TRANSACTION_FEES',
       'BANK_FEES_INSUFFICIENT_FUNDS',

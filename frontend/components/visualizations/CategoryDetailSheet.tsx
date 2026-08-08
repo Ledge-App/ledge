@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
+import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
+import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -12,7 +14,12 @@ interface CategoryDetailSheetProps {
   visible: boolean
   segment: DonutSegment | null
   allSegments: DonutSegment[]
+  /** The rows to display — this segment's slice of the feed. */
   transactions: FeedItem[]
+  /** The whole feed. Editing needs context the displayed slice doesn't carry: reimbursement
+   *  candidates can sit in any category, and the delete warning has to know whether a
+   *  transaction is part of a reimbursement. */
+  feed: FeedItem[]
   onClose: () => void
 }
 
@@ -42,8 +49,13 @@ function groupByDay(transactions: FeedItem[]): DaySection[] {
     })
 }
 
-export function CategoryDetailSheet({ visible, segment, allSegments, transactions, onClose }: CategoryDetailSheetProps) {
+export function CategoryDetailSheet({ visible, segment, allSegments, transactions, feed, onClose }: CategoryDetailSheetProps) {
   const sections = useMemo(() => groupByDay(transactions), [transactions])
+  // Wired here rather than by the caller so every row this sheet shows is editable, matching
+  // AccountDetailSheet. openTransaction routes by source — Plaid rows open the category sheet,
+  // manual rows the manual sheet — which is what keeps a manual row from being saved as a
+  // transaction_override keyed on its uuid.
+  const editor = useTransactionEditor(feed)
 
   if (!segment) return null
 
@@ -84,6 +96,7 @@ export function CategoryDetailSheet({ visible, segment, allSegments, transaction
                     categoryColor={segment.color}
                     categoryIcon={segment.icon}
                     reimbursementCategoryName={null}
+                    onPress={() => editor.openTransaction(item)}
                   />
                 </View>
               ))}
@@ -91,6 +104,8 @@ export function CategoryDetailSheet({ visible, segment, allSegments, transaction
           ))
         )}
       </ScrollView>
+
+      <TransactionEditSheets editor={editor} />
     </BottomSheet>
   )
 }

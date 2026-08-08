@@ -40,6 +40,40 @@ for that spend until the card is linked). For an **account transfer**, an unmatc
 its sign until matched. Errors therefore bias toward *leaving money counted* (mild, self-correcting)
 rather than *wrongly hiding it* (dangerous) — see Risk.
 
+### The one exception: movements whose counterpart can never arrive
+
+The rule above assumes an unmatched leg is unmatched *for now* — the counterpart is late, or the
+account isn't linked yet. Some movements break that assumption permanently, and for those, waiting
+for a pair means counting them as spending forever.
+
+A **cash management account** sweeps deposits into a fund. Plaid reports the sweep as an outflow on
+the cash side, but its counterpart is an *investment transaction*, served by
+`/investments/transactions/get` — a separate Plaid product this app doesn't read. It can never
+appear in `/transactions/sync`, so no pairing is possible, ever.
+
+These are excluded on their PFC code alone, via `INTERNAL_MOVEMENT_PFC` in
+`lib/transactions/totals.ts`. The set is kept deliberately narrow — currently only
+`TRANSFER_{IN,OUT}_INVESTMENT_AND_RETIREMENT_FUNDS` and `TRANSFER_{IN,OUT}_SAVINGS` — and a code
+belongs in it only when both hold:
+
+1. Pairing is *structurally* impossible, not merely pending.
+2. No purchase is hiding behind it, so excluding it can't make spend totals under-count.
+
+Card payments fail (2) and stay out of the set. `*_ACCOUNT_TRANSFER` fails both — pairing handles
+it, and since Plaid's taxonomy has **no peer-to-peer code at all**, Venmo/Zelle to a person lands
+on that generic code next to genuine internal moves, as does ACH rent. `TRANSFER_IN_DEPOSIT`
+("Cash, checks, and ATM deposits into a bank account") and `TRANSFER_OUT_WITHDRAWAL` are real
+money in or out.
+
+All four codes in the set are byte-identical in PFCv1 and PFCv2, verified against Plaid's
+published taxonomy. That check is required for anything keyed on a PFC code: this app never sets
+`options.personal_finance_category_version` on `/transactions/sync`, so under BYOK each user's own
+Plaid account decides which taxonomy version they receive (v2 by default only for Transactions
+access enabled after 2025-12-03).
+
+This exception does bias toward *hiding* money, against the preference stated above, so the
+narrowness of the set is what keeps the risk contained.
+
 ## Detection: amount-indexed matching
 
 Auto-apply requires an **exact** amount, so the amount is a hash key — no O(n²) scan.
