@@ -1,6 +1,7 @@
 import { plaidCredentialRepository } from '../repositories/plaidCredentialRepository.js'
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
+import type { PlaidApi } from 'plaid'
 
 async function requireCredentials(userId: string) {
   const creds = await plaidCredentialRepository.getDecrypted(userId)
@@ -8,6 +9,16 @@ async function requireCredentials(userId: string) {
     throw new Error('No Plaid credentials saved for this user — connect a Plaid developer account first.')
   }
   return creds
+}
+
+
+async function removeItem(client: PlaidApi, userId: string, item: { itemId: string; accessToken: string }): Promise<void> {
+  try {
+    await client.itemRemove({ access_token: item.accessToken })
+  } catch {
+    // Already revoked at Plaid (or keys rotated) — the local row still has to go.
+  }
+  await plaidItemRepository.delete(userId, item.itemId)
 }
 
 export const plaidLinkService = {
@@ -51,6 +62,19 @@ export const plaidLinkService = {
     } as never)
     const institutionName = institutionResponse.data.institution.name as string
     const institutionLogo = (institutionResponse.data.institution.logo as string | null) ?? ''
+
+    // Relinking an institution is a CLEAN SLATE: the new connection replaces every
+    // existing one for this institution. Accounts re-selected in Link carry on (their
+    // history re-syncs in full under fresh ids, and transfer links re-detect
+    // automatically); accounts NOT re-selected genuinely disappear and stop syncing.
+    // This is also how a single account is disconnected: relink without it. No
+    // duplicates are possible because only the newest connection survives.
+    const existingItems = (await plaidItemRepository.listDecryptedTokens(userId)).filter(
+      (item) => item.institutionId === institutionId,
+    )
+    for (const existing of existingItems) {
+      await removeItem(client, userId, existing)
+    }
 
     await plaidItemRepository.create({ userId, institutionId, institutionName, accessToken, itemId, institutionLogo })
 

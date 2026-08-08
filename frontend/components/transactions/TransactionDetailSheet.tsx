@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { LinkedTransactions } from '@/components/transactions/LinkedTransactions'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +30,7 @@ interface TransactionDetailSheetProps {
 }
 
 export function TransactionDetailSheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
+  const sheetScroll = useSheetScroll()
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
@@ -78,7 +79,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
   const transferType = pendingTransfer ? TRANSFER_TYPES[pendingTransfer.kind] : null
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center gap-3 px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -90,7 +91,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-4 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
         {/* The transaction itself, centred: which card it hit, what it came to, when. */}
         <View className="items-center gap-3 pt-1">
           {institutionLogo ? (

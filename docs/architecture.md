@@ -127,7 +127,8 @@ Device                    Backend API                    Supabase Postgres      
 | Raw transactions (Plaid) | Device only (MMKV/SQLite cache) | Never persisted server-side |
 | Manual transactions | Backend DB (`manual_transactions`) | No external source to re-fetch from; user-entered only |
 | Account balances | Device only (in-memory, relayed live) | Never persisted server-side |
-| Plaid access token | Backend DB (AES-256 encrypted) + SecureStore | Encrypted at rest; enables re-auth on reinstall |
+| Plaid access token | Backend DB (`plaid_items`, AES-256 encrypted) | Encrypted at rest; never reaches the device, which only ever handles the short-lived `public_token` during the Link handshake. Because it is server-side, a reinstall does not require relinking |
+| Supabase session (refresh + access token) | Device Keychain (SecureStore) | The only thing in SecureStore. Note iOS keeps Keychain items across an uninstall, so the app clears the session on first launch after a reinstall (`usePurgeSessionOnFreshInstall`) |
 | Plaid client_id / secret (BYOK) | Backend DB (`plaid_credentials`, secret AES-256 encrypted) | Per-user credential, decrypted only inside the backend for outbound Plaid calls |
 | User account | Supabase Auth | Auth only |
 | Categories + subcategories | Backend DB | Low sensitivity |

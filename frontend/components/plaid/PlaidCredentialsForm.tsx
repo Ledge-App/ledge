@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { SecretInput } from '@/components/ui/SecretInput'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { colors } from '@/constants/theme'
 
 interface PlaidCredentialsFormProps {
@@ -18,6 +18,7 @@ type TestResult = { status: 'idle' } | { status: 'success' } | { status: 'error'
 export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
   const { data: existing, allowedEnvironments, isLoading, test, isTesting, save, isSaving } = usePlaidCredentials()
 
+  const sheetScroll = useSheetScroll()
   const [isHowToOpen, setIsHowToOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
   // No default. The environment is permanent once saved, so it must be chosen deliberately
@@ -199,7 +200,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
 
       <Button label="Update Secret" variant="secondary" onPress={() => setReplaceOpen(true)} />
 
-      <BottomSheet visible={replaceOpen} onClose={handleCloseReplace}>
+      <BottomSheet visible={replaceOpen} onClose={handleCloseReplace} contentScroll={sheetScroll}>
         <View className="flex-row items-center justify-between px-5 py-3">
           <Pressable onPress={handleCloseReplace} hitSlop={8}>
             <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -208,7 +209,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
           <View style={{ width: 22 }} />
         </View>
 
-        <ScrollView className="px-5" contentContainerClassName="gap-6 pb-10" keyboardShouldPersistTaps="handled">
+        <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-6 pb-10" keyboardShouldPersistTaps="handled">
           {formFields}
         </ScrollView>
       </BottomSheet>

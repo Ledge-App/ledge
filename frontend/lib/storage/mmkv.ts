@@ -64,3 +64,24 @@ export function appendPendingRemovedTransactionIds(ids: string[]): void {
   for (const id of ids) merged.add(id)
   setPendingRemovedTransactionIds(Array.from(merged))
 }
+
+/**
+ * Drops every cached transaction, cursor and pending removal for this device.
+ *
+ * Every key in here is scoped by Plaid item id, never by user, so nothing in the cache can
+ * be reconciled against a new session — clearing the instance wholesale is the only correct
+ * response to a user change. Signing out and back in previously left `transactions:<itemId>`
+ * in place and, worse, left `cursor:<itemId>` in place too, so the next sync asked Plaid
+ * only for the delta and the stale bodies could never be rebuilt.
+ *
+ * This includes the pending-removal queue, whose durability comment above is about
+ * surviving an app kill *within* a session. Across a user change it is actively unsafe: the
+ * ids are global, not per-user, and they drive `transfers.delete` against whoever signs in
+ * next.
+ *
+ * The cost is that the following sync restarts each item from cursor '' and re-downloads
+ * full history. Correctness over bandwidth — moving cursors server-side would recover it.
+ */
+export function clearTransactionCache(): void {
+  storage.clearAll()
+}

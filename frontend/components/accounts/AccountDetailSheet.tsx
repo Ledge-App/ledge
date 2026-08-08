@@ -6,7 +6,7 @@ import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount, formatMaskableAmount } from '@/lib/format/money'
 import { countsTowardTotals } from '@/lib/transactions/totals'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
@@ -56,6 +56,7 @@ export function AccountDetailSheet({
   emptyLabel = 'No transactions for this account',
 }: AccountDetailSheetProps) {
   const insets = useSafeAreaInsets()
+  const sheetScroll = useSheetScroll()
   // Wired here rather than by the caller so every row this sheet shows is editable — a linked
   // account's Plaid rows open the detail sheet, the built-in Cash row's manual rows open the
   // manual sheet — without each call site having to opt in.
@@ -83,7 +84,7 @@ export function AccountDetailSheet({
   const balanceColor = shown.variant === 'credit' ? colors.expense : colors.textPrimary
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -110,6 +111,7 @@ export function AccountDetailSheet({
       <Text className="mb-2 px-5 font-sansSemi text-sm text-textSecondary">Transactions</Text>
 
       <SectionList
+        {...sheetScroll.scrollProps}
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}

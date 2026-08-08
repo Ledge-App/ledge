@@ -7,7 +7,7 @@ import { formatAmount } from '@/lib/format/money'
 import { monthLabel } from '@/lib/transactions/filterByMonth'
 import { computeNetWorthHistory, netWorthYearRange } from '@/lib/accounts/netWorthHistory'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account } from '@/types/domain'
 
@@ -35,6 +35,7 @@ function formatChange(change: number): string {
 
 export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed, isLoading }: NetWorthTrendSheetProps) {
   const insets = useSafeAreaInsets()
+  const sheetScroll = useSheetScroll()
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
 
@@ -57,7 +58,7 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
   const latest = rows[0]
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} topOffset={insets.top + 20}>
+    <BottomSheet visible={visible} onClose={onClose} topOffset={insets.top + 20} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close">
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -86,7 +87,7 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 24 }}>
+      <ScrollView {...sheetScroll.scrollProps} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 24 }}>
         <View className="rounded-xl bg-surface p-3" style={shadow.card}>
           <View className="flex-row items-center justify-between px-1 pb-1">
             <Text className="font-sansSemi text-sm text-primary">Net Worth</Text>

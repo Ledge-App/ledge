@@ -60,6 +60,7 @@ export const plaidItems = pgTable('plaid_items', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+
 export const categories = pgTable('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id),

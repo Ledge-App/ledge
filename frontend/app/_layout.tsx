@@ -17,6 +17,7 @@ import { Stack } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { usePurgeSessionOnFreshInstall } from '@/hooks/usePurgeSessionOnFreshInstall'
 import { useResetCacheOnUserChange } from '@/hooks/useResetCacheOnUserChange'
 import { api, createApiClient } from '@/lib/api/client'
 import { colors } from '@/constants/theme'
@@ -32,17 +33,24 @@ export default function RootLayout() {
   const [queryClient] = useState(() => new QueryClient())
   const [trpcClient] = useState(() => createApiClient())
 
-  // The cache outlives any one session — drop it when the signed-in user changes so one
+  // The caches outlive any one session — drop them when the signed-in user changes so one
   // user's data can never render for the next.
   useResetCacheOnUserChange(queryClient)
 
+  // The Keychain outlives an uninstall, so a reinstall would otherwise restore the previous
+  // session. Nothing may render until this resolves, or the redirect in `app/index.tsx`
+  // runs against the session being torn down.
+  const isPurgingSession = usePurgeSessionOnFreshInstall()
+
+  const isReady = fontsLoaded && !isPurgingSession
+
   useEffect(() => {
-    if (fontsLoaded) {
+    if (isReady) {
       SplashScreen.hideAsync()
     }
-  }, [fontsLoaded])
+  }, [isReady])
 
-  if (!fontsLoaded) {
+  if (!isReady) {
     return <View className="flex-1 bg-background" />
   }
 
