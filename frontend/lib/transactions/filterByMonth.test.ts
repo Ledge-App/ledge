@@ -8,6 +8,8 @@ function item(date: string): FeedItem {
     categorySource: 'uncategorized', confidenceLevel: null, pfcDetailed: null, accountId: null, pending: false, note: null,
     reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
     transferId: null, transferKind: null, transferRole: null, transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
   }
 }
 

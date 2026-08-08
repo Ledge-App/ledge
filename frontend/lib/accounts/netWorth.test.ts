@@ -26,6 +26,8 @@ function manual(amount: number, id = `m-${amount}`): FeedItem {
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
   }
 }
 

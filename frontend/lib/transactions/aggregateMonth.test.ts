@@ -24,6 +24,8 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
     ...overrides,
   }
 }
@@ -137,7 +139,7 @@ describe('aggregateMonth', () => {
   it('excludes a cash-management sweep that has no transfer record', () => {
     const result = aggregateMonth([
       item({ id: 'a', date: '2026-06-01', amount: 40, categoryId: 'groceries' }),
-      item({ id: 'sweep', date: '2026-06-02', amount: 500, categoryId: 'transfers-out', pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }),
+      item({ id: 'sweep', date: '2026-06-02', amount: 500, categoryId: 'transfers-out', pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS', isBrokerageCashAccount: true }),
     ])
 
     expect(result.totalExpense).toBe(40)

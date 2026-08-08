@@ -1,3 +1,4 @@
+import { isBrokerageCashAccount } from '@/lib/accounts/accountType'
 import type { ManualTransaction, PlaidCategoryMapping, PlaidTransaction, Reimbursement, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'uncategorized'
@@ -92,6 +93,13 @@ export interface FeedItem {
   // Who created the transfer this leg belongs to: 'auto' = transfer auto-detection, so the
   // UI can badge it and offer one-tap undo. Null when the item isn't a transfer leg.
   transferSource: 'manual' | 'auto' | null
+  // Whether this row sits on a brokerage cash account (Plaid 'cash management' subtype, or an
+  // investment account). Resolved here rather than looked up downstream so the totals predicates
+  // stay item-only. False for manual transactions, which have no account.
+  isBrokerageCashAccount: boolean
+  // Set by applySweepExclusion (runs last): this outflow only mirrors an equal inflow on the same
+  // brokerage cash account, i.e. a sweep into holdings rather than spending.
+  isSweptOutflow: boolean
 }
 
 export function mergeFeed(
@@ -100,7 +108,12 @@ export function mergeFeed(
   overrides: TransactionOverride[],
   vendorMappings: VendorMapping[],
   plaidCategoryMappings: PlaidCategoryMapping[] = [],
+  accounts: Array<{ account_id: string; type: string; subtype?: string | null }> = [],
 ): FeedItem[] {
+  const brokerageCashAccountIds = new Set(
+    accounts.filter(isBrokerageCashAccount).map((account) => account.account_id),
+  )
+
   const plaidItems: FeedItem[] = plaidTransactions.map((txn) => {
     const resolved = resolveCategory(
       {
@@ -135,6 +148,8 @@ export function mergeFeed(
       transferKind: null,
       transferRole: null,
       transferSource: null,
+      isBrokerageCashAccount: brokerageCashAccountIds.has(txn.account_id),
+      isSweptOutflow: false,
     }
   })
 
@@ -160,6 +175,8 @@ export function mergeFeed(
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
   }))
 
   return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount, formatMaskableAmount } from '@/lib/format/money'
+import { countsTowardTotals } from '@/lib/transactions/totals'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
@@ -116,8 +117,11 @@ export function AccountDetailSheet({
           const date = new Date(section.title + 'T00:00:00')
           const dayOfWeek = DAY_NAMES[date.getDay()]
           const monthDay = `${date.getMonth() + 1}/${date.getDate()}`
-          const incomeTotal = section.data.filter((i) => i.amount < 0 && !i.isReimbursementIncome).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
-          const expenseTotal = section.data.filter((i) => i.amount > 0).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
+          // countsTowardTotals, not a hand-rolled filter: these rows have to agree with the
+          // dashboard and the transactions tab about what counts, and previously they didn't —
+          // transfer legs and sweeps were counted here while being excluded everywhere else.
+          const incomeTotal = section.data.filter((i) => i.amount < 0 && countsTowardTotals(i)).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
+          const expenseTotal = section.data.filter((i) => i.amount > 0 && countsTowardTotals(i)).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
           return (
             <View className="flex-row items-center justify-between bg-surface pb-1 pt-3">
               <Text className="font-sansSemi text-sm text-textPrimary">{monthDay} {dayOfWeek}</Text>

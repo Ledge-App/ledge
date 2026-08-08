@@ -18,6 +18,7 @@ import {
   setPendingRemovedTransactionIds,
 } from '@/lib/storage/mmkv'
 import { applyReimbursements, applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { detectTransfers } from '@/lib/transfers/autoMatch'
 import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
@@ -170,15 +171,23 @@ export function useTransactionFeed() {
       overrides.data,
       vendorMappings.data,
       plaidCategoryMappings.data,
+      // Drives isBrokerageCashAccount, which scopes the sweep exclusion in totals.ts. Not gated
+      // above: with accounts still loading there are no cached transactions to classify either,
+      // since itemIds comes from the same query.
+      accounts.data ?? [],
     )
     const reimbursed = applyReimbursements(merged, reimbursements.data ?? [])
-    return applyTransfers(reimbursed, transfers.data ?? [])
+    const withTransfers = applyTransfers(reimbursed, transfers.data ?? [])
+    // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
+    // left unpaired, so it can never override a transfer that auto-applied or the user confirmed.
+    return applySweepExclusion(withTransfers)
   }, [
     rawTransactions,
     manualTransactions.data,
     overrides.data,
     vendorMappings.data,
     plaidCategoryMappings.data,
+    accounts.data,
     reimbursements.data,
     transfers.data,
   ])

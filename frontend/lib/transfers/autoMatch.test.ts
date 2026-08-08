@@ -31,6 +31,8 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
     ...overrides,
   }
 }

@@ -26,6 +26,8 @@ function txn(overrides: Partial<FeedItem> & { date: string; amount: number }): F
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
     ...overrides,
   }
 }

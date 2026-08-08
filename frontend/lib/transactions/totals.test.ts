@@ -25,8 +25,15 @@ function item(overrides: Partial<FeedItem>): FeedItem {
     transferKind: null,
     transferRole: null,
     transferSource: null,
+    isBrokerageCashAccount: false,
+    isSweptOutflow: false,
     ...overrides,
   }
+}
+
+/** A row on a brokerage cash account (Fidelity CMA and the like), where sweeps happen. */
+function sweepItem(overrides: Partial<FeedItem>): FeedItem {
+  return item({ isBrokerageCashAccount: true, ...overrides })
 }
 
 describe('isTransfer', () => {
@@ -60,23 +67,38 @@ describe('countsTowardTotals', () => {
   })
 
   it('skips a cash-management sweep that has no transfer record', () => {
-    expect(countsTowardTotals(item({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(false)
+    expect(countsTowardTotals(sweepItem({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(false)
   })
 })
 
-// A cash management account sweeps deposits into a fund, and Plaid reports the sweep as an
-// outflow. Its counterpart is an investment transaction, served by /investments/transactions/get
-// rather than /transactions/sync, so it never enters the feed and detectTransfers — which only
-// emits paired drafts — can never link it. Excluding by PFC is the only route.
+// A brokerage cash account sweeps deposits into a fund, and Plaid reports the sweep as an outflow.
+// Pairing can't rescue it either way: the counterpart is either an investment transaction (a
+// different Plaid product, never in /transactions/sync) or — as Fidelity reports it — a second leg
+// on the SAME account, which autoMatch's pairAllowed rejects. Hence the PFC route, and hence the
+// scope: only on accounts where that's true, never on ordinary checking.
 describe('isInternalMovement', () => {
   it('is true for an investment or retirement sweep in either direction', () => {
-    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(true)
-    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS', amount: -500 }))).toBe(true)
+    expect(isInternalMovement(sweepItem({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(true)
+    expect(isInternalMovement(sweepItem({ pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS', amount: -500 }))).toBe(true)
   })
 
   it('is true for a savings sweep in either direction', () => {
-    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_OUT_SAVINGS' }))).toBe(true)
-    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_IN_SAVINGS', amount: -500 }))).toBe(true)
+    expect(isInternalMovement(sweepItem({ pfcDetailed: 'TRANSFER_OUT_SAVINGS' }))).toBe(true)
+    expect(isInternalMovement(sweepItem({ pfcDetailed: 'TRANSFER_IN_SAVINGS', amount: -500 }))).toBe(true)
+  })
+
+  // The exclusion is scoped to accounts where pairing structurally can't work. On an ordinary
+  // checking account the same code is left counted on purpose: autoMatch pairs it with a linked
+  // counterpart (which sets transferKind), and an unpaired leg staying counted is the documented
+  // bias — leave money counted rather than wrongly hide it.
+  it('is false for the same codes on an ordinary checking account', () => {
+    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(false)
+    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_OUT_SAVINGS' }))).toBe(false)
+    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_IN_SAVINGS', amount: -500 }))).toBe(false)
+  })
+
+  it('still excludes a paired transfer on a checking account, via its transfer record', () => {
+    expect(isInternalMovement(item({ pfcDetailed: 'TRANSFER_OUT_SAVINGS', transferKind: 'account_transfer', transferRole: 'expense' }))).toBe(true)
   })
 
   it('still covers anything carrying a transfer record, whatever its PFC', () => {
