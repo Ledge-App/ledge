@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
@@ -62,6 +62,7 @@ interface TransferSuggestionsSheetProps {
 
 export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClose, onConfirm, onDismiss }: TransferSuggestionsSheetProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
+  const sheetScroll = useSheetScroll()
 
   // Acting on the last suggestion leaves nothing to decide — close rather than show an
   // empty sheet.
@@ -87,7 +88,7 @@ export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClo
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -98,7 +99,7 @@ export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClo
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView className="px-5" contentContainerClassName="gap-5 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-5 pb-10">
         {suggestions.map((suggestion) => {
           const type = TRANSFER_TYPES[suggestion.kind]
           const busy = busyId === suggestion.expense.id

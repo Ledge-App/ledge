@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ScrollView, Text, View } from 'react-native'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
@@ -51,6 +51,7 @@ function groupByDay(transactions: FeedItem[]): DaySection[] {
 
 export function CategoryDetailSheet({ visible, segment, allSegments, transactions, feed, onClose }: CategoryDetailSheetProps) {
   const sections = useMemo(() => groupByDay(transactions), [transactions])
+  const sheetScroll = useSheetScroll()
   // Wired here rather than by the caller so every row this sheet shows is editable, matching
   // AccountDetailSheet. openTransaction routes by source — Plaid rows open the category sheet,
   // manual rows the manual sheet — which is what keeps a manual row from being saved as a
@@ -60,8 +61,8 @@ export function CategoryDetailSheet({ visible, segment, allSegments, transaction
   if (!segment) return null
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
-      <ScrollView showsVerticalScrollIndicator={false} className="px-5">
+    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
+      <ScrollView {...sheetScroll.scrollProps} showsVerticalScrollIndicator={false} className="px-5">
         <CategoryDonut segments={allSegments} highlightedCategoryId={segment.categoryId} size={180} />
 
         <View className="flex-row items-center justify-center gap-2" style={{ marginTop: 8, marginBottom: 12 }}>
