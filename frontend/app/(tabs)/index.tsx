@@ -25,6 +25,7 @@ import { CategoryDetailSheet } from '@/components/visualizations/CategoryDetailS
 import { formatAmount } from '@/lib/format/money'
 import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
+import { UNCATEGORIZED_ID, computeDonutSegments } from '@/lib/transactions/visualizationData'
 import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
@@ -63,12 +64,24 @@ export default function DashboardScreen() {
     [monthFeed],
   )
 
+  // The category cards open the same detail sheet the donut chart does, so their segments are
+  // built the same way — otherwise a card and its chart slice could disagree on percentage or
+  // transaction count for the same category.
+  const expenseSegments = useMemo(
+    () => computeDonutSegments(monthFeed, spendByCategory, categories.data ?? [], totalExpense, 'expense'),
+    [monthFeed, spendByCategory, categories.data, totalExpense],
+  )
+  const incomeSegments = useMemo(
+    () => computeDonutSegments(monthFeed, incomeByCategory, categories.data ?? [], totalIncome, 'income'),
+    [monthFeed, incomeByCategory, categories.data, totalIncome],
+  )
+
   const detailTransactions = useMemo(() => {
     if (!detailState) return []
     return monthFeed
       .filter((item) => {
         if (item.isReimbursementIncome) return false
-        const isUncategorized = detailState.segment.categoryId === '__uncategorized__'
+        const isUncategorized = detailState.segment.categoryId === UNCATEGORIZED_ID
         if (isUncategorized ? item.categoryId !== null : item.categoryId !== detailState.segment.categoryId)
           return false
         const net = item.netAmount ?? item.amount
@@ -77,24 +90,9 @@ export default function DashboardScreen() {
       .sort((a, b) => (a.date < b.date ? 1 : -1))
   }, [monthFeed, detailState])
 
-  const detailSegments = useMemo(() => {
-    if (!detailState) return []
-    const map = detailState.mode === 'expense' ? spendByCategory : incomeByCategory
-    const total = detailState.mode === 'expense' ? totalExpense : totalIncome
-    if (total === 0) return []
-    return (categories.data ?? [])
-      .filter((c) => map.has(c.id))
-      .map((c) => ({
-        categoryId: c.id,
-        name: c.name,
-        icon: c.icon,
-        color: c.color,
-        amount: map.get(c.id)!,
-        percentage: (map.get(c.id)! / total) * 100,
-        transactionCount: 0,
-      }))
-      .sort((a, b) => b.amount - a.amount)
-  }, [detailState, spendByCategory, incomeByCategory, totalExpense, totalIncome, categories.data])
+  // Must be the full segment list, uncategorized slice included: the sheet's donut draws each
+  // segment's percentage of the month total, so leaving any spend out draws a gap in the ring.
+  const detailSegments = detailState == null ? [] : detailState.mode === 'expense' ? expenseSegments : incomeSegments
 
   async function handleSaveCategory(input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) {
     if (!activeSheetItem) return
@@ -179,6 +177,18 @@ export default function DashboardScreen() {
   const expenseCategories = categories.data?.filter((c) => spendByCategory.has(c.id)) ?? []
   const incomeCategories = categories.data?.filter((c) => incomeByCategory.has(c.id)) ?? []
 
+  // Uncategorized isn't a real category, so it has no row in `categories` to filter for — it's
+  // whatever the month total has left over once the real categories are accounted for. Without a
+  // card for it the grid silently understates the month.
+  const uncategorizedExpense = expenseSegments.find((s) => s.categoryId === UNCATEGORIZED_ID)
+  const uncategorizedIncome = incomeSegments.find((s) => s.categoryId === UNCATEGORIZED_ID)
+
+  function openCategoryDetail(categoryId: string, mode: 'expense' | 'income') {
+    const segment = (mode === 'expense' ? expenseSegments : incomeSegments).find((s) => s.categoryId === categoryId)
+    if (!segment) return
+    setDetailState({ segment, mode })
+  }
+
   const topBar = (
     <View className="flex-row items-center">
       <View className="flex-1 flex-row">
@@ -236,9 +246,22 @@ export default function DashboardScreen() {
                     color={category.color}
                     spent={spendByCategory.get(category.id) ?? 0}
                     budget={budgets.data?.find((b) => b.categoryId === category.id) ? Number(budgets.data.find((b) => b.categoryId === category.id)!.amount) : null}
+                    onPress={() => openCategoryDetail(category.id, 'expense')}
                   />
                 </View>
               ))}
+              {uncategorizedExpense ? (
+                <View style={{ width: '31%' }}>
+                  <CategoryCard
+                    name={uncategorizedExpense.name}
+                    icon={uncategorizedExpense.icon}
+                    color={uncategorizedExpense.color}
+                    spent={uncategorizedExpense.amount}
+                    budget={null}
+                    onPress={() => openCategoryDetail(UNCATEGORIZED_ID, 'expense')}
+                  />
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -250,9 +273,28 @@ export default function DashboardScreen() {
             <View className="flex-row flex-wrap" style={{ gap: 10 }}>
               {incomeCategories.map((category) => (
                 <View key={category.id} style={{ width: '31%' }}>
-                  <CategoryCard name={category.name} icon={category.icon} color={category.color} spent={incomeByCategory.get(category.id) ?? 0} budget={null} />
+                  <CategoryCard
+                    name={category.name}
+                    icon={category.icon}
+                    color={category.color}
+                    spent={incomeByCategory.get(category.id) ?? 0}
+                    budget={null}
+                    onPress={() => openCategoryDetail(category.id, 'income')}
+                  />
                 </View>
               ))}
+              {uncategorizedIncome ? (
+                <View style={{ width: '31%' }}>
+                  <CategoryCard
+                    name={uncategorizedIncome.name}
+                    icon={uncategorizedIncome.icon}
+                    color={uncategorizedIncome.color}
+                    spent={uncategorizedIncome.amount}
+                    budget={null}
+                    onPress={() => openCategoryDetail(UNCATEGORIZED_ID, 'income')}
+                  />
+                </View>
+              ) : null}
             </View>
           ) : null}
         </ScrollView>

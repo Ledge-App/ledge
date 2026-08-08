@@ -2,6 +2,13 @@ import { countsTowardTotals } from './totals'
 import type { FeedItem } from './resolveFeed'
 import type { YearMonth } from './filterByMonth'
 
+// Stands in for "no category" wherever a segment needs an id. Deliberately not a valid category
+// id, so it can never collide with a real one.
+export const UNCATEGORIZED_ID = '__uncategorized__'
+export const UNCATEGORIZED_NAME = 'Uncategorized'
+export const UNCATEGORIZED_ICON = '❔'
+export const UNCATEGORIZED_COLOR = '#A8A89C'
+
 export interface DonutSegment {
   categoryId: string
   name: string
@@ -60,10 +67,10 @@ export function computeDonutSegments(
   const uncategorizedAmount = total - categorizedTotal
   if (uncategorizedAmount > 0.01) {
     segments.push({
-      categoryId: '__uncategorized__',
-      name: 'Uncategorized',
-      icon: '❔',
-      color: '#A8A89C',
+      categoryId: UNCATEGORIZED_ID,
+      name: UNCATEGORIZED_NAME,
+      icon: UNCATEGORIZED_ICON,
+      color: UNCATEGORIZED_COLOR,
       amount: uncategorizedAmount,
       percentage: (uncategorizedAmount / total) * 100,
       transactionCount: uncategorizedCount,
