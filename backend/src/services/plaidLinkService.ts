@@ -34,6 +34,11 @@ export const plaidLinkService = {
       // Items linked before this consent exists return ADDITIONAL_CONSENT_REQUIRED on
       // holdings calls until relinked.
       optional_products: ['investments'],
+      // How much history Plaid ingests for an item, decided once at link time — /transactions/sync
+      // has no per-request date range, so without this the default 90 days is all an item will
+      // ever have. 730 is Plaid's maximum. Applies to NEW links only: an existing item stays at
+      // the depth it was linked with until the institution is relinked (which re-syncs in full).
+      transactions: { days_requested: 730 },
       country_codes: ['US'],
       language: 'en',
     } as never)

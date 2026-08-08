@@ -18,13 +18,14 @@ import { useTransferDismissals } from '@/hooks/useTransferDismissals'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { formatAmount } from '@/lib/format/money'
-import { currentMonth, filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
+import { useSelectedMonth } from '@/hooks/useSelectedMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import type { TransferSuggestion } from '@/hooks/useTransactionFeed'
 
 export default function TransactionsScreen() {
   const { categoryId: categoryIdParam } = useLocalSearchParams<{ categoryId?: string }>()
-  const [month, setMonth] = useState(currentMonth())
+  const [month, setMonth] = useSelectedMonth()
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(categoryIdParam ?? null)
   const [suggestionsSheetOpen, setSuggestionsSheetOpen] = useState(false)
@@ -129,7 +130,7 @@ export default function TransactionsScreen() {
         <View className="flex-1 flex-row">
           <AccountsFilterDropdown accounts={accounts.data ?? []} selectedAccountId={selectedAccountId} onSelect={setSelectedAccountId} />
         </View>
-        <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} />
+        <MonthNavigator month={month} onPrevious={() => setMonth(shiftMonth(month, -1))} onNext={() => setMonth(shiftMonth(month, 1))} onSelect={setMonth} />
         <View className="flex-1 items-end">
           <Pressable onPress={editor.openNewManual} accessibilityLabel="Add Transaction">
             <Ionicons name="add-circle-outline" size={24} color={colors.textPrimary} />
