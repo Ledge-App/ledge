@@ -11,7 +11,6 @@ export const accountsRouter = router({
     if (!creds) throw new Error('No Plaid credentials saved for this user.')
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const items = await plaidItemRepository.listDecryptedTokens(ctx.userId)
-
     const accounts = []
     const itemErrors = []
     for (const item of items) {
