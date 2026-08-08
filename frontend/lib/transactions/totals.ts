@@ -59,6 +59,18 @@ export function isInternalMovement(item: FeedItem): boolean {
   return item.pfcDetailed !== null && INTERNAL_MOVEMENT_PFC.has(item.pfcDetailed)
 }
 
+/**
+ * Excluded specifically as a brokerage-cash sweep — not as a transfer leg (which already carries
+ * its own badge) and not as a reimbursement leg (which has its own icon and title). These are the
+ * rows that would otherwise be greyed out with nothing on them explaining why, so the UI badges
+ * them "Investment".
+ */
+export function isInvestmentSweep(item: FeedItem): boolean {
+  if (isTransfer(item) || item.isReimbursementIncome) return false
+  if (item.isSweptOutflow) return true
+  return isInternalMovement(item)
+}
+
 // Single predicate for "does this item belong in spend/income aggregates", so the donut, top
 // merchants, the daily chart and the per-day IN/OUT rows can never disagree about what counts.
 //

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countsTowardTotals, isInternalMovement, isTransfer } from './totals'
+import { countsTowardTotals, isInternalMovement, isInvestmentSweep, isTransfer } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 function item(overrides: Partial<FeedItem>): FeedItem {
@@ -133,5 +133,47 @@ describe('isInternalMovement', () => {
   it('is false for an ordinary item and for a manual transaction with no PFC', () => {
     expect(isInternalMovement(item({}))).toBe(false)
     expect(isInternalMovement(item({ source: 'manual', pfcDetailed: null }))).toBe(false)
+  })
+})
+
+// Drives the "Investment" pill. Scoped to rows that are greyed out with nothing else on them to
+// explain why — transfer legs already carry a badge, reimbursement legs an icon and a title.
+describe('isInvestmentSweep', () => {
+  it('is true for an outflow the sweep pass matched', () => {
+    expect(isInvestmentSweep(sweepItem({ isSweptOutflow: true, pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER' }))).toBe(true)
+  })
+
+  it('is true for a brokerage-cash row excluded on its PFC code alone', () => {
+    expect(isInvestmentSweep(sweepItem({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(true)
+  })
+
+  it('is false for a transfer leg, which already has its own badge', () => {
+    expect(isInvestmentSweep(item({ transferKind: 'account_transfer', transferRole: 'expense' }))).toBe(false)
+    expect(isInvestmentSweep(sweepItem({ transferKind: 'account_transfer', transferRole: 'expense', pfcDetailed: 'TRANSFER_OUT_SAVINGS' }))).toBe(false)
+  })
+
+  it('is false for a reimbursement income leg, which has its own icon and title', () => {
+    expect(isInvestmentSweep(item({ isReimbursementIncome: true }))).toBe(false)
+  })
+
+  it('is false for the income leg of a sweep pair, which still counts', () => {
+    expect(isInvestmentSweep(sweepItem({ amount: -2928.85, pfcDetailed: 'INCOME_SALARY' }))).toBe(false)
+  })
+
+  it('is false for an ordinary counted transaction', () => {
+    expect(isInvestmentSweep(item({}))).toBe(false)
+    expect(isInvestmentSweep(item({ pfcDetailed: 'FOOD_AND_DRINK_GROCERIES' }))).toBe(false)
+  })
+
+  // Everything it flags must also be excluded, or the pill would claim a row that still counts.
+  it('never flags anything that counts toward totals', () => {
+    const flagged = [
+      sweepItem({ isSweptOutflow: true }),
+      sweepItem({ pfcDetailed: 'TRANSFER_OUT_SAVINGS' }),
+    ]
+    for (const row of flagged) {
+      expect(isInvestmentSweep(row)).toBe(true)
+      expect(countsTowardTotals(row)).toBe(false)
+    }
   })
 })

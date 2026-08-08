@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
+import { countsTowardTotals, isInvestmentSweep } from '@/lib/transactions/totals'
 import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
@@ -23,9 +24,25 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
   const institutionLogo = item.accountId ? institutionLogos.get(item.accountId) ?? null : null
   const isIncome = item.amount < 0
   const transferType = item.transferKind ? TRANSFER_TYPES[item.transferKind] : null
-  // Both legs are excluded from every total, so the amount is muted rather than read as
-  // spending or income — the badge is what carries the meaning.
-  const amountColor = transferType ? colors.textMuted : isIncome ? colors.income : colors.expense
+  // Anything excluded from the totals is greyed rather than shown in red/green, so the row reads
+  // as "not spending, not income" at a glance instead of looking like money that moved. Keyed on
+  // the same predicate the aggregates use, so what's grey and what's counted can never disagree —
+  // this covers transfer legs (where a badge carries the meaning) and brokerage-cash sweeps
+  // (where nothing else marks them).
+  const isExcluded = !countsTowardTotals(item)
+  const amountColor = isExcluded ? colors.textMuted : isIncome ? colors.income : colors.expense
+  // One badge slot, two sources. A transfer leg names its kind; a brokerage-cash sweep has no
+  // transfer record to name, so it says "Investment" — otherwise it would grey out with nothing
+  // on the row explaining why it stopped counting. Muted rather than coloured: unlike a transfer,
+  // this wasn't a link the user made or confirmed, so it shouldn't shout.
+  const badge = transferType
+    ? {
+        label: item.transferSource === 'auto' ? `${transferType.shortLabel} · Auto` : transferType.shortLabel,
+        color: transferType.color,
+      }
+    : isInvestmentSweep(item)
+      ? { label: 'Investment', color: colors.textMuted }
+      : null
   const iconColor = transferType ? transferType.color : item.isReimbursementIncome ? colors.reimbursed : categoryColor
   const iconBg = hexToRgba(iconColor, 0.18)
 
@@ -46,7 +63,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
 
       <View className="flex-1 gap-0.5">
         <Text
-          className={`font-sansSemi text-base ${transferType ? 'text-textSecondary' : 'text-textPrimary'}`}
+          className={`font-sansSemi text-base ${isExcluded ? 'text-textSecondary' : 'text-textPrimary'}`}
           numberOfLines={1}
         >
           {item.isReimbursementIncome
@@ -74,7 +91,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
           {institutionLogo ? (
             // Which card/bank this hit, at a glance — mirrors the amount-side bank chip in
             // apps like the reference tracker. Base64 PNG straight from Plaid. The ring
-            // repeats the amount's meaning: green in, red out, muted for transfer legs.
+            // repeats the amount's meaning: green in, red out, muted for anything not counted.
             <View style={{ borderWidth: 1.5, borderColor: amountColor, borderRadius: 12, padding: 1 }}>
               <Image
                 source={{ uri: `data:image/png;base64,${institutionLogo}` }}
@@ -83,13 +100,13 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
             </View>
           ) : null}
         </View>
-        {transferType ? (
+        {badge ? (
           // Under the amount, not beside the title: the badge is the row's meaning ('Auto'
           // marks links made by auto-detection; unmarking is the one-tap undo) and here it
           // never competes with the category name for width.
-          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(transferType.color, 0.14) }}>
-            <Text className="font-sansMed text-xs" numberOfLines={1} style={{ color: transferType.color }}>
-              {item.transferSource === 'auto' ? `${transferType.shortLabel} · Auto` : transferType.shortLabel}
+          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(badge.color, 0.14) }}>
+            <Text className="font-sansMed text-xs" numberOfLines={1} style={{ color: badge.color }}>
+              {badge.label}
             </Text>
           </View>
         ) : null}
