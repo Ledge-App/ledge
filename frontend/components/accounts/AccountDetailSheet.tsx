@@ -3,11 +3,12 @@ import { Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
-import { formatAmount, formatMaskableAmount } from '@/lib/format/money'
-import { countsTowardTotals } from '@/lib/transactions/totals'
+import { formatMaskableAmount } from '@/lib/format/money'
+import { groupByDay } from '@/lib/transactions/groupByDay'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
+import { DayGroupHeader } from '@/components/transactions/DayGroupHeader'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -41,7 +42,6 @@ const variantIcons: Record<AccountDetailVariant, { name: string; color: string }
   cashOnHand: { name: 'cash', color: colors.income },
 }
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export function AccountDetailSheet({
   visible,
@@ -68,17 +68,12 @@ export function AccountDetailSheet({
   if (visible) lastShown.current = { title, balance, variant, items, emptyLabel }
   const shown = visible ? { title, balance, variant, items, emptyLabel } : lastShown.current
 
-  const sections = useMemo(() => {
-    const byDate = new Map<string, FeedItem[]>()
-    for (const item of shown.items) {
-      const bucket = byDate.get(item.date) ?? []
-      bucket.push(item)
-      byDate.set(item.date, bucket)
-    }
-    return Array.from(byDate.entries())
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-      .map(([date, data]) => ({ title: date, data }))
-  }, [shown.items])
+  // SectionList's own shape, mapped off the shared grouping so this sheet and the day-card lists
+  // can't disagree about which day a row belongs to.
+  const sections = useMemo(
+    () => groupByDay(shown.items).map((day) => ({ title: day.date, data: day.items })),
+    [shown.items],
+  )
 
   const icon = variantIcons[shown.variant] ?? variantIcons.cash
   const balanceColor = shown.variant === 'credit' ? colors.expense : colors.textPrimary
@@ -115,25 +110,15 @@ export function AccountDetailSheet({
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}
-        renderSectionHeader={({ section }) => {
-          const date = new Date(section.title + 'T00:00:00')
-          const dayOfWeek = DAY_NAMES[date.getDay()]
-          const monthDay = `${date.getMonth() + 1}/${date.getDate()}`
-          // countsTowardTotals, not a hand-rolled filter: these rows have to agree with the
-          // dashboard and the transactions tab about what counts, and previously they didn't —
-          // transfer legs and sweeps were counted here while being excluded everywhere else.
-          const incomeTotal = section.data.filter((i) => i.amount < 0 && countsTowardTotals(i)).reduce((s, i) => s + Math.abs(i.netAmount ?? i.amount), 0)
-          const expenseTotal = section.data.filter((i) => i.amount > 0 && countsTowardTotals(i)).reduce((s, i) => s + (i.netAmount ?? i.amount), 0)
-          return (
-            <View className="flex-row items-center justify-between bg-surface pb-1 pt-3">
-              <Text className="font-sansSemi text-sm text-textPrimary">{monthDay} {dayOfWeek}</Text>
-              <View className="flex-row gap-3">
-                {incomeTotal > 0 ? <Text className="font-sans text-xs text-income">IN {formatAmount(incomeTotal)}</Text> : null}
-                {expenseTotal > 0 ? <Text className="font-sans text-xs text-expense">OUT {formatAmount(expenseTotal)}</Text> : null}
-              </View>
-            </View>
-          )
-        }}
+        renderSectionHeader={({ section }) => (
+          // Same header component the Transactions tab and the category sheet render, so all
+          // three agree on what a day is worth — they previously each reduced the rows themselves.
+          <DayGroupHeader
+            date={section.title}
+            items={section.data}
+            className="flex-row items-center justify-between bg-surface pb-1 pt-3"
+          />
+        )}
         renderItem={({ item }) => {
           const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
           return (

@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { formatFullDate } from './date'
+import { formatDayLabel, formatFullDate } from './date'
+
+describe('formatDayLabel', () => {
+  it('writes the short day-header form', () => {
+    expect(formatDayLabel('2026-07-10')).toBe('7/10 Fri')
+  })
+
+  it('does not shift the day for a timezone behind UTC', () => {
+    expect(formatDayLabel('2026-01-01')).toBe('1/1 Thu')
+  })
+
+  it('returns an unparseable key untouched', () => {
+    expect(formatDayLabel('not-a-date')).toBe('not-a-date')
+  })
+})
 
 describe('formatFullDate', () => {
   it('writes a date key out with its weekday', () => {

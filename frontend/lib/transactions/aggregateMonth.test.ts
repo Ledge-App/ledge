@@ -148,6 +148,29 @@ describe('aggregateMonth', () => {
     expect(result.spendByDay.has('2026-06-02')).toBe(false)
   })
 
+  // The amount-mirror rule in applySweepExclusion catches the sweeps the PFC rule can't: the code
+  // on these is a generic TRANSFER_OUT_ACCOUNT_TRANSFER, so isInternalMovement is false and
+  // isSweptOutflow is the only signal. The row already renders greyed out via countsTowardTotals,
+  // and the aggregates have to agree with it.
+  it('excludes a sweep caught only by the amount-mirror rule, not its PFC', () => {
+    const result = aggregateMonth([
+      item({ id: 'a', date: '2026-06-01', amount: 40, categoryId: 'groceries' }),
+      item({
+        id: 'sweep',
+        date: '2026-06-02',
+        amount: 286,
+        categoryId: 'transfers-out',
+        pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER',
+        isBrokerageCashAccount: true,
+        isSweptOutflow: true,
+      }),
+    ])
+
+    expect(result.totalExpense).toBe(40)
+    expect(result.spendByCategory.has('transfers-out')).toBe(false)
+    expect(result.spendByDay.has('2026-06-02')).toBe(false)
+  })
+
   it('keeps counting a credit card payment that never paired, since the card is not linked', () => {
     const result = aggregateMonth([
       item({ id: 'pay', amount: 1200, categoryId: 'payments', pfcDetailed: 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' }),

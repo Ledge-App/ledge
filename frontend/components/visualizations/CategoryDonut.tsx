@@ -44,11 +44,16 @@ export function CategoryDonut({ segments, highlightedCategoryId, onSegmentPress,
   const hasHighlight = highlightedCategoryId != null
 
   const arcs = useMemo(() => {
-    if (segments.length === 0) return []
-    const gap = segments.length > 1 ? GAP_DEG : 0
-    const available = 360 - gap * segments.length
+    // Zero-amount segments are listed (a category whose rows are all excluded still gets a card and
+    // a breakdown row) but have no arc to draw. Dropped before the gaps are apportioned: each one
+    // left in would still claim a GAP_DEG of the ring and shrink every real slice around an
+    // invisible sliver.
+    const drawable = segments.filter((seg) => seg.percentage > 0)
+    if (drawable.length === 0) return []
+    const gap = drawable.length > 1 ? GAP_DEG : 0
+    const available = 360 - gap * drawable.length
     let angle = 0
-    return segments.map((seg) => {
+    return drawable.map((seg) => {
       const sweep = (seg.percentage / 100) * available
       const start = angle
       const end = angle + sweep
@@ -74,7 +79,9 @@ export function CategoryDonut({ segments, highlightedCategoryId, onSegmentPress,
     [arcs, hasHighlight, cx, cy, outerR],
   )
 
-  if (segments.length === 0) return null
+  // Nothing drawable means nothing counted, even if zero-amount segments were passed in for the
+  // breakdown list below the chart. Render nothing rather than an empty ring-sized hole.
+  if (arcs.length === 0) return null
 
   return (
     <View style={{ alignItems: 'center' }}>
