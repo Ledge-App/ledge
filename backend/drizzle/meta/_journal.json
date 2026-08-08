@@ -43,6 +43,13 @@
       "when": 1786152830801,
       "tag": "0005_add_auto_transfer_support",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786154916527,
+      "tag": "0006_add_institution_logo",
+      "breakpoints": true
     }
   ]
 }

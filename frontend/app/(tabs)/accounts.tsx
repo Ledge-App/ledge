@@ -187,6 +187,7 @@ export default function AccountsTab() {
                       name={account.name}
                       balance={account.balances?.current ?? 0}
                       variant={isInvestmentAccount(account) ? 'investment' : 'cash'}
+                      logo={account.institutionLogo}
                       isMasked={isMasked}
                       onPress={() => setDetailTarget(account)}
                     />
@@ -222,6 +223,7 @@ export default function AccountsTab() {
                       name={account.name}
                       balance={account.balances?.current ?? 0}
                       variant="credit"
+                      logo={account.institutionLogo}
                       limit={account.balances?.limit ?? null}
                       isMasked={isMasked}
                       onPress={() => setDetailTarget(account)}
