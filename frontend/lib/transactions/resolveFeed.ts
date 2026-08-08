@@ -47,6 +47,10 @@ export interface FeedItem {
   subcategoryId: string | null
   categorySource: CategorySource
   confidenceLevel: string | null
+  // Plaid's PFC detailed code (e.g. 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT'), null for manual
+  // transactions. Carried for transfer auto-detection's confidence gate — category display
+  // still goes through the resolution chain above, never this raw code.
+  pfcDetailed: string | null
   accountId: string | null
   pending: boolean
   note: string | null
@@ -57,6 +61,9 @@ export interface FeedItem {
   transferId: string | null
   transferKind: TransferKind | null
   transferRole: 'expense' | 'income' | null
+  // Who created the transfer this leg belongs to: 'auto' = transfer auto-detection, so the
+  // UI can badge it and offer one-tap undo. Null when the item isn't a transfer leg.
+  transferSource: 'manual' | 'auto' | null
 }
 
 export function mergeFeed(
@@ -81,6 +88,7 @@ export function mergeFeed(
       subcategoryId: resolved.subcategoryId,
       categorySource: resolved.categorySource,
       confidenceLevel: txn.personal_finance_category?.confidence_level ?? null,
+      pfcDetailed: txn.personal_finance_category?.detailed ?? null,
       accountId: txn.account_id,
       pending: txn.pending,
       note: null,
@@ -91,6 +99,7 @@ export function mergeFeed(
       transferId: null,
       transferKind: null,
       transferRole: null,
+      transferSource: null,
     }
   })
 
@@ -104,6 +113,7 @@ export function mergeFeed(
     subcategoryId: txn.subcategoryId,
     categorySource: txn.categoryId ? 'user_defined' : 'uncategorized',
     confidenceLevel: null,
+    pfcDetailed: null,
     accountId: null,
     pending: false,
     note: txn.note,
@@ -114,6 +124,7 @@ export function mergeFeed(
     transferId: null,
     transferKind: null,
     transferRole: null,
+    transferSource: null,
   }))
 
   return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
@@ -195,11 +206,11 @@ export function applyTransfers(feed: FeedItem[], transfers: Transfer[]): FeedIte
     // Non-reimbursement transfer legs
     const asExpense = byExpenseId.get(item.id)
     if (asExpense) {
-      return { ...item, transferId: asExpense.id, transferKind: asExpense.kind, transferRole: 'expense' as const }
+      return { ...item, transferId: asExpense.id, transferKind: asExpense.kind, transferRole: 'expense' as const, transferSource: asExpense.source }
     }
     const asIncome = byIncomeId.get(item.id)
     if (asIncome) {
-      return { ...item, transferId: asIncome.id, transferKind: asIncome.kind, transferRole: 'income' as const }
+      return { ...item, transferId: asIncome.id, transferKind: asIncome.kind, transferRole: 'income' as const, transferSource: asIncome.source }
     }
 
     // Reimbursement expense side: accumulate amounts, set netAmount

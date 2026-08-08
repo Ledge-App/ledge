@@ -14,9 +14,20 @@ export interface TransactionSyncResult {
   modified: Transaction[]
   removed: RemovedTransaction[]
   cursors: Record<string, string>
-  hasMore: boolean
+  /**
+   * Per item: true only when MAX_PAGES_PER_ITEM was hit before the item drained, meaning the
+   * client should trigger another sync to keep draining. Per-item (not one OR'd boolean) so a
+   * client re-syncing one undrained item doesn't interpret the flag as "re-sync everything".
+   */
+  hasMore: Record<string, boolean>
   itemErrors: TransactionSyncItemError[]
 }
+
+// Bounds one request's work per item so a freshly linked account's initial history (potentially
+// years, has_more=true across many pages) can't run a serverless invocation into its timeout.
+// 10 pages x count=500 = up to 5000 transactions per item per request; the client keeps
+// re-syncing while any hasMore flag is true, so the drain completes across a few requests.
+const MAX_PAGES_PER_ITEM = 10
 
 export const transactionSyncService = {
   async sync(userId: string, cursors: Record<string, string>): Promise<TransactionSyncResult> {
@@ -29,23 +40,44 @@ export const transactionSyncService = {
     const modified: Transaction[] = []
     const removed: RemovedTransaction[] = []
     const nextCursors: Record<string, string> = {}
+    const hasMore: Record<string, boolean> = {}
     const itemErrors: TransactionSyncItemError[] = []
-    let hasMore = false
 
     for (const item of items) {
-      const cursor = cursors[item.itemId] ?? ''
+      const originalCursor = cursors[item.itemId] ?? ''
+      let cursor = originalCursor
       try {
-        const page = await transactionRepository.sync(client, item.accessToken, cursor)
-        added.push(...page.added)
-        modified.push(...page.modified)
-        removed.push(...page.removed)
-        nextCursors[item.itemId] = page.next_cursor
-        hasMore = hasMore || page.has_more
+        // Drain this item page by page. The cursor is recorded after every successful page, so
+        // an error partway through leaves a valid resume point (the client's merge is idempotent
+        // by transaction_id, so re-fetching a page is harmless).
+        for (let page = 1; ; page++) {
+          const data = await transactionRepository.sync(client, item.accessToken, cursor)
+          added.push(...data.added)
+          modified.push(...data.modified)
+          removed.push(...data.removed)
+          cursor = data.next_cursor
+          nextCursors[item.itemId] = cursor
+          if (!data.has_more) {
+            hasMore[item.itemId] = false
+            break
+          }
+          if (page >= MAX_PAGES_PER_ITEM) {
+            hasMore[item.itemId] = true
+            break
+          }
+        }
       } catch (err) {
         // One user's misconfigured/broken Plaid item must not block sync for their other
-        // items (architecture.md's BYOK isolation tradeoff). Cursor is left unset so the
-        // next sync retries this item from where it last succeeded.
+        // items (architecture.md's BYOK isolation tradeoff). hasMore is left unset so the
+        // client doesn't hot-loop on a failing item; the next app-driven sync retries it.
         itemErrors.push({ itemId: item.itemId, message: err instanceof Error ? err.message : 'Sync failed for this account.' })
+        // Plaid requires restarting pagination from the cursor it began with when the
+        // underlying data mutated mid-pagination; discard this item's partial progress.
+        const code = (err as { response?: { data?: { error_code?: string } } })?.response?.data?.error_code
+        if (code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {
+          if (originalCursor) nextCursors[item.itemId] = originalCursor
+          else delete nextCursors[item.itemId]
+        }
       }
     }
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const repoMock = { list: vi.fn(), create: vi.fn(), delete: vi.fn() }
+const repoMock = { list: vi.fn(), create: vi.fn(), createMany: vi.fn(), delete: vi.fn() }
 vi.mock('../repositories/transferRepository.js', () => ({ transferRepository: repoMock }))
 
 const baseInput = {
@@ -53,5 +53,46 @@ describe('transfers router', () => {
     await (await caller()).delete({ id })
 
     expect(repoMock.delete).toHaveBeenCalledWith('jwt-1', id)
+  })
+
+  describe('createMany (auto-apply)', () => {
+    const autoDraft = {
+      kind: 'credit_card_payment' as const,
+      expensePlaidTransactionId: 'plaid-out-1',
+      incomePlaidTransactionId: 'plaid-in-1',
+      amount: '500.00',
+    }
+
+    it('passes drafts through to the repository', async () => {
+      repoMock.createMany.mockResolvedValue({ created: [], skipped: 0, failed: 0 })
+
+      await (await caller()).createMany({ transfers: [autoDraft] })
+
+      expect(repoMock.createMany).toHaveBeenCalledWith('jwt-1', 'user-1', [autoDraft])
+    })
+
+    it('rejects kinds auto-detection must never create', async () => {
+      await expect(
+        // @ts-expect-error deliberately invalid kind — reimbursements stay manual-only
+        (await caller()).createMany({ transfers: [{ ...autoDraft, kind: 'reimbursement' }] }),
+      ).rejects.toThrow()
+      expect(repoMock.createMany).not.toHaveBeenCalled()
+    })
+
+    it('rejects unpaired drafts: auto transfers always have both legs', async () => {
+      await expect(
+        // @ts-expect-error deliberately missing income leg
+        (await caller()).createMany({ transfers: [{ kind: 'credit_card_payment', expensePlaidTransactionId: 'x', amount: '1.00' }] }),
+      ).rejects.toThrow()
+      expect(repoMock.createMany).not.toHaveBeenCalled()
+    })
+
+    it('rejects an empty batch and one beyond the 100-row bound', async () => {
+      await expect((await caller()).createMany({ transfers: [] })).rejects.toThrow()
+      await expect(
+        (await caller()).createMany({ transfers: Array.from({ length: 101 }, () => autoDraft) }),
+      ).rejects.toThrow()
+      expect(repoMock.createMany).not.toHaveBeenCalled()
+    })
   })
 })

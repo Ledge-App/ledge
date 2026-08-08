@@ -11,6 +11,8 @@ export interface TransferContext {
 export interface TransferTypeDefinition {
   kind: TransferKind
   label: string
+  /** Compact badge text for tight rows (TransactionRow); `label` stays for sheets/cards. */
+  shortLabel: string
   icon: keyof typeof Ionicons.glyphMap
   color: string
   appliesTo(item: FeedItem, ctx: TransferContext): boolean
@@ -65,6 +67,7 @@ export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
   account_transfer: {
     kind: 'account_transfer',
     label: 'Between accounts',
+    shortLabel: 'Transfer',
     icon: 'swap-horizontal',
     color: colors.primary,
     appliesTo: () => true,
@@ -79,6 +82,7 @@ export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
   credit_card_payment: {
     kind: 'credit_card_payment',
     label: 'Credit card payment',
+    shortLabel: 'Payment',
     icon: 'card-outline',
     color: colors.transfer,
     appliesTo: (item, ctx) => {
@@ -96,6 +100,7 @@ export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
   refund: {
     kind: 'refund',
     label: 'Refund',
+    shortLabel: 'Refund',
     icon: 'arrow-undo-outline',
     color: '#D97706',
     appliesTo: () => true,
@@ -109,6 +114,7 @@ export const TRANSFER_TYPES: Record<TransferKind, TransferTypeDefinition> = {
   reimbursement: {
     kind: 'reimbursement',
     label: 'Reimbursement',
+    shortLabel: 'Reimbursed',
     icon: 'arrow-undo',
     color: colors.reimbursed,
     appliesTo: (item) => !isExpense(item),

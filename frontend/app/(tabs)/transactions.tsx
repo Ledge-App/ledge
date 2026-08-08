@@ -18,6 +18,8 @@ import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import { CategorySheet } from '@/components/transactions/CategorySheet'
 import { TransferSheet } from '@/components/transfers/TransferSheet'
+import { TransferSuggestionsBanner, TransferSuggestionsSheet } from '@/components/transfers/TransferSuggestionsSheet'
+import { useTransferDismissals } from '@/hooks/useTransferDismissals'
 import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -29,6 +31,7 @@ import { countsTowardTotals } from '@/lib/transactions/totals'
 import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { ManualTransactionInput } from '@/components/transactions/ManualTransactionSheet'
+import type { TransferSuggestion } from '@/hooks/useTransactionFeed'
 import type { ManualTransaction, TransferKind } from '@/types/domain'
 
 export default function TransactionsScreen() {
@@ -41,6 +44,7 @@ export default function TransactionsScreen() {
   const [pendingTransfer, setPendingTransfer] = useState<{ kind: TransferKind; counterpartIds: string[] } | null>(null)
   const [transferForcedKind, setTransferForcedKind] = useState<TransferKind | undefined>(undefined)
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
+  const [suggestionsSheetOpen, setSuggestionsSheetOpen] = useState(false)
   const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -48,7 +52,8 @@ export default function TransactionsScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const sectionOffsets = useRef(new Map<string, number>())
 
-  const { feed, categoryById, isLoading, error } = useTransactionFeed()
+  const { feed, categoryById, transferSuggestions, isLoading, error } = useTransactionFeed()
+  const transferDismissals = useTransferDismissals()
   const accounts = useAccounts()
   const categories = useCategories()
   const subcategories = useSubcategories()
@@ -164,9 +169,38 @@ export default function TransactionsScreen() {
   async function handleUnmarkTransfer(item: FeedItem) {
     if (!item.transferId) return
     try {
-      await transfers.delete({ id: item.transferId })
+      // unmark (not delete) also records a dismissal, so auto-detection can't re-create
+      // the pair the user just removed on the next scan.
+      await transfers.unmark({ id: item.transferId })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not remove this transfer. Try again.')
+    }
+  }
+
+  // Suggestion legs are always Plaid-sourced (detection eligibility), so the plaid id
+  // fields are correct on both sides. Confirming creates a normal manual-source transfer —
+  // the user vouched for it, exactly as if they'd built it in the TransferSheet.
+  async function handleConfirmSuggestion(suggestion: TransferSuggestion) {
+    try {
+      await transfers.create({
+        kind: suggestion.kind,
+        expensePlaidTransactionId: suggestion.expense.id,
+        expenseManualTransactionId: null,
+        incomePlaidTransactionId: suggestion.income.id,
+        incomeManualTransactionId: null,
+        amount: suggestion.amount.toFixed(2),
+        note: null,
+      })
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not link this transfer. Try again.')
+    }
+  }
+
+  async function handleDismissSuggestion(suggestion: TransferSuggestion) {
+    try {
+      await transferDismissals.create({ expensePlaidTransactionId: suggestion.expense.id })
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not dismiss this suggestion. Try again.')
     }
   }
 
@@ -348,6 +382,12 @@ export default function TransactionsScreen() {
           </View>
         </View>
 
+        {transferSuggestions.length > 0 ? (
+          <View className="mx-5 mb-4">
+            <TransferSuggestionsBanner count={transferSuggestions.length} onPress={() => setSuggestionsSheetOpen(true)} />
+          </View>
+        ) : null}
+
         {/* Transaction list grouped by date */}
         {filteredFeed.length === 0 ? (
           <View className="px-5 py-8">
@@ -439,6 +479,14 @@ export default function TransactionsScreen() {
         isTransfer={editingManual ? feed.find((item) => item.id === editingManual.id)?.transferKind != null : false}
         onSaveAndMarkTransfer={handleSaveManualAndMarkTransfer}
         onSaveAndUnmarkTransfer={handleSaveManualAndUnmarkTransfer}
+      />
+      <TransferSuggestionsSheet
+        visible={suggestionsSheetOpen}
+        suggestions={transferSuggestions}
+        accounts={accounts.data ?? []}
+        onClose={() => setSuggestionsSheetOpen(false)}
+        onConfirm={handleConfirmSuggestion}
+        onDismiss={handleDismissSuggestion}
       />
     </SafeAreaView>
   )

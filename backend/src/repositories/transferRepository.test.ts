@@ -59,6 +59,7 @@ describe('transferRepository.create', () => {
     mockInsertReturning({
       id: 't1',
       kind: 'account_transfer',
+      source: 'manual',
       expense_plaid_transaction_id: 'plaid-tx-1',
       expense_manual_transaction_id: null,
       income_plaid_transaction_id: null,
@@ -82,6 +83,7 @@ describe('transferRepository.create', () => {
     mockInsertReturning({
       id: 't2',
       kind: 'credit_card_payment',
+      source: 'manual',
       expense_plaid_transaction_id: 'plaid-tx-1',
       expense_manual_transaction_id: null,
       income_plaid_transaction_id: 'plaid-tx-2',
@@ -96,6 +98,7 @@ describe('transferRepository.create', () => {
     expect(result).toEqual({
       id: 't2',
       kind: 'credit_card_payment',
+      source: 'manual',
       expensePlaidTransactionId: 'plaid-tx-1',
       expenseManualTransactionId: null,
       incomePlaidTransactionId: 'plaid-tx-2',
@@ -103,5 +106,97 @@ describe('transferRepository.create', () => {
       amount: '500.00',
       note: null,
     })
+  })
+
+  it('always inserts with source manual — the sheet path can never mint auto rows', async () => {
+    mockInsertReturning({
+      id: 't3', kind: 'account_transfer', source: 'manual',
+      expense_plaid_transaction_id: 'plaid-tx-1', expense_manual_transaction_id: null,
+      income_plaid_transaction_id: 'plaid-tx-2', income_manual_transaction_id: null,
+      amount: '500.00', note: null,
+    })
+
+    const { transferRepository } = await import('./transferRepository.js')
+    await transferRepository.create('jwt-1', 'user-1', validInput)
+
+    expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({ source: 'manual' }))
+  })
+})
+
+describe('transferRepository.createMany', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function autoRow(id: string) {
+    return {
+      id,
+      kind: 'credit_card_payment',
+      source: 'auto',
+      expense_plaid_transaction_id: `out-${id}`,
+      expense_manual_transaction_id: null,
+      income_plaid_transaction_id: `in-${id}`,
+      income_manual_transaction_id: null,
+      amount: '500.00',
+      note: null,
+    }
+  }
+
+  function insertReturning(result: { data?: unknown; error?: unknown }) {
+    const single = vi.fn().mockResolvedValue({ data: result.data ?? null, error: result.error ?? null })
+    return { select: vi.fn(() => ({ single })) }
+  }
+
+  const draft = (n: number) => ({
+    kind: 'credit_card_payment' as const,
+    expensePlaidTransactionId: `out-t${n}`,
+    incomePlaidTransactionId: `in-t${n}`,
+    amount: '500.00',
+  })
+
+  it('inserts each row with source auto, null manual legs and no note', async () => {
+    insertMock.mockReturnValue(insertReturning({ data: autoRow('t1') }))
+
+    const { transferRepository } = await import('./transferRepository.js')
+    const result = await transferRepository.createMany('jwt-1', 'user-1', [draft(1)])
+
+    expect(insertMock).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      kind: 'credit_card_payment',
+      source: 'auto',
+      expense_plaid_transaction_id: 'out-t1',
+      expense_manual_transaction_id: null,
+      income_plaid_transaction_id: 'in-t1',
+      income_manual_transaction_id: null,
+      amount: '500.00',
+      note: null,
+    })
+    expect(result.created).toHaveLength(1)
+    expect(result.created[0]).toMatchObject({ id: 't1', source: 'auto' })
+    expect(result).toMatchObject({ skipped: 0, failed: 0 })
+  })
+
+  it('treats a unique violation as skipped success — the transfer already exists (multi-device race)', async () => {
+    insertMock
+      .mockReturnValueOnce(insertReturning({ error: { code: '23505', message: 'duplicate key' } }))
+      .mockReturnValueOnce(insertReturning({ data: autoRow('t2') }))
+
+    const { transferRepository } = await import('./transferRepository.js')
+    const result = await transferRepository.createMany('jwt-1', 'user-1', [draft(1), draft(2)])
+
+    expect(result.created.map((t) => t.id)).toEqual(['t2'])
+    expect(result.skipped).toBe(1)
+    expect(result.failed).toBe(0)
+  })
+
+  it('one row failing for another reason never fails the batch — auto-apply is best-effort', async () => {
+    insertMock
+      .mockReturnValueOnce(insertReturning({ error: { code: '57014', message: 'canceled' } }))
+      .mockReturnValueOnce(insertReturning({ data: autoRow('t2') }))
+
+    const { transferRepository } = await import('./transferRepository.js')
+    const result = await transferRepository.createMany('jwt-1', 'user-1', [draft(1), draft(2)])
+
+    expect(result.created.map((t) => t.id)).toEqual(['t2'])
+    expect(result.skipped).toBe(0)
+    expect(result.failed).toBe(1)
   })
 })

@@ -5,9 +5,9 @@ import type { FeedItem } from './resolveFeed'
 function item(date: string): FeedItem {
   return {
     id: date, source: 'plaid', amount: 10, date, merchantName: 'x', categoryId: null, subcategoryId: null,
-    categorySource: 'uncategorized', confidenceLevel: null, accountId: null, pending: false, note: null,
+    categorySource: 'uncategorized', confidenceLevel: null, pfcDetailed: null, accountId: null, pending: false, note: null,
     reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
-    transferId: null, transferKind: null, transferRole: null,
+    transferId: null, transferKind: null, transferRole: null, transferSource: null,
   }
 }
 

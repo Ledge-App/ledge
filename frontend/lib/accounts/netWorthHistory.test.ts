@@ -14,6 +14,7 @@ function txn(overrides: Partial<FeedItem> & { date: string; amount: number }): F
     subcategoryId: null,
     categorySource: 'uncategorized',
     confidenceLevel: null,
+    pfcDetailed: null,
     accountId: 'checking',
     pending: false,
     note: null,
@@ -24,6 +25,7 @@ function txn(overrides: Partial<FeedItem> & { date: string; amount: number }): F
     transferId: null,
     transferKind: null,
     transferRole: null,
+    transferSource: null,
     ...overrides,
   }
 }

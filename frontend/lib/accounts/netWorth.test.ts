@@ -14,6 +14,7 @@ function manual(amount: number, id = `m-${amount}`): FeedItem {
     subcategoryId: null,
     categorySource: 'uncategorized',
     confidenceLevel: null,
+    pfcDetailed: null,
     accountId: null,
     pending: false,
     note: null,
@@ -24,6 +25,7 @@ function manual(amount: number, id = `m-${amount}`): FeedItem {
     transferId: null,
     transferKind: null,
     transferRole: null,
+    transferSource: null,
   }
 }
 

@@ -80,6 +80,12 @@ describe('mergeFeed', () => {
     const feed = mergeFeed([], manualTxns, [], [])
     expect(feed.find((item) => item.id === 'm1')!.merchantName).toBe('Street food')
   })
+
+  it('carries the raw PFC detailed code on Plaid items and null on manual items', () => {
+    const feed = mergeFeed(plaidTxns, manualTxns, [], [])
+    expect(feed.find((item) => item.id === 'p1')!.pfcDetailed).toBe('FOOD_AND_DRINK_FAST_FOOD')
+    expect(feed.find((item) => item.id === 'm1')!.pfcDetailed).toBeNull()
+  })
 })
 
 // Shared by the applyReimbursements suite and the end-to-end pipeline suite below: the
@@ -225,7 +231,7 @@ describe('applyTransfers', () => {
 
   it('stamps both legs of a paired transfer with the same id and kind', () => {
     const transfers: Transfer[] = [
-      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -233,9 +239,20 @@ describe('applyTransfers', () => {
     expect(find(result, 'in')).toMatchObject({ transferId: 't1', transferKind: 'account_transfer', transferRole: 'income' })
   })
 
+  it('carries the transfer source onto both legs so the UI can badge auto-detected links', () => {
+    const transfers: Transfer[] = [
+      { id: 't1', kind: 'credit_card_payment', source: 'auto', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
+    ]
+    const result = applyTransfers(feed, transfers)
+
+    expect(find(result, 'out').transferSource).toBe('auto')
+    expect(find(result, 'in').transferSource).toBe('auto')
+    expect(find(result, 'lunch').transferSource).toBeNull()
+  })
+
   it('stamps only the expense when the transfer is unpaired', () => {
     const transfers: Transfer[] = [
-      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '500.00', note: null },
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '500.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -245,7 +262,7 @@ describe('applyTransfers', () => {
 
   it('still stamps the expense when the income leg falls outside the loaded window', () => {
     const transfers: Transfer[] = [
-      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'not-loaded', incomeManualTransactionId: null, amount: '500.00', note: null },
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'not-loaded', incomeManualTransactionId: null, amount: '500.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -258,7 +275,7 @@ describe('applyTransfers', () => {
     ] as ManualTransaction[]
     const withManual = mergeFeed(plaidTxns, manualTxns, [], [])
     const transfers: Transfer[] = [
-      { id: 't2', kind: 'credit_card_payment', expensePlaidTransactionId: null, expenseManualTransactionId: 'm-out', incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '200.00', note: null },
+      { id: 't2', kind: 'credit_card_payment', source: 'manual', expensePlaidTransactionId: null, expenseManualTransactionId: 'm-out', incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '200.00', note: null },
     ]
     const result = applyTransfers(withManual, transfers)
 
@@ -267,7 +284,7 @@ describe('applyTransfers', () => {
 
   it('leaves unrelated transactions untouched', () => {
     const transfers: Transfer[] = [
-      { id: 't1', kind: 'account_transfer', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
+      { id: 't1', kind: 'account_transfer', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '500.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -280,7 +297,7 @@ describe('applyTransfers', () => {
 
   it('sets reimbursedAmount and netAmount for reimbursement-kind transfers', () => {
     const transfers: Transfer[] = [
-      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -290,8 +307,8 @@ describe('applyTransfers', () => {
 
   it('accumulates multiple reimbursement transfers on the same expense', () => {
     const transfers: Transfer[] = [
-      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
-      { id: 'r2', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '100.00', note: null },
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+      { id: 'r2', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: null, incomeManualTransactionId: null, amount: '100.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -300,7 +317,7 @@ describe('applyTransfers', () => {
 
   it('floors netAmount at zero when reimbursements exceed expense', () => {
     const transfers: Transfer[] = [
-      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '600.00', note: null },
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '600.00', note: null },
     ]
     const result = applyTransfers(feed, transfers)
 
@@ -310,7 +327,7 @@ describe('applyTransfers', () => {
   it('carries the expense category to the reimbursement income leg', () => {
     const catFeed = mergeFeed(plaidTxns, [], [{ id: 'o1', plaidTransactionId: 'out', categoryId: 'food', subcategoryId: null }] as unknown as import('@/types/domain').TransactionOverride[], [])
     const transfers: Transfer[] = [
-      { id: 'r1', kind: 'reimbursement', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
+      { id: 'r1', kind: 'reimbursement', source: 'manual', expensePlaidTransactionId: 'out', expenseManualTransactionId: null, incomePlaidTransactionId: 'in', incomeManualTransactionId: null, amount: '200.00', note: null },
     ]
     const result = applyTransfers(catFeed, transfers)
 
