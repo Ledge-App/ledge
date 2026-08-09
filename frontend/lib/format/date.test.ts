@@ -34,3 +34,4 @@ describe('formatFullDate', () => {
     expect(formatFullDate('not-a-date')).toBe('not-a-date')
   })
 })
+

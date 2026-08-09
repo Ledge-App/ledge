@@ -122,6 +122,7 @@ describe('dayChangePct', () => {
   })
 })
 
+
 describe('compactSymbol', () => {
   it('renders options from the parsed contract, never the OCC string', async () => {
     const { compactSymbol } = await import('./holdings')

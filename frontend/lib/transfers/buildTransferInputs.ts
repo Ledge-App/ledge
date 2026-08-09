@@ -16,6 +16,21 @@ export interface PendingTransfer {
   counterpartIds: string[]
 }
 
+/**
+ * Which id column a leg belongs in. There are three feed sources but only two column pairs:
+ * investment rows share the *PlaidTransactionId columns with plaid ones, because both are
+ * institution-supplied string ids while the manual columns are uuid-typed rows of our own.
+ * That is already what the auto-apply path does (useTransactionFeed posts draft.expense.id /
+ * draft.income.id straight into the plaid columns for any non-manual leg).
+ *
+ * Getting this wrong is not cosmetic: matching only 'plaid' left an investment leg null on all
+ * four columns, so marking a contribution against its checking outflow persisted a transfer with
+ * the outflow excluded and the investment leg never stamped — phantom income.
+ */
+function isPlaidLeg(item: FeedItem | null): item is FeedItem {
+  return item != null && item.source !== 'manual'
+}
+
 // Every screen that lists transactions has to turn "this item, marked as <kind>, linked to these
 // counterparts" into transfer rows. Shared so the Transactions tab, the dashboard and the account
 // detail sheet can't drift apart on which leg is the expense or what amount gets recorded.
@@ -32,9 +47,9 @@ export function buildTransferInputs(item: FeedItem, pending: PendingTransfer, fe
     const incomeItem = isExpense ? counterpart : item
     return {
       kind: pending.kind,
-      expensePlaidTransactionId: expenseItem?.source === 'plaid' ? expenseItem.id : null,
+      expensePlaidTransactionId: isPlaidLeg(expenseItem) ? expenseItem.id : null,
       expenseManualTransactionId: expenseItem?.source === 'manual' ? expenseItem.id : null,
-      incomePlaidTransactionId: incomeItem?.source === 'plaid' ? incomeItem.id : null,
+      incomePlaidTransactionId: isPlaidLeg(incomeItem) ? incomeItem.id : null,
       incomeManualTransactionId: incomeItem?.source === 'manual' ? incomeItem.id : null,
       // A reimbursement is only partial — it records what came back, not what was spent, so its
       // amount always comes off the income leg whichever side the user started from. Every other

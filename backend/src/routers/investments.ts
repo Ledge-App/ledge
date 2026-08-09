@@ -4,6 +4,10 @@ import { plaidCredentialRepository } from '../repositories/plaidCredentialReposi
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
 import { investmentRepository } from '../repositories/investmentRepository.js'
+import { investmentTransactionService } from '../services/investmentTransactionService.js'
+
+/** YYYY-MM-DD, the only date format Plaid's investments endpoints accept. */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
 
 export const investmentsRouter = router({
   // Holdings for one investment account. Fetched on demand when the account's detail sheet
@@ -22,4 +26,10 @@ export const investmentsRouter = router({
 
       return investmentRepository.getHoldings(client, item.accessToken, input.accountId)
     }),
+
+  // Item-wide, unlike holdings above: these rows feed transfer pairing across ALL accounts,
+  // so the client needs every item's activity on every sync, not one account's on sheet open.
+  transactions: protectedProcedure
+    .input(z.object({ startDate: isoDate, endDate: isoDate }))
+    .query(({ ctx, input }) => investmentTransactionService.fetch(ctx.userId, input.startDate, input.endDate)),
 })

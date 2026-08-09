@@ -14,13 +14,14 @@ export function isInvestmentAccount(account: { type: string }): boolean {
  * depository subtype ("a cash account at a brokerage", e.g. a Fidelity CMA), or any investment
  * account.
  *
- * This is the boundary where transfer *pairing* structurally cannot work, which is the only
- * reason a PFC-based exclusion is justified at all. A sweep's counterpart is either an investment
- * transaction (a different Plaid product, never in /transactions/sync) or a second leg on the very
- * same account, which autoMatch's pairAllowed rejects outright. Everywhere else, pairing is the
- * right mechanism and already works: a linked counterpart auto-applies as a transfer, and an
- * unlinked one is left counted deliberately — see the design doc's preference for leaving money
- * counted over wrongly hiding it.
+ * This is the boundary where transfer *pairing* used to be structurally impossible. The
+ * counterpart of a contribution IS now reachable: /investments/transactions/get is merged into
+ * the feed as source 'investment', and autoMatch pairs it. What remains unpairable is the sweep
+ * an institution reports as a second leg on the very same account, which autoMatch's pairAllowed
+ * rejects outright — that case, and only that case, is why the PFC-based exclusion below still
+ * exists. Everywhere else, pairing is the right mechanism and already works: a linked counterpart
+ * auto-applies as a transfer, and an unlinked one is left counted deliberately — see the design
+ * doc's preference for leaving money counted over wrongly hiding it.
  *
  * Plaid's own schema draws the boundary the same way: "Investments does not support depository
  * types other than `cash management`."

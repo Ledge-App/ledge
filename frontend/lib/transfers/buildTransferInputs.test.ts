@@ -101,4 +101,42 @@ describe('buildTransferInputs', () => {
     expect(input.incomePlaidTransactionId).toBeNull()
     expect(input.incomeManualTransactionId).toBeNull()
   })
+
+  // Investment legs share the plaid id columns; matching only source === 'plaid' left them null
+  // on all four, persisting a one-legged transfer whose investment side was never stamped —
+  // the checking outflow dropped out of totals while the investment inflow stayed counted as
+  // income that never existed.
+  it('routes an investment leg to the plaid id columns', () => {
+    const contribution = item({
+      id: 'itx-1',
+      amount: -1000,
+      date: '2026-08-10',
+      source: 'investment',
+      accountId: 'acc-ira',
+    })
+    const outflow = item({ id: 'txn-out', amount: 1000, date: '2026-08-10' })
+    const [input] = buildTransferInputs(
+      outflow,
+      { kind: 'account_transfer', counterpartIds: ['itx-1'] },
+      [outflow, contribution],
+    )
+
+    expect(input.expensePlaidTransactionId).toBe('txn-out')
+    expect(input.incomePlaidTransactionId).toBe('itx-1')
+    expect(input.incomeManualTransactionId).toBeNull()
+  })
+
+  it('stamps an investment leg marked from the investment side too', () => {
+    const withdrawal = item({
+      id: 'itx-2',
+      amount: 800,
+      date: '2026-08-10',
+      source: 'investment',
+      accountId: 'acc-ira',
+    })
+    const [input] = buildTransferInputs(withdrawal, { kind: 'account_transfer', counterpartIds: [] }, [withdrawal])
+
+    expect(input.expensePlaidTransactionId).toBe('itx-2')
+    expect(input.expenseManualTransactionId).toBeNull()
+  })
 })

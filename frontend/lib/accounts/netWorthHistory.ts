@@ -20,9 +20,16 @@ import { round2 } from './netWorth'
  * a manual expense unwinds to a real past cash balance rather than to an offset from today.
  * The pot's zero point (before the first manual entry) is what makes that exact.
  *
- * One limit remains, inherent to reconstructing from a ledger: investment accounts hold their
- * present value across every past month. /transactions/sync reports cash activity, not
- * holdings or market movement, so there is nothing to unwind.
+ * Investment-source rows join the walk on exactly the same terms, with no exclusion needed: the
+ * only ones ingested are cash crossing the account boundary, which really does move money. A
+ * contribution's two legs (the checking outflow and the investment-side arrival) cancel to zero,
+ * which is the correct answer and an improvement on reading the checking leg alone. Trades never
+ * reach the feed at all — they are filtered out in the backend repository — so the buy that would
+ * otherwise unwind as a $10,000 drop that never happened cannot appear here.
+ *
+ * One limit remains, inherent to reconstructing from a ledger: market movement is invisible. No
+ * feed row exists for a holding gaining or losing value, so an investment account's growth stays
+ * baked into today's anchor and is carried flat across every past month.
  *
  * One thing to be aware of rather than a limit: cash withdrawn from a linked account and then
  * logged as a manual expense moves the line twice — once as the ATM debit Plaid saw, once as
@@ -51,10 +58,11 @@ function fromIndex(index: number): { year: number; month: number } {
 function flowByMonth(feed: FeedItem[], linkedAccountIds: Set<string>): Map<number, number> {
   const flow = new Map<number, number>()
   for (const item of feed) {
-    // Manual transactions have no accountId by design and are always counted. Plaid ones are
-    // dropped when their account is no longer linked: that balance left the net worth total
-    // when the institution was removed, so its history would be unwinding a phantom.
-    if (item.source === 'plaid' && (!item.accountId || !linkedAccountIds.has(item.accountId))) continue
+    // Manual transactions have no accountId by design and are always counted. Account-backed ones
+    // (plaid and investment alike) are dropped when their account is no longer linked: that
+    // balance left the net worth total when the institution was removed, so its history would be
+    // unwinding a phantom.
+    if (item.source !== 'manual' && (!item.accountId || !linkedAccountIds.has(item.accountId))) continue
     const year = Number(item.date.slice(0, 4))
     const month = Number(item.date.slice(5, 7))
     if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) continue

@@ -152,3 +152,56 @@ describe('netWorthYearRange', () => {
     })
   })
 })
+
+describe('computeNetWorthHistory: investment-source rows', () => {
+  const LINKED_WITH_IRA = new Set(['checking', 'card', 'ira'])
+  const investment = (overrides: Partial<FeedItem> & { date: string; amount: number }): FeedItem =>
+    txn({ source: 'investment', accountId: 'ira', isBrokerageCashAccount: true, ...overrides })
+
+  // Every case carries a $50 July grocery as an anchor: it keeps July inside the walk (a month
+  // with no counted flow at all is omitted rather than flat-lined) and gives the assertions a
+  // known non-zero baseline, so "this row contributed nothing" is visible as -50.
+  const anchor = txn({ date: '2026-07-20', amount: 50, accountId: 'checking' })
+
+
+  it('cancels a contribution against its checking leg — both legs now exist', () => {
+    // Both legs present: the checking outflow (+1000) and the investment-side arrival (-1000)
+    // sum to zero, which is correct and better than counting the checking leg alone.
+    const points = computeNetWorthHistory(
+      50_000,
+      [
+        anchor,
+        txn({ date: '2026-07-15', amount: 1000, accountId: 'checking' }),
+        investment({ date: '2026-07-15', amount: -1000 }),
+      ],
+      LINKED_WITH_IRA,
+      2026,
+      TODAY,
+    )
+    expect(points.find((p) => p.month === 7)!.change).toBe(-50)
+  })
+
+  it('still counts an unpaired investment inflow, which really did add value', () => {
+    const points = computeNetWorthHistory(
+      50_000,
+      [anchor, investment({ date: '2026-07-15', amount: -120 })],
+      LINKED_WITH_IRA,
+      2026,
+      TODAY,
+    )
+    expect(points.find((p) => p.month === 7)!.change).toBe(70)
+  })
+
+  it('drops household money on an account that is no longer linked', () => {
+    // Same rationale as the plaid case: that balance left the net worth total when the
+    // institution was removed, so unwinding its history unwinds a phantom.
+    const points = computeNetWorthHistory(
+      50_000,
+      [anchor, investment({ date: '2026-07-15', amount: -1000 })],
+      LINKED,
+      2026,
+      TODAY,
+    )
+    expect(points.find((p) => p.month === 7)!.change).toBe(-50)
+  })
+})

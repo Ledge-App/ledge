@@ -81,6 +81,11 @@ export function isInvestmentSweep(item: FeedItem): boolean {
 //  - a swept outflow (applySweepExclusion): a brokerage-cash outflow that only mirrors an equal
 //    inflow on the same account. Asymmetric by design — its inflow is often real income (a
 //    dividend, then swept), so only the outflow is dropped.
+//
+// Investment-source rows need no special case here. Only cash crossing the account boundary is
+// ingested (the backend filters trades, fees and dividends at the source), so an investment row is
+// always household money: it counts when nothing pairs it, and is excluded by isInternalMovement
+// when something does.
 export function countsTowardTotals(item: FeedItem): boolean {
   return !item.isReimbursementIncome && !isInternalMovement(item) && !item.isSweptOutflow
 }

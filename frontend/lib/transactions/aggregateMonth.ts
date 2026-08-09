@@ -1,4 +1,4 @@
-import { isInternalMovement } from './totals'
+import { countsTowardTotals } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 export interface MonthAggregate {
@@ -27,17 +27,17 @@ export function aggregateMonth(feed: FeedItem[]): MonthAggregate {
   let totalIncome = 0
 
   for (const item of feed) {
-    // Internal movement is money shifted between the user's own accounts or holdings — both
-    // legs of a paired transfer, and sweeps whose counterpart the feed can never see. Unlike a
-    // reimbursement's income leg below, none of it marks the calendar day either — there is
-    // nothing about the day for the user to notice.
+    // Delegates to countsTowardTotals rather than restating its exclusions. This file used to
+    // keep a parallel list (internal movement + swept outflow) with a comment claiming the two
+    // were exactly that predicate's exclusions. They were, until one was added to the predicate
+    // and not here — and the totals then counted rows the list below them had greyed out. One
+    // predicate, one place, so the two cannot disagree again.
     //
-    // isSweptOutflow is checked alongside it rather than left to isInternalMovement: the sweeps
-    // the amount-mirror rule catches carry a generic TRANSFER_OUT_ACCOUNT_TRANSFER code, so the
-    // PFC test can't see them. Together these two are exactly countsTowardTotals' exclusions
-    // besides the reimbursement leg handled below — the row is already greyed out on that
-    // predicate, and a total that disagreed with the rows under it is what this prevents.
-    if (isInternalMovement(item) || item.isSweptOutflow) continue
+    // The reimbursement income leg is the single exclusion that must still reach the code below:
+    // countsTowardTotals rejects it (its expense is already netted), but it does mark its
+    // calendar day as reimbursement-touched. Everything else countsTowardTotals rejects marks
+    // nothing — there is nothing about the day for the user to notice.
+    if (!item.isReimbursementIncome && !countsTowardTotals(item)) continue
 
     const net = item.netAmount ?? item.amount
     const existingDay = spendByDay.get(item.date) ?? { net: 0, hasReimbursement: false }

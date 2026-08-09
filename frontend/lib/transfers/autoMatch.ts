@@ -9,7 +9,7 @@
 // hiding it* (dangerous). Every gate below exists for that asymmetry.
 
 import { daysBetween } from './registry'
-import { isLiabilityAccount } from '@/lib/accounts/accountType'
+import { isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/accountType'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account, TransferKind } from '@/types/domain'
 
@@ -53,6 +53,11 @@ export const AUTO_MATCH_WINDOW_DAYS = 7
 const CC_PAYMENT_CODE = 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT'
 const TRANSFER_OUT_EXACT = 'TRANSFER_OUT_ACCOUNT_TRANSFER'
 const TRANSFER_IN_EXACT = 'TRANSFER_IN_ACCOUNT_TRANSFER'
+// Plaid's pair for money moving between a bank account and a brokerage. Both halves are named
+// here deliberately: a contribution is tagged OUT on the checking side, a withdrawal IN, and
+// promoting only one of them left withdrawals as suggestions while contributions auto-applied.
+const TRANSFER_OUT_INVESTMENT = 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS'
+const TRANSFER_IN_INVESTMENT = 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS'
 
 /** Integer cents so float amounts can be hash keys. */
 function centsKey(item: FeedItem): number {
@@ -62,6 +67,27 @@ function centsKey(item: FeedItem): number {
 function isCreditAccount(account: Account | undefined): boolean {
   return account?.type === 'credit'
 }
+
+/**
+ * An investment row is, by construction, cash crossing the brokerage's boundary — the backend
+ * ingests nothing else — so its counterpart is necessarily on some other account. That structural
+ * fact is a stronger signal than any PFC guess, and it is the ONLY signal available when the bank
+ * side carries no transfer code: investment rows have no PFC of their own, so if neither side can
+ * drive, a real pair is never even considered.
+ *
+ * WEAK, never exact. A suggestion costs one tap and leaves the money counted until confirmed;
+ * auto-applying on "this row touched a brokerage" alone would hide money on an amount collision.
+ */
+function isInvestmentRow(item: FeedItem): boolean {
+  return item.source === 'investment'
+}
+
+const INVESTMENT_WEAK_DRIVER = (item: FeedItem): Driver => ({
+  item,
+  strength: 'weak',
+  restrict: 'account_transfer',
+  requireInvestmentCounterpart: false,
+})
 
 /** Real income (dividends, interest, wages...) is never the income leg of a transfer. */
 function isIncomeTagged(item: FeedItem): boolean {
@@ -80,6 +106,18 @@ interface Driver {
   strength: DriverStrength
   /** Which counterpart account types are admissible: see candidateKind(). */
   restrict: AutoTransferKind | null
+  /**
+   * When true, the driver's COUNTERPART must sit on an investment account. Set for both
+   * *_INVESTMENT_AND_RETIREMENT_FUNDS codes, whose 'exact' strength is justified by Plaid naming
+   * the movement AND the account type corroborating it — the code alone would also auto-apply a
+   * mislabelled checking->savings move.
+   *
+   * Expressed as "the counterpart", not "the income leg", because the two codes drive from
+   * opposite sides: a contribution drives from the checking OUTFLOW (counterpart = the income
+   * leg), a withdrawal from the checking INFLOW (counterpart = the expense leg). Naming it for
+   * one side is what made the withdrawal direction impossible to express.
+   */
+  requireInvestmentCounterpart: boolean
 }
 
 export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
@@ -90,14 +128,13 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
   // --- Eligibility -------------------------------------------------------------------
   // Candidate (index-side) eligibility deliberately does NOT require a PFC tag: Plaid
   // tags legs asymmetrically, so demanding the tag on both sides silently misses pairs.
-  function isEligible(item: FeedItem): boolean {
-    if (item.source !== 'plaid') return false // manual entries: no account, no PFC — unsafe
+  function isEligibleIgnoringIncomeTag(item: FeedItem): boolean {
+    if (item.source === 'manual') return false // manual entries: no account, no PFC — unsafe
     if (item.pending) return false // pending ids are replaced on posting
     if (item.amount === 0) return false
     if (item.transferId !== null || item.transferKind !== null) return false // already in a transfer
     if (item.reimbursedAmount !== null || item.isReimbursementIncome) return false // reimbursement-linked
     if (dismissed.has(item.id)) return false
-    if (item.amount < 0 && isIncomeTagged(item)) return false // dividends/wages are income, always
     const account = item.accountId ? accountById.get(item.accountId) : undefined
     if (!account) return false // can't verify account type -> can't verify anything
     // A liability-account *outflow* is a purchase or a loan disbursement, never the
@@ -106,7 +143,39 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     return true
   }
 
+  /**
+   * Real income is never the income leg of an ordinary transfer, so income-tagged inflows are
+   * kept out of the main index entirely — a wage deposit must not pair with an equal outflow.
+   */
+  function isEligible(item: FeedItem): boolean {
+    if (!isEligibleIgnoringIncomeTag(item)) return false
+    return !(item.amount < 0 && isIncomeTagged(item))
+  }
+
   const eligible = feed.filter(isEligible)
+
+  /**
+   * Income-tagged inflows, indexed separately and visible ONLY to an investment driver.
+   *
+   * Plaid routinely tags money arriving from a brokerage as INCOME_* — an outbound ACH from
+   * Fidelity lands in checking looking like income, because from the bank's side that is what it
+   * resembles. The blanket rejection above therefore made the counterpart of a real withdrawal
+   * invisible: not rejected during pairing, absent from the index, so nothing was ever considered.
+   *
+   * An investment row of the identical amount on the same day is strong evidence against the
+   * INCOME_ tag — that money demonstrably left a brokerage. It is not proof, so this can only ever
+   * produce a suggestion: investment rows drive weakly, and Pass 2 never auto-applies. A wage
+   * deposit is untouched, because nothing but an investment driver can see this index.
+   */
+  const incomeTaggedInflowsByAmount = new Map<number, FeedItem[]>()
+  for (const item of feed) {
+    if (item.amount >= 0 || !isIncomeTagged(item)) continue
+    if (!isEligibleIgnoringIncomeTag(item)) continue
+    const key = centsKey(item)
+    const bucket = incomeTaggedInflowsByAmount.get(key)
+    if (bucket) bucket.push(item)
+    else incomeTaggedInflowsByAmount.set(key, [item])
+  }
 
   // --- Index: full cache, keyed by cents ---------------------------------------------
   const inflowsByAmount = new Map<number, FeedItem[]>()
@@ -123,20 +192,36 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
   function classifyDriver(item: FeedItem): Driver | null {
     const code = item.pfcDetailed
     if (item.amount > 0) {
-      if (code === CC_PAYMENT_CODE) return { item, strength: 'exact', restrict: 'credit_card_payment' }
-      if (code === TRANSFER_OUT_EXACT) return { item, strength: 'exact', restrict: 'account_transfer' }
+      if (code === CC_PAYMENT_CODE) return { item, strength: 'exact', restrict: 'credit_card_payment', requireInvestmentCounterpart: false }
+      if (code === TRANSFER_OUT_EXACT) return { item, strength: 'exact', restrict: 'account_transfer', requireInvestmentCounterpart: false }
+      if (code === TRANSFER_OUT_INVESTMENT) {
+        return { item, strength: 'exact', restrict: 'account_transfer', requireInvestmentCounterpart: true }
+      }
       // Generic TRANSFER_OUT_* (P2P, withdrawal, savings): worth surfacing, never auto.
-      if (code?.startsWith('TRANSFER_OUT')) return { item, strength: 'weak', restrict: null }
+      if (code?.startsWith('TRANSFER_OUT')) return { item, strength: 'weak', restrict: null, requireInvestmentCounterpart: false }
+      if (isInvestmentRow(item)) return INVESTMENT_WEAK_DRIVER(item)
       return null
     }
     const account = accountById.get(item.accountId!)
     if (isCreditAccount(account)) {
       // A credit-account inflow is structurally a payment landing on the card. Exact only
       // when Plaid names it; this is what drives late-linked-card reconciliation.
-      return { item, strength: code === CC_PAYMENT_CODE ? 'exact' : 'weak', restrict: 'credit_card_payment' }
+      return {
+        item,
+        strength: code === CC_PAYMENT_CODE ? 'exact' : 'weak',
+        restrict: 'credit_card_payment',
+        requireInvestmentCounterpart: false,
+      }
     }
-    if (code === TRANSFER_IN_EXACT) return { item, strength: 'exact', restrict: 'account_transfer' }
-    if (code?.startsWith('TRANSFER_IN')) return { item, strength: 'weak', restrict: 'account_transfer' }
+    if (code === TRANSFER_IN_EXACT) return { item, strength: 'exact', restrict: 'account_transfer', requireInvestmentCounterpart: false }
+    // The mirror of TRANSFER_OUT_INVESTMENT above: money landing in checking FROM a brokerage.
+    // Without this a withdrawal could only ever be a suggestion, because the brokerage side
+    // carries no PFC code and so can never drive.
+    if (code === TRANSFER_IN_INVESTMENT) {
+      return { item, strength: 'exact', restrict: 'account_transfer', requireInvestmentCounterpart: true }
+    }
+    if (code?.startsWith('TRANSFER_IN')) return { item, strength: 'weak', restrict: 'account_transfer', requireInvestmentCounterpart: false }
+    if (isInvestmentRow(item)) return INVESTMENT_WEAK_DRIVER(item)
     return null
   }
 
@@ -153,7 +238,11 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     return isCreditAccount(accountById.get(income.accountId!)) ? 'credit_card_payment' : 'account_transfer'
   }
 
-  function pairAllowed(outflow: FeedItem, inflow: FeedItem, restrict: AutoTransferKind | null): boolean {
+  function pairAllowed(
+    outflow: FeedItem,
+    inflow: FeedItem,
+    restrict: AutoTransferKind | null,
+  ): boolean {
     if (outflow.accountId === inflow.accountId) return false
     if (daysBetween(outflow.date, inflow.date) > AUTO_MATCH_WINDOW_DAYS) return false
     // Income leg on a loan account is a mortgage/car payment landing — real spending on
@@ -165,11 +254,32 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     return true
   }
 
-  /** All admissible counterparts for one item, given a driver's restriction. */
-  function candidatesFor(item: FeedItem, restrict: AutoTransferKind | null): FeedItem[] {
+  /**
+   * All admissible counterparts for one item, given a driver's restriction.
+   *
+   * requireInvestmentCounterpart is checked here rather than in pairAllowed because only this
+   * function knows which side is the driver: `item` drives, `candidate` is the counterpart. In
+   * pairAllowed the two are already flattened to outflow/inflow, which cannot express "the other
+   * one" for a driver that may sit on either side.
+   */
+  function candidatesFor(
+    item: FeedItem,
+    restrict: AutoTransferKind | null,
+    requireInvestmentCounterpart: boolean,
+  ): FeedItem[] {
     const opposite = item.amount > 0 ? inflowsByAmount : outflowsByAmount
     const bucket = opposite.get(centsKey(item)) ?? []
-    return bucket.filter((candidate) => {
+    // Only an investment OUTFLOW looks here: the income tag only ever sits on an inflow, and only
+    // a brokerage withdrawal has the standing to overrule it.
+    const withIncomeTagged =
+      item.source === 'investment' && item.amount > 0
+        ? [...bucket, ...(incomeTaggedInflowsByAmount.get(centsKey(item)) ?? [])]
+        : bucket
+    return withIncomeTagged.filter((candidate) => {
+      if (requireInvestmentCounterpart) {
+        const candidateAccount = candidate.accountId ? accountById.get(candidate.accountId) : undefined
+        if (!candidateAccount || !isInvestmentAccount(candidateAccount)) return false
+      }
       const outflow = item.amount > 0 ? item : candidate
       const inflow = item.amount > 0 ? candidate : item
       return !consumed.has(candidate.id) && pairAllowed(outflow, inflow, restrict)
@@ -211,11 +321,28 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
   for (const driver of drivers) {
     if (driver.strength !== 'exact') continue
     if (consumed.has(driver.item.id)) continue
-    const candidates = candidatesFor(driver.item, driver.restrict)
-    if (candidates.length === 0) continue // no counterpart yet — stays counted, re-checked next sync
+    const candidates = candidatesFor(driver.item, driver.restrict, driver.requireInvestmentCounterpart)
+    if (candidates.length === 0) {
+      // The account type didn't corroborate an investment-restricted code (e.g. a
+      // checking->savings move mistakenly tagged TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS):
+      // still worth surfacing as a suggestion, just never auto-applied on the code alone.
+      if (driver.requireInvestmentCounterpart) {
+        // restrict: null (not driver.restrict) — this restores the pre-existing weak-driver
+        // behaviour for an uncorroborated code, which never restricted the counterpart kind.
+        // Passing driver.restrict here would newly reject a mistagged credit-card counterpart,
+        // narrowing a suggestion the old code path used to surface.
+        const unrestricted = candidatesFor(driver.item, null, false)
+        if (unrestricted.length > 0) suggest(toDraft(driver.item, nearest(driver.item, unrestricted)))
+      }
+      continue // no counterpart yet — stays counted, re-checked next sync
+    }
     if (candidates.length === 1) {
       const candidate = candidates[0]
-      const reverse = candidatesFor(candidate, driver.restrict)
+      // false, not the driver's flag: this call asks "does the candidate have exactly one
+      // possible counterpart", and the counterparts here are the driver's own side, not the
+      // investment side. Widening it can only ADD candidates, which fails the ===1 test below and
+      // downgrades to a suggestion — the safe direction.
+      const reverse = candidatesFor(candidate, driver.restrict, false)
       if (reverse.length === 1 && reverse[0].id === driver.item.id) {
         const draft = toDraft(driver.item, candidate)
         autoApply.push(draft)
@@ -231,7 +358,7 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
   for (const driver of drivers) {
     if (driver.strength !== 'weak') continue
     if (consumed.has(driver.item.id)) continue
-    const candidates = candidatesFor(driver.item, driver.restrict)
+    const candidates = candidatesFor(driver.item, driver.restrict, driver.requireInvestmentCounterpart)
     if (candidates.length === 0) continue
     suggest(toDraft(driver.item, nearest(driver.item, candidates)))
   }

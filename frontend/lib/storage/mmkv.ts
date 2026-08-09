@@ -1,5 +1,5 @@
 import { MMKV } from 'react-native-mmkv'
-import type { PlaidTransaction } from '@/types/domain'
+import type { InvestmentTransaction, PlaidTransaction } from '@/types/domain'
 
 const storage = new MMKV({ id: 'ledge-transaction-cache' })
 
@@ -66,7 +66,105 @@ export function appendPendingRemovedTransactionIds(ids: string[]): void {
 }
 
 /**
- * Drops every cached transaction, cursor and pending removal for this device.
+ * Namespace for the investment cache, versioned.
+ *
+ * The backend filters `/investments/transactions/get` down to cash transfers, but that filter
+ * governs new fetches only, and the merge is additive on purpose — cached rows outside the
+ * incoming window survive, which is what makes a 30-day fetch safe against a 24-month cache. So
+ * anything a previous filter admitted stays on disk and is replayed forever: visible in the feed
+ * and the account sheet, and offered to the matcher as a pairing candidate.
+ *
+ * **Bump this version whenever the backend filter gets stricter.** That is what makes the filter
+ * retroactive; every device then re-backfills once from the now-filtered endpoint.
+ *
+ * v1 (`investment-txns`) ingested full activity, trades included.
+ * v2 (`investment-transfers`) filtered by subtype, but let security-linked corporate actions
+ *    through — Plaid types a distribution or spinoff as `cash`/`deposit`.
+ * v3 also requires `security_id` to be absent.
+ */
+const INVESTMENT_KEY_PREFIX = 'investment-transfers-v3'
+
+/** Every investment cache key shares this stem, which is what makes the purge below exhaustive. */
+const INVESTMENT_KEY_STEM = 'investment-'
+
+function investmentTransactionsKey(itemId: string): string {
+  return `${INVESTMENT_KEY_PREFIX}:${itemId}`
+}
+
+/**
+ * The end date of the last SUCCESSFUL fetch for this item. Advanced only on success, so a
+ * failed fetch leaves the window unchanged and the next sync re-covers the same range.
+ */
+function investmentBackfilledThroughKey(itemId: string): string {
+  return `${INVESTMENT_KEY_PREFIX}-backfilled-through:${itemId}`
+}
+
+/**
+ * Drops every investment cache entry outside the current version. Runs once per app start; after
+ * the first run nothing matches and it is a single getAllKeys scan.
+ *
+ * Written as "anything in the investment namespace that is not the current version" rather than a
+ * list of old prefixes, so bumping INVESTMENT_KEY_PREFIX is the only edit a stricter filter needs
+ * — a list would have to be remembered and appended to, and forgetting is exactly how the last
+ * two rounds of stale rows survived.
+ *
+ * Deleting rather than migrating in place: older entries carry different row shapes, and a stale
+ * row that happens to be a genuine transfer is indistinguishable from one written under the
+ * current filter. Re-fetching is cheap and exact.
+ */
+function purgeStaleInvestmentCache(): void {
+  for (const key of storage.getAllKeys()) {
+    if (key.startsWith(INVESTMENT_KEY_STEM) && !key.startsWith(INVESTMENT_KEY_PREFIX)) storage.delete(key)
+  }
+}
+
+purgeStaleInvestmentCache()
+
+export function getCachedInvestmentTransactions(itemId: string): InvestmentTransaction[] {
+  const raw = storage.getString(investmentTransactionsKey(itemId))
+  if (!raw) return []
+  try {
+    return JSON.parse(raw) as InvestmentTransaction[]
+  } catch {
+    // Same contract as getCachedTransactions: a corrupted entry must not crash the feed.
+    return []
+  }
+}
+
+export function setCachedInvestmentTransactions(itemId: string, transactions: InvestmentTransaction[]): void {
+  storage.set(investmentTransactionsKey(itemId), JSON.stringify(transactions))
+}
+
+export function getInvestmentBackfilledThrough(itemId: string): string | undefined {
+  return storage.getString(investmentBackfilledThroughKey(itemId))
+}
+
+export function setInvestmentBackfilledThrough(itemId: string, date: string): void {
+  storage.set(investmentBackfilledThroughKey(itemId), date)
+}
+
+/**
+ * Consecutive failed investment-transaction fetches for this item since its last success.
+ * Feeds `selectFetchWindow` (lib/investments/window.ts), which stops demanding a full 24-month
+ * window from an item that never backfills (e.g. no investments product) once this crosses
+ * MAX_FAILED_ATTEMPTS_BEFORE_NARROWING. Reset to 0 on any success. A relinked institution gets
+ * a new itemId, so a stale counter for a dead itemId is simply orphaned, never misapplied.
+ */
+function investmentFailedAttemptsKey(itemId: string): string {
+  return `${INVESTMENT_KEY_PREFIX}-failed-attempts:${itemId}`
+}
+
+export function getInvestmentFailedAttempts(itemId: string): number {
+  return storage.getNumber(investmentFailedAttemptsKey(itemId)) ?? 0
+}
+
+export function setInvestmentFailedAttempts(itemId: string, count: number): void {
+  storage.set(investmentFailedAttemptsKey(itemId), count)
+}
+
+/**
+ * Drops every cached transaction, investment transaction, cursor and pending removal for this
+ * device.
  *
  * Every key in here is scoped by Plaid item id, never by user, so nothing in the cache can
  * be reconciled against a new session — clearing the instance wholesale is the only correct

@@ -38,6 +38,32 @@ describe('transfers router', () => {
     expect(repoMock.create).toHaveBeenCalledWith('jwt-1', 'user-1', input)
   })
 
+  // A transfer referencing nothing is an invisible orphan: nothing can find it, undo it or
+  // exclude anything through it. The client bug that motivated this check nulled all four
+  // columns for an investment leg whose source wasn't mapped to any column.
+  it('create rejects a transfer with no leg at all', async () => {
+    await expect(
+      (await caller()).create({
+        ...baseInput,
+        expensePlaidTransactionId: null,
+        expenseManualTransactionId: null,
+        incomePlaidTransactionId: null,
+        incomeManualTransactionId: null,
+      }),
+    ).rejects.toThrow()
+    expect(repoMock.create).not.toHaveBeenCalled()
+  })
+
+  it('create still accepts a one-legged transfer from the income side', async () => {
+    // One leg is legitimate — it's how an item whose counterpart isn't in the feed gets excluded.
+    repoMock.create.mockResolvedValue({ id: 't1' })
+    const input = { ...baseInput, expensePlaidTransactionId: null }
+
+    await (await caller()).create(input)
+
+    expect(repoMock.create).toHaveBeenCalledWith('jwt-1', 'user-1', input)
+  })
+
   it('create rejects a kind that has no registered transfer type', async () => {
     await expect(
       // @ts-expect-error deliberately invalid kind

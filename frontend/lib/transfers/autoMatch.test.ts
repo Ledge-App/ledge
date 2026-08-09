@@ -270,3 +270,358 @@ describe('detectTransfers: gates', () => {
     expect(result.autoApply).toHaveLength(1)
   })
 })
+
+describe('brokerage contributions', () => {
+  const accounts = [
+    { account_id: 'acc-checking', type: 'depository', subtype: 'checking' },
+    { account_id: 'acc-ira', type: 'investment', subtype: 'ira' },
+    { account_id: 'acc-savings', type: 'depository', subtype: 'savings' },
+  ] as unknown as Account[]
+
+  const checkingOutflow = (over = {}) =>
+    item({
+      id: 'txn-out',
+      source: 'plaid',
+      accountId: 'acc-checking',
+      amount: 1000,
+      date: '2026-02-03',
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+      ...over,
+    })
+
+  const investmentInflow = (over = {}) =>
+    item({
+      id: 'itx-in',
+      source: 'investment',
+      accountId: 'acc-ira',
+      amount: -1000,
+      date: '2026-02-03',
+      pfcDetailed: null,
+      isBrokerageCashAccount: true,
+      ...over,
+    })
+
+  it('auto-applies a contribution against its checking outflow', () => {
+    const result = detectTransfers({ feed: [checkingOutflow(), investmentInflow()], accounts })
+
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0]).toMatchObject({
+      kind: 'account_transfer',
+      amount: 1000,
+    })
+    expect(result.autoApply[0].expense.id).toBe('txn-out')
+    expect(result.autoApply[0].income.id).toBe('itx-in')
+    expect(result.suggestions).toEqual([])
+  })
+
+  it('pairs across the 7-day window', () => {
+    const result = detectTransfers({
+      feed: [checkingOutflow(), investmentInflow({ date: '2026-02-08' })],
+      accounts,
+    })
+    expect(result.autoApply).toHaveLength(1)
+  })
+
+  it('does not pair beyond the window', () => {
+    const result = detectTransfers({
+      feed: [checkingOutflow(), investmentInflow({ date: '2026-02-20' })],
+      accounts,
+    })
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toEqual([])
+  })
+
+  it('does NOT auto-apply when the only counterpart is a savings account', () => {
+    // The INVESTMENT_AND_RETIREMENT code only earns 'exact' when the account type corroborates it.
+    const savingsInflow = item({
+      id: 'txn-savings',
+      source: 'plaid',
+      accountId: 'acc-savings',
+      amount: -1000,
+      date: '2026-02-03',
+      pfcDetailed: null,
+    })
+    const result = detectTransfers({ feed: [checkingOutflow(), savingsInflow], accounts })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+  })
+
+  it('suggests rather than auto-applies when two contributions compete for one outflow', () => {
+    // Mutual uniqueness: silently picking one would depend on iteration order.
+    const result = detectTransfers({
+      feed: [
+        checkingOutflow(),
+        investmentInflow({ id: 'itx-a' }),
+        investmentInflow({ id: 'itx-b', date: '2026-02-04' }),
+      ],
+      accounts,
+    })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+  })
+
+  it('never drives from the investment side — only the debit side has a PFC to trust', () => {
+    const result = detectTransfers({ feed: [investmentInflow()], accounts })
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toEqual([])
+  })
+
+  it('still refuses manual entries as candidates', () => {
+    const manual = item({ id: 'man-1', source: 'manual', accountId: null, amount: -1000, date: '2026-02-03' })
+    const result = detectTransfers({ feed: [checkingOutflow(), manual], accounts })
+    expect(result.autoApply).toEqual([])
+  })
+
+  it('skips a dismissed outflow', () => {
+    const result = detectTransfers({
+      feed: [checkingOutflow(), investmentInflow()],
+      accounts,
+      dismissedIds: new Set(['txn-out']),
+    })
+    expect(result.autoApply).toEqual([])
+  })
+
+
+  it('regression guard: a genuine contribution with the same shape still auto-applies', () => {
+    // Pins that the isInvestmentIncome fix is not over-broad: it must reject only income
+    // subtypes, not every investment inflow that happens to arrive within the window.
+    const result = detectTransfers({
+      feed: [checkingOutflow(), investmentInflow({ id: 'itx-contrib', date: '2026-02-05' })],
+      accounts,
+    })
+
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0].income.id).toBe('itx-contrib')
+  })
+})
+
+describe('brokerage contributions: fallback restrict scope', () => {
+  const accounts = [
+    { account_id: 'acc-checking', type: 'depository', subtype: 'checking' },
+    { account_id: 'acc-ira', type: 'investment', subtype: 'ira' },
+    { account_id: 'visa', type: 'credit' },
+  ] as unknown as Account[]
+
+  it('still surfaces a mistagged credit-card counterpart as a suggestion, never auto-applied', () => {
+    // Before the fix, the Pass-1 fallback passed driver.restrict ('account_transfer') instead of
+    // null, so a credit-card counterpart (kind 'credit_card_payment') was rejected by both the
+    // forward call (not an investment account) and the fallback (wrong kind) — a suggestion the
+    // pre-fallback code used to surface silently disappeared. restrict: null restores it.
+    //
+    // deltaIds restricts driving to the outflow alone: the card inflow is old and already in the
+    // cache, so it never becomes its own Pass-2 weak driver — the ONLY path to a suggestion here
+    // is the Pass-1 fallback. (Without this restriction, the card inflow would independently
+    // drive in Pass 2 and mask the bug this test exists to pin.)
+    const outflow = item({
+      id: 'txn-out',
+      source: 'plaid',
+      accountId: 'acc-checking',
+      amount: 1000,
+      date: '2026-02-03',
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const cardInflow = item({
+      id: 'card-in',
+      source: 'plaid',
+      accountId: 'visa',
+      amount: -1000,
+      date: '2026-02-04',
+      pfcDetailed: null,
+    })
+
+    const result = detectTransfers({
+      feed: [outflow, cardInflow],
+      accounts,
+      deltaIds: new Set(['txn-out']),
+    })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+    expect(result.suggestions[0].income.id).toBe('card-in')
+  })
+})
+
+describe('investment rows as transfer legs', () => {
+  // Only cash crossing the account boundary is ingested — trades, fees and dividends are filtered
+  // out in the backend repository — so every investment row reaching the matcher is a legitimate
+  // counterpart for a checking-side transfer.
+  const accounts = [
+    { account_id: 'acc-checking', type: 'depository', subtype: 'checking' },
+    { account_id: 'acc-ira', type: 'investment', subtype: 'ira' },
+  ] as unknown as Account[]
+
+  const investmentRow = (over: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'date'>) =>
+    item({
+      source: 'investment',
+      accountId: 'acc-ira',
+      pfcDetailed: null,
+      isBrokerageCashAccount: true,
+      ...over,
+    })
+
+
+  it('auto-applies a withdrawal: brokerage -> checking, driven from the checking inflow', () => {
+    // The mirror of the contribution case. The brokerage side carries no PFC code and so can
+    // never drive, which means the checking INFLOW has to — and until TRANSFER_IN_INVESTMENT was
+    // promoted alongside its OUT twin, that inflow was only ever a weak driver. Withdrawals sat
+    // unmatched in the feed while contributions auto-applied, for no reason a user could see.
+    const withdrawal = investmentRow({ id: 'itx-wd', amount: 2000, date: '2026-05-18' })
+    const checkingIn = item({
+      id: 'txn-in',
+      accountId: 'acc-checking',
+      amount: -2000,
+      date: '2026-05-18',
+      pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const result = detectTransfers({ feed: [withdrawal, checkingIn], accounts })
+
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0].expense.id).toBe('itx-wd')
+    expect(result.autoApply[0].income.id).toBe('txn-in')
+  })
+
+  it('does NOT auto-apply a TRANSFER_IN_INVESTMENT whose counterpart is an ordinary account', () => {
+    // Same corroboration rule as the OUT direction: the code alone is not enough, the counterpart
+    // account type has to agree. A mistagged savings->checking move surfaces, never auto-applies.
+    const savingsOut = item({ id: 'txn-savings', accountId: 'acc-savings', amount: 2000, date: '2026-05-18' })
+    const checkingIn = item({
+      id: 'txn-in',
+      accountId: 'acc-checking',
+      amount: -2000,
+      date: '2026-05-18',
+      pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const result = detectTransfers({
+      feed: [savingsOut, checkingIn],
+      accounts: [...accounts, { account_id: 'acc-savings', type: 'depository', subtype: 'savings' }] as never,
+    })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+  })
+
+  it('surfaces a withdrawal whose bank leg Plaid mis-tagged as an ordinary expense', () => {
+    // Reported from real data: a $1,001.22 brokerage withdrawal landed in checking tagged
+    // GENERAL_SERVICES_* ("service"), not TRANSFER_IN_*. Neither side could drive — the bank leg
+    // has no transfer code, and investment rows have no PFC at all — so the pair was never even
+    // considered. Nothing appeared: no auto-match AND no suggestion.
+    const withdrawal = investmentRow({ id: 'itx-wd', amount: 1001.22, date: '2026-05-06' })
+    const bankIn = item({
+      id: 'txn-in',
+      accountId: 'acc-checking',
+      amount: -1001.22,
+      date: '2026-05-07',
+      pfcDetailed: 'GENERAL_SERVICES_OTHER_GENERAL_SERVICES',
+    })
+    const result = detectTransfers({ feed: [withdrawal, bankIn], accounts })
+
+    // Suggestion, not auto-apply: "this row touched a brokerage" is a strong structural signal
+    // but not proof, so it costs one tap rather than silently hiding money.
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+    expect(result.suggestions[0].expense.id).toBe('itx-wd')
+    expect(result.suggestions[0].income.id).toBe('txn-in')
+  })
+
+  it('surfaces an untagged contribution from the brokerage side too', () => {
+    // The same gap in the other direction: money arriving in the brokerage with the bank leg
+    // untagged. Symmetric, because the driver is the investment row either way.
+    const contribution = investmentRow({ id: 'itx-contrib', amount: -750, date: '2026-05-06' })
+    const bankOut = item({
+      id: 'txn-out',
+      accountId: 'acc-checking',
+      amount: 750,
+      date: '2026-05-06',
+      pfcDetailed: 'GENERAL_SERVICES_OTHER_GENERAL_SERVICES',
+    })
+    const result = detectTransfers({ feed: [contribution, bankOut], accounts })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+    expect(result.suggestions[0].expense.id).toBe('txn-out')
+  })
+
+
+  it('surfaces a withdrawal whose bank leg Plaid tagged as INCOME_', () => {
+    // The reported case, from real data. An outbound ACH from Fidelity lands in checking and
+    // Plaid tags it INCOME_* — from the bank's side that is what it resembles. isEligible dropped
+    // income-tagged inflows from the index entirely, so the counterpart was not rejected during
+    // pairing, it was absent: nothing was ever considered, and no suggestion appeared.
+    const withdrawal = investmentRow({ id: 'itx-wd', amount: 1001.22, date: '2026-05-06' })
+    const bankIn = item({
+      id: 'txn-in',
+      accountId: 'acc-checking',
+      amount: -1001.22,
+      date: '2026-05-06',
+      pfcDetailed: 'INCOME_OTHER_INCOME',
+    })
+    const result = detectTransfers({ feed: [withdrawal, bankIn], accounts })
+
+    // Suggestion only. An investment row of the same amount on the same day is strong evidence
+    // against the INCOME_ tag, but not proof — auto-applying would erase real income when wrong.
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+    expect(result.suggestions[0].expense.id).toBe('itx-wd')
+    expect(result.suggestions[0].income.id).toBe('txn-in')
+  })
+
+  it('SAFETY: a wage is still never paired away by an ordinary outflow', () => {
+    // The guard this relaxes exists so real income cannot be silently reclassified as a transfer.
+    // Only an investment driver may overrule the tag; an equal checking outflow may not, however
+    // close in date. Break this and a paycheck disappears from income totals.
+    const rent = item({ id: 'txn-rent', accountId: 'acc-checking', amount: 3000, date: '2026-05-06' })
+    const wages = item({
+      id: 'txn-wages',
+      accountId: 'acc-savings',
+      amount: -3000,
+      date: '2026-05-06',
+      pfcDetailed: 'INCOME_WAGES',
+    })
+    const result = detectTransfers({
+      feed: [rent, wages],
+      accounts: [...accounts, { account_id: 'acc-savings', type: 'depository', subtype: 'savings' }] as never,
+    })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toEqual([])
+  })
+
+  it('SAFETY: an income-tagged leg is never auto-applied, even when uniquely matched', () => {
+    // Exact driver on the bank side, one candidate each way — the shape that normally auto-applies.
+    // The income tag must still hold it at a suggestion.
+    const withdrawal = investmentRow({ id: 'itx-wd', amount: 500, date: '2026-05-06' })
+    const bankIn = item({
+      id: 'txn-in',
+      accountId: 'acc-checking',
+      amount: -500,
+      date: '2026-05-06',
+      pfcDetailed: 'INCOME_OTHER_INCOME',
+    })
+    const result = detectTransfers({ feed: [withdrawal, bankIn], accounts })
+
+    expect(result.autoApply).toEqual([])
+  })
+
+  it('regression guard: household money on the same account still pairs', () => {
+    // Investment rows are eligible candidates: every one ingested is cash crossing the account
+    // boundary, which is exactly what a checking-side transfer pairs against.
+    const contribution = investmentRow({
+      id: 'itx-contrib',
+      amount: -1000,
+      date: '2026-02-03',
+    })
+    const outflow = item({
+      id: 'txn-out',
+      accountId: 'acc-checking',
+      amount: 1000,
+      date: '2026-02-03',
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const result = detectTransfers({ feed: [outflow, contribution], accounts })
+
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0].income.id).toBe('itx-contrib')
+  })
+})

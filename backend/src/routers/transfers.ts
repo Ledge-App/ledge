@@ -12,6 +12,20 @@ const transferInputSchema = z.object({
   incomeManualTransactionId: z.string().uuid().nullable(),
   amount: z.string(),
   note: z.string().nullable(),
+}).superRefine((input, ctx) => {
+  // A transfer with no leg at all references nothing, so it can never be found, undone or
+  // applied to a total — it is an invisible orphan row. One leg is legitimate (that's how an
+  // item whose counterpart isn't in the feed gets excluded); zero never is, and the only way to
+  // send zero is a client bug, which is exactly the class of bug that produced this check (a
+  // leg whose source wasn't mapped to any column silently nulled all four).
+  const hasLeg =
+    input.expensePlaidTransactionId !== null ||
+    input.expenseManualTransactionId !== null ||
+    input.incomePlaidTransactionId !== null ||
+    input.incomeManualTransactionId !== null
+  if (!hasLeg) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A transfer must reference at least one transaction leg' })
+  }
 })
 
 // Auto-detected transfers are strictly narrower than manual ones: only the two auto kinds,
