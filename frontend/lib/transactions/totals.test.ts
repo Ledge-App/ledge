@@ -178,3 +178,38 @@ describe('isInvestmentSweep', () => {
     }
   })
 })
+
+describe('investment-source items in totals', () => {
+  const investmentItem = (over: Partial<FeedItem> = {}): FeedItem =>
+    item({
+      id: 'itx-1',
+      source: 'investment',
+      accountId: 'acc-ira',
+      isBrokerageCashAccount: true,
+      amount: -1000,
+      ...over,
+    })
+
+  it('counts an unpaired contribution', () => {
+    expect(countsTowardTotals(investmentItem())).toBe(true)
+  })
+
+  it('counts a small household-money amount too — nothing here is thresholded', () => {
+    expect(countsTowardTotals(investmentItem({ amount: -12.5 }))).toBe(true)
+  })
+
+
+  it('excludes a paired contribution — the transfer record already covers it', () => {
+    const paired = investmentItem({ transferKind: 'account_transfer', transferRole: 'income' })
+    expect(countsTowardTotals(paired)).toBe(false)
+  })
+
+
+  it('does not badge a counted contribution', () => {
+    expect(isInvestmentSweep(investmentItem())).toBe(false)
+  })
+
+  it('leaves ordinary plaid spending counted', () => {
+    expect(countsTowardTotals(item({ source: 'plaid', amount: 42 }))).toBe(true)
+  })
+})

@@ -179,4 +179,36 @@ describe('applySweepExclusion', () => {
 
     expect(find(result, 'manual').isSweptOutflow).toBe(false)
   })
+
+  it('leaves a newly auto-applied investment transfer alone', () => {
+    // applySweepExclusion runs after applyTransfers; an outflow with a transferKind is off limits.
+    const feed = [
+      item({
+        id: 'itx-out',
+        accountId: 'acc-ira',
+        isBrokerageCashAccount: true,
+        amount: 1000,
+        date: '2026-02-03',
+        transferKind: 'account_transfer',
+      }),
+      item({ id: 'itx-in', accountId: 'acc-ira', isBrokerageCashAccount: true, amount: -1000, date: '2026-02-03' }),
+    ]
+    expect(applySweepExclusion(feed).find((i) => i.id === 'itx-out')!.isSweptOutflow).toBe(false)
+  })
+})
+
+describe('applySweepExclusion: investment rows', () => {
+  const investment = (overrides: Partial<FeedItem> & { id: string }): FeedItem =>
+    item({ source: 'investment', accountId: 'acc-ira', pfcDetailed: null, ...overrides })
+
+  it('lets a real cash inflow exclude the sweep that mirrors it', () => {
+    // Only cash crossing the account boundary is ingested, so every investment row IS a genuine
+    // sweep source — there is no trade activity left to wrongly seed this index.
+    const deposit = investment({ id: 'itx-dep', amount: -75, date: '2026-03-11' })
+    const sweep = item({ id: 'sweep-2', accountId: 'acc-ira', amount: 75, date: '2026-03-11' })
+
+    const result = applySweepExclusion([deposit, sweep])
+
+    expect(find(result, 'sweep-2').isSweptOutflow).toBe(true)
+  })
 })

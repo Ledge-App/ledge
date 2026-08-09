@@ -7,6 +7,7 @@ import { useVendorMappings } from './useVendorMappings'
 import { usePlaidCategoryMappings } from './usePlaidCategoryMappings'
 import { useCategories } from './useCategories'
 import { useTransfers } from './useTransfers'
+import { useInvestmentTransactions } from './useInvestmentTransactions'
 import {
   appendPendingRemovedTransactionIds,
   getCachedTransactions,
@@ -50,6 +51,8 @@ export function useTransactionFeed() {
   const transfers = useTransfers()
 
   const itemIds = useMemo(() => Array.from(new Set((accounts.data ?? []).map((a) => a.itemId))), [accounts.data])
+
+  const investmentTransactions = useInvestmentTransactions(itemIds)
 
   const accountIdToItemId = useMemo(() => {
     const map = new Map<string, string>()
@@ -173,6 +176,7 @@ export function useTransactionFeed() {
       // above: with accounts still loading there are no cached transactions to classify either,
       // since itemIds comes from the same query.
       accounts.data ?? [],
+      investmentTransactions.transactions,
     )
     const withTransfers = applyTransfers(merged, transfers.data ?? [])
     // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
@@ -185,6 +189,7 @@ export function useTransactionFeed() {
     vendorMappings.data,
     plaidCategoryMappings.data,
     accounts.data,
+    investmentTransactions.transactions,
     transfers.data,
   ])
 
@@ -310,7 +315,12 @@ export function useTransactionFeed() {
       plaidCategoryMappings.error ??
       categories.error ??
       syncMutation.error,
-    itemErrors: syncMutation.data?.itemErrors ?? [],
+    // MUST NOT be rendered as-is. The investments endpoint is called for every linked item
+    // regardless of whether its institution supports the product, so every user with a plain
+    // bank carries a permanent PRODUCTS_NOT_SUPPORTED entry here that means nothing to them.
+    // The array is kept because the sync errors in it are genuinely diagnostic; any UI that
+    // surfaces it must first filter down to the codes that are actionable for the user.
+    itemErrors: [...(syncMutation.data?.itemErrors ?? []), ...investmentTransactions.itemErrors],
     refresh: () => triggerSync(itemIds),
   }
 }

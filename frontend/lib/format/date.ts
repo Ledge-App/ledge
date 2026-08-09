@@ -23,3 +23,4 @@ export function formatFullDate(dateKey: string): string {
   if (Number.isNaN(date.getTime())) return dateKey
   return `${DAY_NAMES[date.getUTCDay()]}, ${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`
 }
+

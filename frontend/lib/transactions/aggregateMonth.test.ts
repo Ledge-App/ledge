@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { aggregateMonth } from './aggregateMonth'
+import { countsTowardTotals } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
@@ -186,5 +187,43 @@ describe('aggregateMonth', () => {
     expect(result.spendByCategory.size).toBe(0)
     expect(result.incomeByCategory.size).toBe(0)
     expect(result.spendByDay.size).toBe(0)
+  })
+})
+
+describe('aggregateMonth: investment-source rows', () => {
+  const investment = (overrides: Partial<FeedItem> & { id: string }): FeedItem =>
+    item({
+      source: 'investment',
+      accountId: 'acc-ira',
+      isBrokerageCashAccount: true,
+      ...overrides,
+    })
+
+
+  it('still counts an unpaired contribution and withdrawal', () => {
+    const result = aggregateMonth([
+      investment({ id: 'contrib', amount: -500, date: '2026-06-05' }),
+      investment({ id: 'wd', amount: 300, date: '2026-06-06' }),
+    ])
+
+    expect(result.totalIncome).toBe(500)
+    expect(result.totalExpense).toBe(300)
+  })
+
+  it('agrees with countsTowardTotals row by row', () => {
+    // Pins the delegation itself: any future exclusion added to the predicate lands here for free.
+    const feed = [
+      investment({ id: 'withdrawal', amount: 400 }),
+      investment({ id: 'contrib', amount: -400 }),
+      item({ id: 'groceries', amount: 60 }),
+      item({ id: 'swept', amount: 80, isBrokerageCashAccount: true, isSweptOutflow: true }),
+    ]
+    const expected = feed.filter(countsTowardTotals)
+    const expense = expected.filter((i) => i.amount > 0).reduce((s, i) => s + i.amount, 0)
+    const income = expected.filter((i) => i.amount < 0).reduce((s, i) => s + Math.abs(i.amount), 0)
+
+    const result = aggregateMonth(feed)
+    expect(result.totalExpense).toBe(expense)
+    expect(result.totalIncome).toBe(income)
   })
 })

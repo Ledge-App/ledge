@@ -1,5 +1,5 @@
 import { isBrokerageCashAccount } from '@/lib/accounts/accountType'
-import type { ManualTransaction, PlaidCategoryMapping, PlaidTransaction, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
+import type { InvestmentTransaction, ManualTransaction, PlaidCategoryMapping, PlaidTransaction, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
 export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'uncategorized'
 
@@ -93,7 +93,7 @@ export interface FeedLink {
 
 export interface FeedItem {
   id: string
-  source: 'plaid' | 'manual'
+  source: 'plaid' | 'manual' | 'investment'
   amount: number // Plaid convention: positive = money out (expense), negative = money in (income)
   date: string
   merchantName: string
@@ -136,6 +136,7 @@ export function mergeFeed(
   vendorMappings: VendorMapping[],
   plaidCategoryMappings: PlaidCategoryMapping[] = [],
   accounts: Array<{ account_id: string; type: string; subtype?: string | null }> = [],
+  investmentTransactions: InvestmentTransaction[] = [],
 ): FeedItem[] {
   const brokerageCashAccountIds = new Set(
     accounts.filter(isBrokerageCashAccount).map((account) => account.account_id),
@@ -208,7 +209,56 @@ export function mergeFeed(
     links: [],
   }))
 
-  return [...plaidItems, ...manualItems].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  // Investment transactions are a third source, not a variant of the Plaid one: they come from a
+  // different endpoint with no PFC, no pending state and no merchant enrichment. They are here so
+  // detectTransfers can find the counterpart to a checking->brokerage outflow, which
+  // /transactions/sync never returns.
+  //
+  // Only cash crossing the account boundary reaches this point — trades, fees and dividends are
+  // filtered out in the backend repository (CASH_TRANSFER_SUBTYPES) and never cross the wire. That
+  // is why no row here needs a "is this portfolio activity" flag: by construction, none of it is.
+  const investmentItems: FeedItem[] = investmentTransactions.map((txn) => {
+    const merchantName = txn.name
+    const resolved = resolveCategory(
+      { transactionId: txn.investmentTransactionId, merchantName },
+      overrides,
+      vendorMappings,
+      plaidCategoryMappings,
+    )
+    return {
+      id: txn.investmentTransactionId,
+      source: 'investment',
+      // No sign flip: Plaid's investment amount is already positive-is-money-out.
+      amount: txn.amount,
+      date: txn.date,
+      merchantName,
+      categoryId: resolved.categoryId,
+      subcategoryId: resolved.subcategoryId,
+      categorySource: resolved.categorySource,
+      confidenceLevel: null,
+      // No personal_finance_category on this endpoint. Left null rather than synthesized: a fake
+      // PFC code would make these rows drivers in autoMatch, and only the DEBIT side should drive.
+      pfcDetailed: null,
+      accountId: txn.accountId,
+      pending: false,
+      note: null,
+      reimbursedAmount: null,
+      netAmount: null,
+      isReimbursementIncome: false,
+      reimbursementCategoryId: null,
+      transferId: null,
+      transferKind: null,
+      transferRole: null,
+      transferSource: null,
+      isBrokerageCashAccount: brokerageCashAccountIds.has(txn.accountId),
+      isSweptOutflow: false,
+      links: [],
+    }
+  })
+
+  return [...plaidItems, ...manualItems, ...investmentItems].sort((a, b) =>
+    a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
+  )
 }
 
 /**

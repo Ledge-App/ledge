@@ -60,6 +60,14 @@ export default function AccountsTab() {
     [accounts.data, feed],
   )
 
+  // Sliced off the same feed the other sheets read, rather than from the MMKV cache this sheet
+  // used to read directly: only a resolved FeedItem carries transferKind and links, which is what
+  // lets a matched transfer grey out and name its counterpart.
+  const investmentDetailItems = useMemo(
+    () => (investmentDetail ? feed.filter((item) => item.accountId === investmentDetail.account_id) : []),
+    [investmentDetail, feed],
+  )
+
   const detail = useMemo(() => {
     if (detailTarget == null) return null
     if (detailTarget === 'cash') {
@@ -289,6 +297,9 @@ export default function AccountsTab() {
 
       <InvestmentDetailSheet
         account={investmentDetail}
+        items={investmentDetailItems}
+        feed={feed}
+        categoryById={categoryById}
         isMasked={isMasked}
         onClose={() => setInvestmentDetail(null)}
       />

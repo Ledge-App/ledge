@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveCategory, mergeFeed, applyTransfers } from './resolveFeed'
-import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Transfer } from '@/types/domain'
+import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Transfer, InvestmentTransaction } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
   { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
@@ -546,4 +546,64 @@ describe('link stamping', () => {
     expect(find(mergeFeed(plaidTxns, [], [], []), 'lunch').links).toEqual([])
     expect(find(applyTransfers(feed, []), 'lunch').links).toEqual([])
   })
+})
+
+const investmentRow = (over: Partial<InvestmentTransaction> = {}): InvestmentTransaction => ({
+  investmentTransactionId: 'itx-1',
+  accountId: 'acc-ira',
+  date: '2026-02-03',
+  name: 'ACH Deposit',
+  amount: -1000,
+  subtype: 'contribution',
+  ...over,
+})
+
+describe('mergeFeed with investment transactions', () => {
+  const accounts = [{ account_id: 'acc-ira', type: 'investment', subtype: 'ira' }]
+
+  it('maps an investment transaction into a feed item', () => {
+    const feed = mergeFeed([], [], [], [], [], accounts, [investmentRow()])
+
+    expect(feed).toHaveLength(1)
+    expect(feed[0]).toMatchObject({
+      id: 'itx-1',
+      source: 'investment',
+      amount: -1000,
+      date: '2026-02-03',
+      merchantName: 'ACH Deposit',
+      accountId: 'acc-ira',
+      pending: false,
+      pfcDetailed: null,
+      isBrokerageCashAccount: true,
+    })
+  })
+
+  it('preserves Plaid\'s sign convention without flipping it', () => {
+    // Positive = cash debited = money out, identical to the feed convention. A withdrawal is the
+    // positive case now that trades are filtered out at the source.
+    const wd = mergeFeed([], [], [], [], [], accounts, [investmentRow({ amount: 1000, subtype: 'withdrawal' })])
+    expect(wd[0].amount).toBe(1000)
+  })
+
+
+  it('displays the institution description', () => {
+    const feed = mergeFeed([], [], [], [], [], accounts, [investmentRow({ name: 'Wire Transfer In' })])
+    expect(feed[0].merchantName).toBe('Wire Transfer In')
+  })
+
+  it('honours a user override on an investment transaction', () => {
+    const overrides = [{ plaidTransactionId: 'itx-1', categoryId: 'cat-invest', subcategoryId: null }]
+    const feed = mergeFeed([], [], overrides as never, [], [], accounts, [investmentRow()])
+    expect(feed[0]).toMatchObject({ categoryId: 'cat-invest', categorySource: 'override' })
+  })
+
+  it('sorts investment rows into the same newest-first order as the rest of the feed', () => {
+    const feed = mergeFeed([], [], [], [], [], accounts, [
+      investmentRow({ investmentTransactionId: 'old', date: '2026-01-01' }),
+      investmentRow({ investmentTransactionId: 'new', date: '2026-08-01' }),
+    ])
+    expect(feed.map((i) => i.id)).toEqual(['new', 'old'])
+  })
+
+
 })
