@@ -3,16 +3,15 @@ import { router } from 'expo-router'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { createPlaidLinkSession } from 'react-native-plaid-link-sdk'
 import { colors } from '@/constants/theme'
-import { api } from '@/lib/api/client'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
-import { usePlaidLink } from '@/hooks/usePlaidLink'
+import { useAddAccountFlow } from '@/hooks/useAddAccountFlow'
 import { HeroCard } from '@/components/dashboard/HeroCard'
 import { AccountRow } from '@/components/accounts/AccountRow'
+import { AddAccountSheet } from '@/components/accounts/AddAccountSheet'
 import { AccountDetailSheet } from '@/components/accounts/AccountDetailSheet'
 import { InvestmentDetailSheet } from '@/components/accounts/InvestmentDetailSheet'
 import { NetWorthTrendSheet } from '@/components/accounts/NetWorthTrendSheet'
@@ -23,8 +22,6 @@ import { computeNetWorthTotals, isInvestmentAccount, isLiabilityAccount } from '
 import type { Account } from '@/types/domain'
 
 export default function AccountsTab() {
-  const [error, setError] = useState<string | null>(null)
-  const [isConnecting, setIsConnecting] = useState(false)
   const [cashOpen, setCashOpen] = useState(true)
   const [investOpen, setInvestOpen] = useState(true)
   const [creditOpen, setCreditOpen] = useState(true)
@@ -32,12 +29,12 @@ export default function AccountsTab() {
   const [detailTarget, setDetailTarget] = useState<Account | 'cash' | null>(null)
   const [investmentDetail, setInvestmentDetail] = useState<Account | null>(null)
   const [trendOpen, setTrendOpen] = useState(false)
-  const utils = api.useUtils()
   const accounts = useAccounts()
   const { isMasked, toggleMask } = useAmountsMasked()
   const { feed, categoryById, isLoading: feedIsLoading } = useTransactionFeed()
   const credentials = usePlaidCredentials()
-  const { createLinkToken, exchangeToken } = usePlaidLink()
+  const addAccount = useAddAccountFlow()
+  const { error, setError, isConnecting } = addAccount
 
   // Investments are assets but not spendable cash — buys/sells/dividends inside them are
   // neither household expenses nor income, so they get their own section and a holdings
@@ -88,42 +85,6 @@ export default function AccountsTab() {
     }
   }, [detailTarget, feed, cashOnHand])
 
-  async function handleAddAccount() {
-    setError(null)
-    if (credentials.isLoading) return
-    if (!credentials.data) {
-      router.push('/(tabs)/settings/plaid-account')
-      return
-    }
-
-    setIsConnecting(true)
-    try {
-      const { linkToken } = await createLinkToken()
-      const session = await createPlaidLinkSession({
-        token: linkToken,
-        onEvent: () => {},
-        onExit: (exit) => {
-          setIsConnecting(false)
-          if (exit.error) setError(exit.error.errorMessage ?? 'Bank connection was cancelled.')
-        },
-        onSuccess: async (success) => {
-          try {
-            await exchangeToken({ publicToken: success.publicToken })
-            await utils.accounts.list.invalidate()
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Could not finish linking this account.')
-          } finally {
-            setIsConnecting(false)
-          }
-        },
-      })
-      await session.open()
-    } catch (err) {
-      setIsConnecting(false)
-      setError(err instanceof Error ? err.message : 'Could not open Plaid Link. Try again.')
-    }
-  }
-
   // itemErrors suppresses the empty state: with every item failing there are no accounts to
   // show, but "link your first account" would be a lie — the accounts exist and are broken.
   // Falling through renders the per-institution warnings that say so.
@@ -146,7 +107,7 @@ export default function AccountsTab() {
           <EmptyState
             message="Link your first account to get started"
             actionLabel="Link Account"
-            onAction={handleAddAccount}
+            onAction={addAccount.connectFirstAccount}
           />
         )}
       </SafeAreaView>
@@ -158,7 +119,7 @@ export default function AccountsTab() {
       <ScrollView contentContainerClassName="gap-5 px-5 py-4">
         <View className="flex-row items-center justify-between">
           <Text className="font-sansSemi text-lg text-primary">All</Text>
-          <Pressable onPress={handleAddAccount} accessibilityLabel="Add account" disabled={isConnecting || credentials.isLoading}>
+          <Pressable onPress={addAccount.beginAddAccount} accessibilityLabel="Add account" disabled={isConnecting}>
             <Ionicons name="add-circle-outline" size={26} color={colors.textPrimary} />
           </Pressable>
         </View>
@@ -175,9 +136,20 @@ export default function AccountsTab() {
                 Couldn&apos;t load {itemError.institutionName}
               </Text>
               <Text className="font-sans text-xs leading-4 text-textMuted">
-                Its balances and transactions are out of date. Reconnect it from Settings →
-                Institutions.
+                Its balances and transactions are out of date.
               </Text>
+              {/* Update mode: this repairs the existing connection in place rather than
+                  replacing it, so it costs no Plaid connection and the sync cursor survives. */}
+              <Pressable
+                onPress={() => addAccount.repairConnection(itemError.itemId)}
+                disabled={isConnecting}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Reconnect ${itemError.institutionName}`}
+                className="pt-1"
+              >
+                <Text className="font-sansMed text-xs text-primary">Reconnect</Text>
+              </Pressable>
             </View>
           </View>
         ))}
@@ -285,6 +257,15 @@ export default function AccountsTab() {
           </View>
         ) : null}
       </ScrollView>
+
+      <AddAccountSheet
+        visible={addAccount.pickerOpen}
+        onClose={addAccount.closePicker}
+        institutions={addAccount.connectedInstitutions}
+        logoByItemId={addAccount.logoByItemId}
+        onManageInstitution={addAccount.manageInstitution}
+        onConnectNewBank={addAccount.connectNewBank}
+      />
 
       <NetWorthTrendSheet
         visible={trendOpen}

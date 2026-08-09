@@ -21,6 +21,7 @@ export type TransferDismissal = RouterOutputs['transferDismissals']['list'][numb
 export type TransferKind = RouterInputs['transfers']['create']['kind']
 export type Account = RouterOutputs['accounts']['list']['accounts'][number]
 export type AccountItemError = RouterOutputs['accounts']['list']['itemErrors'][number]
+export type Institution = RouterOutputs['accounts']['listInstitutions'][number]
 export type TransactionSyncResult = RouterOutputs['transactions']['sync']
 export type PlaidTransaction = TransactionSyncResult['added'][number]
 export type PlaidCategoryMapping = RouterOutputs['plaidCategoryMappings']['list'][number]

@@ -61,14 +61,33 @@ export const accountsRouter = router({
     return plaidItemRepository.list(ctx.userId)
   }),
 
+  // Reversible disconnect: syncing stops and the accounts leave every screen, but the Item
+  // survives at Plaid so reconnecting costs nothing. This is the default because revoking is a
+  // one-way door — Plaid trial plans count Items created for all time, and /item/remove does not
+  // give the allowance back, so a remove/re-add round trip permanently spends two.
+  disconnectInstitution: protectedProcedure
+    .input(z.object({ itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await plaidItemRepository.setDisabled(ctx.userId, input.itemId, true)
+    }),
+
+  reconnectInstitution: protectedProcedure
+    .input(z.object({ itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await plaidItemRepository.setDisabled(ctx.userId, input.itemId, false)
+    }),
+
+  // Permanent: revokes at Plaid, so the access token is gone for good and getting this
+  // institution back means a new Item. disconnectInstitution is the reversible alternative.
   removeInstitution: protectedProcedure
     .input(z.object({ itemId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const creds = await plaidCredentialRepository.getDecrypted(ctx.userId)
       if (creds) {
         const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
-        const items = await plaidItemRepository.listDecryptedTokens(ctx.userId)
-        const item = items.find((i) => i.itemId === input.itemId)
+        // getDecryptedToken, not listDecryptedTokens: an already-disconnected institution is
+        // exactly what gets deleted permanently, and the list view hides those.
+        const item = await plaidItemRepository.getDecryptedToken(ctx.userId, input.itemId)
         if (item) {
           try {
             await client.itemRemove({ access_token: item.accessToken })

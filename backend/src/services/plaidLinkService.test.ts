@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const credRepoMock = { getDecrypted: vi.fn() }
-const itemRepoMock = { create: vi.fn(), listDecryptedTokens: vi.fn(), delete: vi.fn() }
+const itemRepoMock = {
+  create: vi.fn(),
+  listDecryptedTokens: vi.fn(),
+  getDecryptedToken: vi.fn(),
+  delete: vi.fn(),
+}
 vi.mock('../repositories/plaidCredentialRepository.js', () => ({ plaidCredentialRepository: credRepoMock }))
 vi.mock('../repositories/plaidItemRepository.js', () => ({ plaidItemRepository: itemRepoMock }))
 
@@ -49,6 +54,91 @@ describe('plaidLinkService', () => {
     const result = await plaidLinkService.createLinkToken('user-1')
 
     expect(result).toEqual({ linkToken: 'link-abc' })
+  })
+
+  describe('createUpdateLinkToken (update mode)', () => {
+    const liveItem = {
+      itemId: 'item-1',
+      accessToken: 'access-1',
+      institutionName: 'Chase',
+      institutionId: 'ins_chase',
+      disabled: false,
+    }
+
+    function mockUpdate() {
+      credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
+      linkTokenCreate.mockResolvedValue({ data: { link_token: 'link-update' } })
+    }
+
+    it("sends the item's access token, which is what keeps Plaid from creating a new Item", async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue(liveItem)
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      const result = await plaidLinkService.createUpdateLinkToken('user-1', 'item-1')
+
+      expect(linkTokenCreate).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'access-1' }))
+      expect(result).toEqual({ linkToken: 'link-update' })
+    })
+
+    it('omits products and optional_products, which belong to item creation only', async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue(liveItem)
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      await plaidLinkService.createUpdateLinkToken('user-1', 'item-1')
+
+      const request = linkTokenCreate.mock.calls[0][0]
+      expect(request).not.toHaveProperty('products')
+      expect(request).not.toHaveProperty('optional_products')
+    })
+
+    it('omits days_requested, which Plaid fixes when Transactions is first added to an Item', async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue(liveItem)
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      await plaidLinkService.createUpdateLinkToken('user-1', 'item-1')
+
+      // Deepening an existing item's history is only possible by removing and re-linking it,
+      // which spends another Item — so sending this would be a no-op dressed up as a feature.
+      expect(linkTokenCreate.mock.calls[0][0]).not.toHaveProperty('transactions')
+    })
+
+    it('enables account selection only when asked', async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue(liveItem)
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      await plaidLinkService.createUpdateLinkToken('user-1', 'item-1')
+      expect(linkTokenCreate.mock.calls[0][0]).not.toHaveProperty('update')
+
+      await plaidLinkService.createUpdateLinkToken('user-1', 'item-1', { accountSelection: true })
+      expect(linkTokenCreate).toHaveBeenLastCalledWith(
+        expect.objectContaining({ update: { account_selection_enabled: true } }),
+      )
+    })
+
+    it('works for a disconnected item, since reconnecting one goes through update mode', async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue({ ...liveItem, disabled: true })
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      await expect(plaidLinkService.createUpdateLinkToken('user-1', 'item-1')).resolves.toEqual({
+        linkToken: 'link-update',
+      })
+    })
+
+    it('throws for an unknown item rather than falling back to creating one', async () => {
+      mockUpdate()
+      itemRepoMock.getDecryptedToken.mockResolvedValue(null)
+      const { plaidLinkService } = await import('./plaidLinkService.js')
+
+      await expect(plaidLinkService.createUpdateLinkToken('user-1', 'item-missing')).rejects.toThrow(
+        /No connection found/i,
+      )
+      expect(linkTokenCreate).not.toHaveBeenCalled()
+    })
   })
 
   it('exchangeToken exchanges the public token and persists the encrypted access token', async () => {
