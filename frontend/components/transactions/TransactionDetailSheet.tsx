@@ -44,7 +44,12 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
     setCategoryId(item?.categoryId ?? null)
     setSubcategoryId(item?.subcategoryId ?? null)
     setApplyToVendor(true)
-    setMarkReimbursed(item?.reimbursedAmount != null)
+    // Both legs count as "already reimbursed": reimbursedAmount marks the expense side,
+    // isReimbursementIncome the income side. Seeding from the expense field alone left the
+    // toggle OFF on an already-linked income — flipping it on offered the expense list again,
+    // and saving created a second transfer row for an income the DB allows exactly one of
+    // (transfers_income_plaid_unique), surfacing as a raw duplicate-key error.
+    setMarkReimbursed(item?.reimbursedAmount != null || item?.isReimbursementIncome === true)
     setMarkTransfer(item?.transferKind != null)
     setPickerOpen(false)
   }, [item?.id])
@@ -57,7 +62,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
   const selectedCategory = categories.find((c) => c.id === categoryId) ?? null
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
   const wasTransfer = item.transferKind != null
-  const wasReimbursed = item.reimbursedAmount != null
+  const wasReimbursed = item.reimbursedAmount != null || item.isReimbursementIncome
   const isReimbursementPending = pendingTransfer?.kind === 'reimbursement'
   const isTransferPending = pendingTransfer != null && pendingTransfer.kind !== 'reimbursement'
   const effectiveMarkReimbursed = markReimbursed || isReimbursementPending
