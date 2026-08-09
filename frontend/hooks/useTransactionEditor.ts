@@ -43,7 +43,7 @@ export interface TransactionEditor {
   openNewManual: () => void
   closeDetailSheet: () => void
   closeManualSheet: () => void
-  saveCategory: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => Promise<void>
+  saveCategory: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean; note: string | null }) => Promise<void>
   saveManual: (input: ManualInput) => Promise<void>
   deleteManual: () => void
   /** Removes a single link from the open transaction, leaving its other links in place. */
@@ -126,12 +126,20 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   }, [])
 
   const saveCategory = useCallback(
-    async (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => {
+    async (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean; note: string | null }) => {
       if (!activeSheetItem) return
       try {
-        if (input.categoryId) {
-          await overrides.upsert({ plaidTransactionId: activeSheetItem.id, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
-          if (input.applyToVendor) {
+        // One override row carries both edits, so a note is written whenever it changed even
+        // if no category is picked — and a category-only save must not erase a saved note.
+        const noteChanged = (input.note ?? null) !== (activeSheetItem.note ?? null)
+        if (input.categoryId || noteChanged) {
+          await overrides.upsert({
+            plaidTransactionId: activeSheetItem.id,
+            categoryId: input.categoryId,
+            subcategoryId: input.subcategoryId,
+            note: input.note,
+          })
+          if (input.categoryId && input.applyToVendor) {
             await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
           }
         }

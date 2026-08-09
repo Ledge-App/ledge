@@ -6,7 +6,7 @@ export const transactionOverridesRouter = router({
   list: protectedProcedure.query(({ ctx }) => transactionOverrideRepository.list(ctx.jwt)),
 
   upsert: protectedProcedure
-    .input(z.object({ plaidTransactionId: z.string().min(1), categoryId: z.string().uuid().nullable(), subcategoryId: z.string().uuid().nullable() }))
+    .input(z.object({ plaidTransactionId: z.string().min(1), categoryId: z.string().uuid().nullable(), subcategoryId: z.string().uuid().nullable(), note: z.string().nullable() }))
     .mutation(({ ctx, input }) => transactionOverrideRepository.upsert(ctx.jwt, ctx.userId, input)),
 
   delete: protectedProcedure

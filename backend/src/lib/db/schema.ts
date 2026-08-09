@@ -124,6 +124,8 @@ export const transactionOverrides = pgTable('transaction_overrides', {
   plaidTransactionId: text('plaid_transaction_id').notNull(),
   categoryId: uuid('category_id').references(() => categories.id),
   subcategoryId: uuid('subcategory_id').references(() => subcategories.id),
+  /** User-written description shown in place of Plaid's merchant name; null = no override. */
+  note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   uniqueTransactionOverride: unique().on(table.userId, table.plaidTransactionId),
