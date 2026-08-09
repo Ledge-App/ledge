@@ -1,11 +1,11 @@
-import { useMemo } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Dimensions, Modal, Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, shadow } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 import { monthLabel } from '@/lib/transactions/filterByMonth'
-import { computeNetWorthHistory } from '@/lib/accounts/netWorthHistory'
+import { computeNetWorthHistory, netWorthYearRange } from '@/lib/accounts/netWorthHistory'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -39,12 +39,41 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
 
   const linkedAccountIds = useMemo(() => new Set(accounts.map((a) => a.account_id)), [accounts])
 
-  // The whole back-cast history in one trace — the story of a net worth line is the long arc,
-  // and paging it year by year hid exactly that.
+  // One scope selector covers both readings of the line: a single year for the close-up,
+  // 'all' for the long arc. Defaults to the current year, and re-seeds on every open so a
+  // past visit's choice doesn't linger.
+  const currentYear = new Date().getFullYear()
+  const [scope, setScope] = useState<number | 'all'>(currentYear)
+  useEffect(() => {
+    if (visible) setScope(currentYear)
+  }, [visible, currentYear])
+
+  const range = useMemo(() => netWorthYearRange(feed, linkedAccountIds), [feed, linkedAccountIds])
+  const scopeOptions = useMemo<Array<number | 'all'>>(() => {
+    const years: Array<number | 'all'> = []
+    for (let year = range.last; year >= range.first; year--) years.push(year)
+    years.push('all')
+    return years
+  }, [range])
+
   const points = useMemo(
-    () => computeNetWorthHistory(netWorth, feed, linkedAccountIds),
-    [netWorth, feed, linkedAccountIds],
+    () => computeNetWorthHistory(netWorth, feed, linkedAccountIds, scope === 'all' ? undefined : scope),
+    [netWorth, feed, linkedAccountIds, scope],
   )
+
+  // Anchored popover, matching the month/year picker on the Home and Details headers.
+  const scopeLabelRef = useRef<View>(null)
+  const [pickerAnchor, setPickerAnchor] = useState<{ left: number; top: number } | null>(null)
+  const POPOVER_W = 150
+
+  function openScopePicker() {
+    scopeLabelRef.current?.measureInWindow((x, y, width, height) => {
+      const screenWidth = Dimensions.get('window').width
+      const centered = x + width / 2 - POPOVER_W / 2
+      const left = Math.min(Math.max(centered, 12), screenWidth - POPOVER_W - 12)
+      setPickerAnchor({ left, top: y + height + 8 })
+    })
+  }
 
   // Descending, matching how the balance list reads elsewhere in the app: newest first.
   const rows = useMemo(() => [...points].reverse(), [points])
@@ -59,6 +88,66 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
         <Text className="flex-1 text-center font-display text-md text-textPrimary">Net Worth Trend</Text>
         <View style={{ width: 22 }} />
       </View>
+
+      <View className="items-center pb-3">
+        <Pressable
+          ref={scopeLabelRef}
+          onPress={openScopePicker}
+          accessibilityLabel="Select year"
+          hitSlop={8}
+          className="flex-row items-center gap-1"
+        >
+          <Text className="font-sansSemi text-base text-textPrimary">{scope === 'all' ? 'All time' : scope}</Text>
+          <Ionicons name="chevron-down" size={13} color={colors.textSecondary} />
+        </Pressable>
+      </View>
+
+      <Modal transparent visible={pickerAnchor != null} animationType="fade" onRequestClose={() => setPickerAnchor(null)}>
+        <Pressable style={{ flex: 1 }} onPress={() => setPickerAnchor(null)} accessibilityLabel="Dismiss year picker">
+          {pickerAnchor ? (
+            <Pressable
+              onPress={() => {}}
+              style={[
+                {
+                  position: 'absolute',
+                  left: pickerAnchor.left,
+                  top: pickerAnchor.top,
+                  width: POPOVER_W,
+                  backgroundColor: colors.surface,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingVertical: 4,
+                },
+                shadow.md,
+              ]}
+            >
+              {scopeOptions.map((option) => {
+                const isSelected = option === scope
+                return (
+                  <Pressable
+                    key={String(option)}
+                    onPress={() => {
+                      setScope(option)
+                      setPickerAnchor(null)
+                    }}
+                    accessibilityLabel={option === 'all' ? 'All time' : `Year ${option}`}
+                    className="flex-row items-center justify-between px-4 py-2.5"
+                  >
+                    <Text
+                      className="font-sansMed text-base"
+                      style={{ color: isSelected ? colors.primary : colors.textPrimary }}
+                    >
+                      {option === 'all' ? 'All time' : option}
+                    </Text>
+                    {isSelected ? <Ionicons name="checkmark" size={16} color={colors.primary} /> : null}
+                  </Pressable>
+                )
+              })}
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Modal>
 
       <ScrollView {...sheetScroll.scrollProps} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 24 }}>
         <View className="rounded-xl bg-surface p-3" style={shadow.card}>
@@ -77,7 +166,7 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
             </View>
           ) : points.length === 0 ? (
             <View className="items-center py-20">
-              <Text className="font-sans text-sm text-textMuted">No history yet</Text>
+              <Text className="font-sans text-sm text-textMuted">{scope === 'all' ? 'No history yet' : `No history for ${scope}`}</Text>
             </View>
           ) : (
             <NetWorthTrendChart points={points} />
