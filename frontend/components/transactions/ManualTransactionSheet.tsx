@@ -36,8 +36,12 @@ interface ManualTransactionSheetProps {
   onDelete?: () => void
   /** True when this transaction is already the expense leg of a transfer. */
   isTransfer?: boolean
+  /** True when this transaction is already part of a reimbursement (either leg). */
+  isReimbursed?: boolean
   /** Persists the edit, then opens the transfer sheet to pick a counterparty. */
   onSaveAndMarkTransfer?: (input: ManualTransactionInput) => void
+  /** Persists the edit, then opens the transfer sheet forced to reimbursement. */
+  onSaveAndMarkReimbursement?: (input: ManualTransactionInput) => void
   /** Persists the edit and deletes the transfer link. */
   onSaveAndUnmarkTransfer?: (input: ManualTransactionInput) => void
 }
@@ -61,7 +65,9 @@ export function ManualTransactionSheet({
   onSave,
   onDelete,
   isTransfer = false,
+  isReimbursed = false,
   onSaveAndMarkTransfer,
+  onSaveAndMarkReimbursement,
   onSaveAndUnmarkTransfer,
 }: ManualTransactionSheetProps) {
   const sheetScroll = useSheetScroll()
@@ -73,6 +79,7 @@ export function ManualTransactionSheet({
   const [note, setNote] = useState(transaction?.note ?? '')
   const [showAndroidPicker, setShowAndroidPicker] = useState(false)
   const [markTransfer, setMarkTransfer] = useState(isTransfer)
+  const [markReimbursed, setMarkReimbursed] = useState(isReimbursed)
   const [isNoteFocused, setIsNoteFocused] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
@@ -88,9 +95,12 @@ export function ManualTransactionSheet({
   }
 
   // The parent screen keeps one persistent instance of this sheet and only toggles `visible`,
-  // so local state must be re-derived whenever it's reopened for a different transaction —
-  // including the edit -> create transition, where `transaction?.id` goes to undefined.
+  // so local state must be re-derived whenever it's reopened — for a different transaction,
+  // for the edit -> create transition (transaction?.id goes to undefined), and for a second
+  // create in a row, where the id never changes and only the `visible` flip says "new form".
+  // Gated on visible so closing doesn't blank the fields mid exit-animation.
   useEffect(() => {
+    if (!visible) return
     setType(transaction?.type ?? 'expense')
     setAmountText(transaction?.amount ?? '')
     setCategoryId(transaction?.categoryId ?? null)
@@ -98,13 +108,15 @@ export function ManualTransactionSheet({
     setDate(transaction?.date ?? toDateKey(new Date()))
     setNote(transaction?.note ?? '')
     setMarkTransfer(isTransfer)
+    setMarkReimbursed(isReimbursed)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transaction?.id])
+  }, [transaction?.id, visible])
 
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
   const isValidAmount = /^\d+(\.\d{1,2})?$/.test(amountText) && Number(amountText) > 0
 
   const canMarkTransfer = transaction != null && onSaveAndMarkTransfer != null
+  const canMarkReimbursement = transaction != null && onSaveAndMarkReimbursement != null
 
   function handleSave() {
     const input: ManualTransactionInput = {
@@ -116,7 +128,13 @@ export function ManualTransactionSheet({
       note: note.trim().length > 0 ? note.trim() : null,
     }
 
-    if (canMarkTransfer && markTransfer && !isTransfer) {
+    if (canMarkReimbursement && markReimbursed && !isReimbursed) {
+      onSaveAndMarkReimbursement!(input)
+    } else if (isReimbursed && !markReimbursed && onSaveAndUnmarkTransfer) {
+      // Unmarking a reimbursement and unmarking a transfer are the same operation: drop the
+      // item's links.
+      onSaveAndUnmarkTransfer(input)
+    } else if (canMarkTransfer && markTransfer && !isTransfer) {
       onSaveAndMarkTransfer!(input)
     } else if (isTransfer && !markTransfer && onSaveAndUnmarkTransfer) {
       onSaveAndUnmarkTransfer(input)
@@ -221,10 +239,31 @@ export function ManualTransactionSheet({
           onBlur={() => setIsNoteFocused(false)}
         />
 
+        {canMarkReimbursement ? (
+          <View className="flex-row items-center justify-between py-3">
+            <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">
+              {type === 'expense' ? 'Mark as Reimbursed' : 'Mark as Reimbursement'}
+            </Text>
+            <Switch
+              value={markReimbursed}
+              onValueChange={(next) => {
+                setMarkReimbursed(next)
+                if (next) setMarkTransfer(false)
+              }}
+            />
+          </View>
+        ) : null}
+
         {canMarkTransfer ? (
           <View className="flex-row items-center justify-between py-3">
             <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Transfer</Text>
-            <Switch value={markTransfer} onValueChange={setMarkTransfer} />
+            <Switch
+              value={markTransfer}
+              onValueChange={(next) => {
+                setMarkTransfer(next)
+                if (next) setMarkReimbursed(false)
+              }}
+            />
           </View>
         ) : null}
 

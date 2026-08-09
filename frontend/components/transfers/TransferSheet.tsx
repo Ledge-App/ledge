@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { formatAmount } from '@/lib/format/money'
 import { TRANSFER_TYPE_LIST, daysBetween } from '@/lib/transfers/registry'
+import { remainingExpense, searchReimbursementCandidates, suggestReimbursements } from '@/lib/reimbursements/suggest'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account, TransferKind } from '@/types/domain'
 
@@ -29,23 +30,50 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
 
   const [kindOverride, setKindOverride] = useState<TransferKind | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     setKindOverride(null)
     setSelectedIds([])
+    setSearchQuery('')
   }, [item?.id])
 
   const kind = forcedKind ?? kindOverride ?? applicableTypes[0]?.kind ?? null
   const selectedType = kind ? (forcedKind ? TRANSFER_TYPE_LIST.find((t) => t.kind === kind) ?? null : applicableTypes.find((type) => type.kind === kind) ?? null) : null
-  const isMultiSelect = selectedType?.multiSelect === true
+  const isReimbursement = selectedType?.kind === 'reimbursement'
+  const isStartingFromExpense = (item?.amount ?? 0) > 0
+  // The registry's single-select rule protects the income side (one income can't split across
+  // expenses — no defined allocation). The expense side has no such ambiguity: several friends
+  // paying back one bill is the normal case, so it multi-selects.
+  const isMultiSelect = selectedType?.multiSelect === true || (isReimbursement && isStartingFromExpense)
 
   // Reset selection when switching kinds
   useEffect(() => {
     setSelectedIds([])
+    setSearchQuery('')
   }, [kind])
 
   const matches = useMemo(() => {
     if (!item || !selectedType) return []
+
+    if (selectedType.kind === 'reimbursement') {
+      const selected = candidateItems.filter((candidate) => selectedIds.includes(candidate.id))
+      const rest = candidateItems.filter((candidate) => !selectedIds.includes(candidate.id))
+      let list: FeedItem[]
+      if (searchQuery.trim()) {
+        list = searchReimbursementCandidates(searchQuery, rest)
+      } else if (item.amount > 0) {
+        // Score against what's still owed, so linking the $60 makes the $20 surface next.
+        const remaining = Math.max(0, remainingExpense(item) - selected.reduce((sum, c) => sum + Math.abs(c.amount), 0))
+        list = suggestReimbursements(item, rest, { remainingOverride: remaining }).map((scored) => scored.item)
+      } else {
+        list = suggestReimbursements(item, rest).map((scored) => scored.item)
+      }
+      // Selections stay pinned on top: re-ranking against the shrinking remainder (or a new
+      // search) must never make a ticked row vanish.
+      return [...selected, ...list]
+    }
+
     return candidateItems
       .filter((candidate) => selectedType.matches(item, candidate, { accounts }))
       .sort((a, b) => {
@@ -54,15 +82,16 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
         const target = Math.abs(item.amount)
         return Math.abs(Math.abs(a.amount) - target) - Math.abs(Math.abs(b.amount) - target)
       })
-  }, [item, selectedType, candidateItems, accounts])
+  }, [item, selectedType, candidateItems, accounts, selectedIds, searchQuery])
 
+  // Prune against the full candidate pool, not `matches`: for reimbursements the visible list
+  // shifts under search and re-ranking, and a still-valid selection must survive that.
   useEffect(() => {
-    setSelectedIds((prev) => prev.filter((id) => matches.some((m) => m.id === id)))
-  }, [matches])
+    setSelectedIds((prev) => prev.filter((id) => candidateItems.some((candidate) => candidate.id === id)))
+  }, [candidateItems])
 
   if (!item || !selectedType) return null
 
-  const isStartingFromExpense = item.amount > 0
   const canSave = selectedIds.length > 0 || selectedType.allowsUnpaired
 
   function toggleId(id: string) {
@@ -73,18 +102,29 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
     })
   }
 
-  // A reimbursement pairs an expense with a smaller-or-equal income, so the sheet shows what the
-  // expense actually cost after the money that came back. The marked item is the income side
-  // (registry's appliesTo), but the legs are read off the signs so the line stays right either way.
-  const isReimbursement = selectedType.kind === 'reimbursement'
-  const selectedCounterpart = matches.find((c) => c.id === selectedIds[0]) ?? null
+  // A reimbursement pairs an expense with smaller-or-equal incomes, so the sheet shows what the
+  // expense actually cost after the money that came back. Whichever side the user started from,
+  // the expense leg and the incomes-total are read off the signs — and money already linked from
+  // earlier reimbursements counts too, so the net line always shows the true remaining cost.
+  const selectedItems = matches.filter((candidate) => selectedIds.includes(candidate.id))
+  const expenseLeg = isReimbursement ? (isStartingFromExpense ? item : selectedItems[0] ?? null) : null
   const reimbursement =
-    isReimbursement && selectedCounterpart
+    isReimbursement && expenseLeg && selectedItems.length > 0
       ? {
-          expense: Math.abs(isStartingFromExpense ? item.amount : selectedCounterpart.amount),
-          income: Math.abs(isStartingFromExpense ? selectedCounterpart.amount : item.amount),
+          expense: Math.abs(expenseLeg.amount),
+          income:
+            (expenseLeg.reimbursedAmount ?? 0) +
+            (isStartingFromExpense ? selectedItems.reduce((sum, c) => sum + Math.abs(c.amount), 0) : Math.abs(item.amount)),
         }
       : null
+
+  const listHeading = isReimbursement
+    ? searchQuery.trim()
+      ? 'Search results'
+      : 'Suggested'
+    : isStartingFromExpense
+      ? 'Matching income'
+      : 'Matching expense'
 
   return (
     <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
@@ -96,7 +136,7 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
         <View style={{ width: 22 }} />
       </View>
 
-      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10" keyboardShouldPersistTaps="handled">
         <Text className={`font-mono text-base ${isStartingFromExpense ? 'text-expense' : 'text-income'}`}>
           {item.merchantName} {formatAmount(item.amount)}
         </Text>
@@ -125,12 +165,36 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
           })}
         </View>}
 
-        <Text className="font-display text-base text-textPrimary">
-          {isStartingFromExpense ? 'Matching income' : 'Matching expense'}
-        </Text>
+        <Text className="font-display text-base text-textPrimary">{listHeading}</Text>
+
+        {isReimbursement ? (
+          <View className="flex-row items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: colors.border }}>
+            <Ionicons name="search" size={16} color={colors.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search all by amount or name"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="flex-1 py-0 font-sans text-sm text-textPrimary"
+              accessibilityLabel="Search reimbursement candidates"
+            />
+            {searchQuery ? (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         {matches.length === 0 ? (
           <Text className="font-sans text-sm text-textMuted">
-            No matching {isStartingFromExpense ? 'income' : 'expense'} found.
+            {isReimbursement
+              ? searchQuery.trim()
+                ? 'Nothing matches that search.'
+                : 'No likely matches — try searching by amount or name.'
+              : `No matching ${isStartingFromExpense ? 'income' : 'expense'} found.`}
           </Text>
         ) : (
           matches.map((candidate) => {

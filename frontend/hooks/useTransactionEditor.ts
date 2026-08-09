@@ -63,9 +63,12 @@ export interface TransactionEditor {
   clearPendingTransfer: () => void
   unmarkTransfer: () => Promise<void>
   saveManualAndMarkTransfer: (input: ManualInput) => Promise<void>
+  saveManualAndMarkReimbursement: (input: ManualInput) => Promise<void>
   saveManualAndUnmarkTransfer: (input: ManualInput) => Promise<void>
   /** True when the manual transaction being edited is already a leg of a transfer. */
   editingManualIsTransfer: boolean
+  /** True when the manual transaction being edited is already part of a reimbursement. */
+  editingManualIsReimbursed: boolean
 }
 
 // Owns every piece of state and every mutation behind the three transaction edit sheets, so any
@@ -237,7 +240,29 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     async (input: ManualInput) => {
       const item = editedManualAsFeedItem(input)
       await saveManual(input)
-      if (item) setTimeout(() => setTransferItem(item), MANUAL_HANDOFF_MS)
+      if (item)
+        setTimeout(() => {
+          // Cleared explicitly: a forced kind left over from an earlier reimbursement flow
+          // would otherwise lock this plain transfer marking to the wrong kind.
+          setTransferForcedKind(undefined)
+          setTransferItem(item)
+        }, MANUAL_HANDOFF_MS)
+    },
+    [editedManualAsFeedItem, saveManual],
+  )
+
+  // The manual-edit counterpart of the detail sheet's "Mark as Reimbursement" toggle — cash
+  // legs live as manual transactions (paid back in cash, or a cash expense paid back), and
+  // they deserve the same flow as Plaid rows.
+  const saveManualAndMarkReimbursement = useCallback(
+    async (input: ManualInput) => {
+      const item = editedManualAsFeedItem(input)
+      await saveManual(input)
+      if (item)
+        setTimeout(() => {
+          setTransferForcedKind('reimbursement')
+          setTransferItem(item)
+        }, MANUAL_HANDOFF_MS)
     },
     [editedManualAsFeedItem, saveManual],
   )
@@ -332,9 +357,17 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     clearPendingTransfer: useCallback(() => setPendingTransfer(null), []),
     unmarkTransfer,
     saveManualAndMarkTransfer,
+    saveManualAndMarkReimbursement,
     saveManualAndUnmarkTransfer,
     editingManualIsTransfer: editingManual
       ? feed.find((item) => item.id === editingManual.id)?.transferKind != null
       : false,
+    editingManualIsReimbursed: (() => {
+      if (!editingManual) return false
+      const item = feed.find((candidate) => candidate.id === editingManual.id)
+      // Either leg counts: a reimbursed expense carries reimbursedAmount, the payback income
+      // carries isReimbursementIncome — neither is stamped with a transferKind.
+      return item ? item.reimbursedAmount != null || item.isReimbursementIncome : false
+    })(),
   }
 }
