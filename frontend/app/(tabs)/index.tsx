@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -86,6 +86,25 @@ export default function DashboardScreen() {
   // Must be the full segment list, uncategorized slice included: the sheet's donut draws each
   // segment's percentage of the month total, so leaving any spend out draws a gap in the ring.
   const detailSegments = detailState == null ? [] : detailState.mode === 'expense' ? expenseSegments : incomeSegments
+
+  // Edits made from inside the sheet (a reimbursement, a transfer, a recategorisation) rewrite
+  // this month's numbers under it, but `detailState.segment` is a snapshot from open time. Keep
+  // it honest: when the segment no longer exists or has nothing left to show, bring the user
+  // back instead of a stale ring over "No transactions"; otherwise refresh the snapshot so the
+  // header amount matches the list below it.
+  useEffect(() => {
+    if (!detailState) return
+    const fresh = (detailState.mode === 'expense' ? expenseSegments : incomeSegments).find(
+      (s) => s.categoryId === detailState.segment.categoryId,
+    )
+    if (!fresh || detailTransactions.length === 0) {
+      setDetailState(null)
+      return
+    }
+    if (fresh.amount !== detailState.segment.amount || fresh.percentage !== detailState.segment.percentage) {
+      setDetailState({ segment: fresh, mode: detailState.mode })
+    }
+  }, [detailState, expenseSegments, incomeSegments, detailTransactions])
 
   const hasNoAccounts = !accounts.isLoading && (accounts.data?.length ?? 0) === 0
 

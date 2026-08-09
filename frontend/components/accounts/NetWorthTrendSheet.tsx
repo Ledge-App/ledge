@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, shadow } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 import { monthLabel } from '@/lib/transactions/filterByMonth'
-import { computeNetWorthHistory, netWorthYearRange } from '@/lib/accounts/netWorthHistory'
+import { computeNetWorthHistory } from '@/lib/accounts/netWorthHistory'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -36,22 +36,15 @@ function formatChange(change: number): string {
 export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed, isLoading }: NetWorthTrendSheetProps) {
   const insets = useSafeAreaInsets()
   const sheetScroll = useSheetScroll()
-  const currentYear = new Date().getFullYear()
-  const [year, setYear] = useState(currentYear)
-
-  // Reopening lands back on the current year rather than wherever the last visit left off.
-  useEffect(() => {
-    if (visible) setYear(currentYear)
-  }, [visible, currentYear])
 
   const linkedAccountIds = useMemo(() => new Set(accounts.map((a) => a.account_id)), [accounts])
 
+  // The whole back-cast history in one trace — the story of a net worth line is the long arc,
+  // and paging it year by year hid exactly that.
   const points = useMemo(
-    () => computeNetWorthHistory(netWorth, feed, linkedAccountIds, year),
-    [netWorth, feed, linkedAccountIds, year],
+    () => computeNetWorthHistory(netWorth, feed, linkedAccountIds),
+    [netWorth, feed, linkedAccountIds],
   )
-
-  const range = useMemo(() => netWorthYearRange(feed, linkedAccountIds), [feed, linkedAccountIds])
 
   // Descending, matching how the balance list reads elsewhere in the app: newest first.
   const rows = useMemo(() => [...points].reverse(), [points])
@@ -65,26 +58,6 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
         </Pressable>
         <Text className="flex-1 text-center font-display text-md text-textPrimary">Net Worth Trend</Text>
         <View style={{ width: 22 }} />
-      </View>
-
-      <View className="flex-row items-center justify-center gap-4 pb-4">
-        <Pressable
-          onPress={() => setYear((y) => y - 1)}
-          disabled={year <= range.first}
-          hitSlop={8}
-          accessibilityLabel="Previous year"
-        >
-          <Ionicons name="chevron-back" size={20} color={year <= range.first ? colors.border : colors.textSecondary} />
-        </Pressable>
-        <Text className="font-sansSemi text-base text-textPrimary">{year}</Text>
-        <Pressable
-          onPress={() => setYear((y) => y + 1)}
-          disabled={year >= range.last}
-          hitSlop={8}
-          accessibilityLabel="Next year"
-        >
-          <Ionicons name="chevron-forward" size={20} color={year >= range.last ? colors.border : colors.textSecondary} />
-        </Pressable>
       </View>
 
       <ScrollView {...sheetScroll.scrollProps} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 24 }}>
@@ -104,7 +77,7 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
             </View>
           ) : points.length === 0 ? (
             <View className="items-center py-20">
-              <Text className="font-sans text-sm text-textMuted">No history for {year}</Text>
+              <Text className="font-sans text-sm text-textMuted">No history yet</Text>
             </View>
           ) : (
             <NetWorthTrendChart points={points} />

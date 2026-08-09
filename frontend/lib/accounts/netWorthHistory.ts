@@ -67,15 +67,16 @@ function flowByMonth(feed: FeedItem[], linkedAccountIds: Set<string>): Map<numbe
 }
 
 /**
- * Net worth at the end of each month of `year`, ascending. Months earlier than the oldest
- * synced transaction are omitted rather than flat-lined — with no ledger to unwind, their
- * value is unknown, not unchanged.
+ * Net worth at the end of each month, ascending — every month of `year`, or the entire
+ * history (oldest synced transaction through today) when `year` is omitted. Months earlier
+ * than the oldest synced transaction are omitted rather than flat-lined — with no ledger to
+ * unwind, their value is unknown, not unchanged.
  */
 export function computeNetWorthHistory(
   currentNetWorth: number,
   feed: FeedItem[],
   linkedAccountIds: Set<string>,
-  year: number,
+  year?: number,
   today: Date = new Date(),
 ): MonthPoint[] {
   const nowIndex = toIndex(today.getFullYear(), today.getMonth() + 1)
@@ -86,8 +87,8 @@ export function computeNetWorthHistory(
     if (index < earliestIndex) earliestIndex = index
   }
 
-  const requestedFirst = toIndex(year, 1)
-  const requestedLast = toIndex(year, 12)
+  const requestedFirst = year != null ? toIndex(year, 1) : earliestIndex
+  const requestedLast = year != null ? toIndex(year, 12) : nowIndex
   if (requestedFirst > nowIndex || requestedLast < earliestIndex) return []
 
   // Walk back from today one month at a time, keeping only what lands in `year`.
