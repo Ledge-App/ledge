@@ -141,6 +141,8 @@ export function mergeFeed(
     accounts.filter(isBrokerageCashAccount).map((account) => account.account_id),
   )
 
+  const overrideNoteById = new Map(overrides.filter((o) => o.note != null).map((o) => [o.plaidTransactionId, o.note]))
+
   const plaidItems: FeedItem[] = plaidTransactions.map((txn) => {
     const resolved = resolveCategory(
       {
@@ -166,7 +168,9 @@ export function mergeFeed(
       pfcDetailed: txn.personal_finance_category?.detailed ?? null,
       accountId: txn.account_id,
       pending: txn.pending,
-      note: null,
+      // A Plaid transaction's note lives in its override row — the same per-transaction edit
+      // that carries a category change carries the user's description.
+      note: overrideNoteById.get(txn.transaction_id) ?? null,
       reimbursedAmount: null,
       netAmount: null,
       isReimbursementIncome: false,

@@ -6,6 +6,7 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { LinkedTransactions } from '@/components/transactions/LinkedTransactions'
 import { Button } from '@/components/ui/Button'
+import { TextField } from '@/components/ui/TextField'
 import { formatAmount } from '@/lib/format/money'
 import { formatFullDate } from '@/lib/format/date'
 import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
@@ -23,7 +24,7 @@ interface TransactionDetailSheetProps {
   subcategories: Subcategory[]
   pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
   onClose: () => void
-  onSave: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean }) => void
+  onSave: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean; note: string | null }) => void
   onOpenTransfer: (forcedKind?: TransferKind) => void
   onClearPendingTransfer: () => void
   onUnmarkTransfer: () => void
@@ -35,6 +36,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
+  const [note, setNote] = useState(item?.note ?? '')
   const [markReimbursed, setMarkReimbursed] = useState(false)
   const [markTransfer, setMarkTransfer] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -44,6 +46,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
     setCategoryId(item?.categoryId ?? null)
     setSubcategoryId(item?.subcategoryId ?? null)
     setApplyToVendor(true)
+    setNote(item?.note ?? '')
     // Both legs count as "already reimbursed": reimbursedAmount marks the expense side,
     // isReimbursementIncome the income side. Seeding from the expense field alone left the
     // toggle OFF on an already-linked income — flipping it on offered the expense list again,
@@ -78,7 +81,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
     } else if (effectiveMarkReimbursed && !wasReimbursed && !isReimbursementPending) {
       onOpenTransfer('reimbursement')
     } else {
-      onSave({ categoryId, subcategoryId, applyToVendor })
+      onSave({ categoryId, subcategoryId, applyToVendor, note: note.trim().length > 0 ? note.trim() : null })
     }
   }
 
@@ -177,6 +180,14 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
             ))}
           </View>
         ) : null}
+
+        {/* The placeholder is the name the row currently shows — what a saved note replaces. */}
+        <TextField
+          label="Note (optional)"
+          value={note}
+          onChangeText={setNote}
+          placeholder={item.merchantName}
+        />
 
         <View className="flex-row items-center justify-between py-3">
           <Text className="flex-1 pr-3 font-sans text-base text-textPrimary" numberOfLines={2}>

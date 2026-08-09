@@ -1,0 +1,1 @@
+ALTER TABLE "transaction_overrides" ADD COLUMN "note" text;

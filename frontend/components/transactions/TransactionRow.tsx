@@ -80,7 +80,9 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
             : categoryName}
         </Text>
         <Text className="font-sans text-sm text-textSecondary" numberOfLines={1}>
-          {item.merchantName}
+          {/* A user-written note beats the raw merchant string — the same rule manual rows
+              follow, where the note IS the display name. */}
+          {item.note ?? item.merchantName}
         </Text>
       </View>
 

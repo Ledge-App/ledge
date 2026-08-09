@@ -71,6 +71,13 @@
       "when": 1786225170166,
       "tag": "0009_add_category_is_default",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786236753423,
+      "tag": "0010_add_override_note",
+      "breakpoints": true
     }
   ]
 }

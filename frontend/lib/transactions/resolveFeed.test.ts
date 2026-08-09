@@ -3,7 +3,7 @@ import { resolveCategory, mergeFeed, applyTransfers } from './resolveFeed'
 import type { PlaidCategoryMapping, TransactionOverride, VendorMapping, ManualTransaction, PlaidTransaction, Transfer } from '@/types/domain'
 
 const overrides: TransactionOverride[] = [
-  { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null },
+  { id: 'o1', plaidTransactionId: 'txn-override', categoryId: 'cat-override', subcategoryId: null, note: null },
 ]
 const vendorMappings: VendorMapping[] = [
   { id: 'v1', vendorName: 'Panda Express', categoryId: 'cat-user', subcategoryId: 'sub-user', source: 'user_defined' },
@@ -301,7 +301,7 @@ describe('applyTransfers — reimbursements', () => {
 describe('resolveFeed pipeline', () => {
   const pipelineOverrides: TransactionOverride[] = [
     // User re-categorized the dinner away from its plaid_auto mapping.
-    { id: 'o-dinner', plaidTransactionId: 'expense-1', categoryId: 'cat-dining-out', subcategoryId: 'sub-restaurants' },
+    { id: 'o-dinner', plaidTransactionId: 'expense-1', categoryId: 'cat-dining-out', subcategoryId: 'sub-restaurants', note: null },
   ]
 
   const manualTxns = [
