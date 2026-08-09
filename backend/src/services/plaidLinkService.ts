@@ -21,13 +21,23 @@ async function removeItem(client: PlaidApi, userId: string, item: { itemId: stri
   await plaidItemRepository.delete(userId, item.itemId)
 }
 
+// Shared by both modes. `products`/`optional_products` are deliberately absent: they belong to
+// item creation only, and sending them in update mode changes the request's meaning.
+function baseLinkTokenRequest(userId: string) {
+  return {
+    user: { client_user_id: userId },
+    client_name: 'Ledge',
+    country_codes: ['US'],
+    language: 'en',
+  }
+}
+
 export const plaidLinkService = {
   async createLinkToken(userId: string): Promise<{ linkToken: string }> {
     const creds = await requireCredentials(userId)
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const response = await client.linkTokenCreate({
-      user: { client_user_id: userId },
-      client_name: 'Ledge',
+      ...baseLinkTokenRequest(userId),
       products: ['transactions'],
       // optional_products activates investments (holdings) where the institution supports
       // it WITHOUT narrowing the institution search the way listing it in `products` would.
@@ -35,12 +45,49 @@ export const plaidLinkService = {
       // holdings calls until relinked.
       optional_products: ['investments'],
       // How much history Plaid ingests for an item, decided once at link time — /transactions/sync
-      // has no per-request date range, so without this the default 90 days is all an item will
-      // ever have. 730 is Plaid's maximum. Applies to NEW links only: an existing item stays at
-      // the depth it was linked with until the institution is relinked (which re-syncs in full).
+      // has no per-request date range, so without this the default 90 days is all an item would
+      // ever have. 730 is Plaid's maximum. This is genuinely one-shot: Plaid documents that the
+      // value "cannot be updated if Transactions has already been added to the Item", and the
+      // only way to deepen an existing item is /item/remove plus a fresh link — which spends
+      // another Item. So an item linked shallow stays shallow unless it is worth a connection.
       transactions: { days_requested: 730 },
-      country_codes: ['US'],
-      language: 'en',
+    } as never)
+    return { linkToken: response.data.link_token }
+  },
+
+  /**
+   * A link token for an item that already exists — Plaid calls this update mode. Because the
+   * request carries the existing access token, finishing this Link session re-authenticates the
+   * SAME Item: no public token needs exchanging and no new Item is created. That distinction is
+   * the whole point, since Plaid trial plans cap Items created for all time and /item/remove
+   * never refunds one.
+   *
+   * Covers two cases with one call:
+   *  - re-auth after ITEM_LOGIN_REQUIRED (no options)
+   *  - changing which accounts are shared (accountSelection)
+   *
+   * Deliberately NOT sent here: transactions.days_requested. Plaid fixes an Item's history depth
+   * when Transactions is first added and documents that it cannot be updated afterwards — the
+   * only way to deepen an existing item is to remove it and link again, which is the exact cost
+   * this function exists to avoid. Sending it would be a no-op that reads like a feature.
+   */
+  async createUpdateLinkToken(
+    userId: string,
+    itemId: string,
+    options: { accountSelection?: boolean } = {},
+  ): Promise<{ linkToken: string }> {
+    const creds = await requireCredentials(userId)
+    // Disconnected items are reachable here on purpose: reconnecting one opens update mode.
+    const item = await plaidItemRepository.getDecryptedToken(userId, itemId)
+    if (!item) {
+      throw new Error('No connection found for this institution.')
+    }
+
+    const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
+    const response = await client.linkTokenCreate({
+      ...baseLinkTokenRequest(userId),
+      access_token: item.accessToken,
+      ...(options.accountSelection ? { update: { account_selection_enabled: true } } : {}),
     } as never)
     return { linkToken: response.data.link_token }
   },

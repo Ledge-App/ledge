@@ -1,58 +1,19 @@
 import { router } from 'expo-router'
-import { useState } from 'react'
 import { Text, View } from 'react-native'
-import { createPlaidLinkSession } from '@/lib/plaid/createLinkSession'
 import { onboardingBackTarget } from '@/lib/onboarding/backTarget'
-import { useOnboarding } from '@/hooks/useOnboarding'
+import { useLinkSession } from '@/hooks/useLinkSession'
 import { OnboardingStepHeader } from '@/components/onboarding/OnboardingStepHeader'
 import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 
 export default function LinkAccountScreen() {
-  const { createLinkToken, exchangeToken } = useOnboarding()
   const backTarget = onboardingBackTarget(2)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Create mode is correct here and only here: onboarding is by definition a first connection,
+  // so there is no existing Item to update.
+  const { openCreateLink, isConnecting, error, setError } = useLinkSession()
 
-  async function handleConnect() {
-    setError(null)
-    setIsConnecting(true)
-    try {
-      const { linkToken } = await createLinkToken()
-
-      console.log('[PlaidLink] link token received, creating session…')
-      const session = await createPlaidLinkSession({
-        token: linkToken,
-        onEvent: (event) => {
-          console.log('[PlaidLink] event:', JSON.stringify(event))
-        },
-        onExit: (exit) => {
-          console.log('[PlaidLink] exit:', JSON.stringify(exit))
-          setIsConnecting(false)
-          if (exit.error) {
-            setError(exit.error.errorMessage ?? 'Bank connection was cancelled.')
-          }
-        },
-        onSuccess: async (success) => {
-          try {
-            await exchangeToken({ publicToken: success.publicToken })
-            router.replace('/onboarding/seeding')
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Could not finish linking this account.')
-          } finally {
-            setIsConnecting(false)
-          }
-        },
-      })
-
-      console.log('[PlaidLink] opening session…')
-      await session.open()
-      console.log('[PlaidLink] session opened')
-    } catch (err) {
-      console.log('[PlaidLink] error:', err)
-      setIsConnecting(false)
-      setError(err instanceof Error ? err.message : 'Could not open Plaid Link. Try again.')
-    }
+  function handleConnect() {
+    void openCreateLink({ onCompleted: () => router.replace('/onboarding/seeding') })
   }
 
   return (

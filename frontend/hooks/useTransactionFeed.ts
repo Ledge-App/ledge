@@ -18,6 +18,7 @@ import {
   setPendingRemovedTransactionIds,
 } from '@/lib/storage/mmkv'
 import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { detectTransfers } from '@/lib/transfers/autoMatch'
@@ -64,6 +65,34 @@ export function useTransactionFeed() {
   // rawTransactions memo below re-reads the cache. MMKV writes are a side effect
   // outside React state, so this timestamp is what makes them observable.
   const [syncCompletedAt, setSyncCompletedAt] = useState(0)
+
+  const liveAccountIdsByItem = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const account of accounts.data ?? []) {
+      const ids = map.get(account.itemId) ?? new Set<string>()
+      ids.add(account.account_id)
+      map.set(account.itemId, ids)
+    }
+    return map
+  }, [accounts.data])
+
+  const failedItemIds = useMemo(
+    () => new Set(accounts.itemErrors.map((itemError) => itemError.itemId)),
+    [accounts.itemErrors],
+  )
+
+  // Drops transactions belonging to accounts the user has stopped sharing. Update mode lets an
+  // institution's account set shrink without the connection being replaced, so nothing else
+  // would ever evict them — see planCachePrune, including why failed items are left alone.
+  useEffect(() => {
+    if (accounts.isLoading || !accounts.data) return
+    const cachedByItem = new Map(itemIds.map((itemId) => [itemId, getCachedTransactions(itemId)]))
+    const plan = planCachePrune({ itemIds, cachedByItem, liveAccountIdsByItem, failedItemIds })
+    if (plan.size === 0) return
+    for (const [itemId, kept] of plan) setCachedTransactions(itemId, kept)
+    // Same observability trick as a completed sync: the writes above happen outside React.
+    setSyncCompletedAt(Date.now())
+  }, [accounts.isLoading, accounts.data, itemIds, liveAccountIdsByItem, failedItemIds])
 
   // The backend bounds each sync request's pages per item and reports per-item hasMore
   // when an item isn't drained (e.g. a freshly linked account's full history). onSuccess

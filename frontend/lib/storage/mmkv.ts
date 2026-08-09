@@ -35,6 +35,20 @@ export function setCursor(itemId: string, cursor: string): void {
   storage.set(cursorKey(itemId), cursor)
 }
 
+/**
+ * Drops an item's cached transactions and its sync cursor together.
+ *
+ * The pairing is the point. A disconnected institution's transactions leave the feed, but Plaid
+ * keeps advancing nothing on its side — the cursor still marks everything it has already
+ * reported. Reconnecting with that cursor intact would resume past the discarded history and
+ * never re-deliver it, leaving a permanent hole. Clearing both makes reconnecting a full
+ * re-drain instead.
+ */
+export function clearItemCache(itemId: string): void {
+  storage.delete(transactionsKey(itemId))
+  storage.delete(cursorKey(itemId))
+}
+
 // Plaid `removed` transaction ids not yet checked against the transfers table (orphan
 // cleanup, docs/credit-card-payment-auto-transfer.md phase 6). Durable on purpose: a
 // removal is emitted exactly once by transactionsSync, and once the merge drops the

@@ -58,6 +58,11 @@ export const plaidItems = pgTable('plaid_items', {
   institutionLogo: text('institution_logo'),
   encryptedAccessToken: text('encrypted_access_token').notNull(),
   itemId: text('item_id').notNull(),
+  // Soft disconnect. NULL = live. Set = the user disconnected this institution but the Item
+  // still exists at Plaid, so re-enabling costs nothing. Plaid trial plans cap how many Items
+  // an account may ever create and /item/remove does not refund one, which makes revoking a
+  // one-way door — hence a reversible default with permanent deletion as a separate action.
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
