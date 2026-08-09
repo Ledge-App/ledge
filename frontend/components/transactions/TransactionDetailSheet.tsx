@@ -180,9 +180,13 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
           <Switch value={applyToVendor} onValueChange={setApplyToVendor} />
         </View>
 
-        {item.amount < 0 ? (
-          <View className="flex-row items-center justify-between py-3">
-            <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Reimbursement</Text>
+        {/* Both sides can start a reimbursement: an income is "this money paid me back", an
+            expense is "this cost got paid back" — the expense side is also where several
+            incomes can be linked against one cost in a single pass. */}
+        <View className="flex-row items-center justify-between py-3">
+          <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">
+            {item.amount > 0 ? 'Mark as Reimbursed' : 'Mark as Reimbursement'}
+          </Text>
             <Switch
               value={effectiveMarkReimbursed}
               onValueChange={(next) => {
@@ -197,7 +201,6 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
               }}
             />
           </View>
-        ) : null}
 
         {isReimbursementPending && transferType ? (
           <View className="rounded-lg border px-3 py-3" style={{ borderColor: transferType.color, backgroundColor: hexToRgba(transferType.color, 0.08) }}>

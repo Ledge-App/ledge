@@ -85,7 +85,15 @@ export function AccountDetailSheet({
           <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
         <Text className="flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>{shown.title}</Text>
-        <View style={{ width: 22 }} />
+        {/* Only the built-in Cash row can take new entries here — it's backed by manual
+            transactions. A Plaid account's history comes from the bank alone. */}
+        {shown.variant === 'cashOnHand' ? (
+          <Pressable onPress={editor.openNewManual} accessibilityLabel="Add cash transaction" hitSlop={8}>
+            <Ionicons name="add-circle-outline" size={22} color={colors.textPrimary} />
+          </Pressable>
+        ) : (
+          <View style={{ width: 22 }} />
+        )}
       </View>
 
       <View className="mx-5 mb-4 items-center rounded-xl p-5" style={{ backgroundColor: hexToRgba(icon.color, 0.08) }}>
