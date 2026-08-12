@@ -1,7 +1,8 @@
 import { router } from 'expo-router'
 import { useState } from 'react'
 import { Text, View } from 'react-native'
-import { signInWithGoogle } from '@/lib/supabase/auth'
+import { signInWithApple, signInWithGoogle } from '@/lib/supabase/auth'
+import { AppleSignInButton } from '@/components/auth/AppleSignInButton'
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { Reveal } from '@/components/ui/Reveal'
@@ -14,11 +15,13 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  async function handleSignIn() {
+  // One shared runner: both providers resolve to a Supabase session (or null on cancel),
+  // and only one attempt can be in flight at a time.
+  async function handleSignIn(signIn: () => ReturnType<typeof signInWithGoogle>) {
     setError(null)
     setIsSubmitting(true)
     try {
-      const session = await signInWithGoogle()
+      const session = await signIn()
       if (session) router.replace('/onboarding')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in. Try again.')
@@ -56,8 +59,16 @@ export default function LoginScreen() {
         ) : null}
       </View>
 
+      {/* Apple first: guideline 4.8 wants Sign in with Apple at least as prominent as any
+          third-party login, and review reads order as prominence. */}
       <Reveal delay={220}>
-        <GoogleSignInButton onPress={handleSignIn} loading={isSubmitting} />
+        <AppleSignInButton onPress={() => handleSignIn(signInWithApple)} loading={isSubmitting} />
+      </Reveal>
+
+      <Reveal delay={280}>
+        <View className="mt-3">
+          <GoogleSignInButton onPress={() => handleSignIn(signInWithGoogle)} loading={isSubmitting} />
+        </View>
       </Reveal>
 
       <View className="flex-1" />

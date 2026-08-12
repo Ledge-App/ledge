@@ -62,8 +62,9 @@ export interface TransactionEditor {
   declineTransfer: () => void
   clearPendingTransfer: () => void
   unmarkTransfer: () => Promise<void>
-  saveManualAndMarkTransfer: (input: ManualInput) => Promise<void>
-  saveManualAndMarkReimbursement: (input: ManualInput) => Promise<void>
+  /** Hands the manual edit (unsaved) to the transfer sheet the moment a mark toggle flips —
+   *  the same immediate flow the Plaid detail sheet has. The link is written on save. */
+  openManualTransfer: (input: ManualInput, forcedKind?: TransferKind) => void
   saveManualAndUnmarkTransfer: (input: ManualInput) => Promise<void>
   /** True when the manual transaction being edited is already a leg of a transfer. */
   editingManualIsTransfer: boolean
@@ -123,6 +124,9 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const closeManualSheet = useCallback(() => {
     setManualSheetOpen(false)
     setEditingManual(null)
+    // Abandoning the edit abandons any counterpart picked for it — a pending link left behind
+    // would silently attach to the next transaction whose sheet opens.
+    setPendingTransfer(null)
   }, [])
 
   const saveCategory = useCallback(
@@ -157,6 +161,23 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [activeSheetItem, feed, overrides, pendingTransfer, transfers, vendorMappings],
   )
 
+  // The transfer sheet needs the saved shape of the edit, but the feed hasn't refetched yet, so
+  // project the input onto the existing item.
+  const editedManualAsFeedItem = useCallback(
+    (input: ManualInput): FeedItem | null => {
+      if (!editingManual) return null
+      const existing = feed.find((item) => item.id === editingManual.id)
+      if (!existing) return null
+      // The form's amount is unsigned; the feed convention is positive = expense, negative =
+      // income (resolveFeed applies the same mapping). Handing the sheet an unsigned amount
+      // made every manual income look like an expense, so its transfer/reimbursement
+      // candidate lists were sign-inverted and the real counterpart never appeared.
+      const signedAmount = input.type === 'expense' ? Number(input.amount) : -Number(input.amount)
+      return { ...existing, amount: signedAmount, date: input.date }
+    },
+    [editingManual, feed],
+  )
+
   const saveManual = useCallback(
     async (input: ManualInput) => {
       try {
@@ -165,13 +186,24 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
         } else {
           await manualTransactions.create(input)
         }
+        // Same contract as saveCategory: the counterpart picked in the transfer sheet is only
+        // written when the edit itself is saved, so abandoning the edit abandons the link.
+        if (pendingTransfer && editingManual) {
+          const standIn = editedManualAsFeedItem(input)
+          if (standIn) {
+            for (const transferInput of buildTransferInputs(standIn, pendingTransfer, feed)) {
+              await transfers.create(transferInput)
+            }
+          }
+          setPendingTransfer(null)
+        }
         setManualSheetOpen(false)
         setEditingManual(null)
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'Could not save this transaction. Try again.')
       }
     },
-    [editingManual, manualTransactions],
+    [editingManual, manualTransactions, pendingTransfer, editedManualAsFeedItem, feed, transfers],
   )
 
   const openTransfer = useCallback(
@@ -185,23 +217,35 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [activeSheetItem],
   )
 
-  // Confirming doesn't write anything yet — it hands the choice back to the detail sheet, which
-  // saves the category and the transfer together.
+  // A manual item's flow came from the manual edit sheet (which still holds editingManual), so
+  // confirm/decline must land back there — reopening the Plaid-shaped detail sheet for a
+  // manual row was the old flow's detour.
+  const cameFromManualSheet = useCallback(
+    (item: FeedItem | null) => item?.source === 'manual' && editingManual?.id === item?.id,
+    [editingManual],
+  )
+
+  // Confirming doesn't write anything yet — it hands the choice back to the sheet it came
+  // from, which saves the edit and the transfer together.
   const confirmTransfer = useCallback(
     ({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) => {
       const item = transferItem
       setPendingTransfer({ kind, counterpartIds })
       setTransferItem(null)
-      if (item) setTimeout(() => setActiveSheetItem(item), SHEET_HANDOFF_MS)
+      if (!item) return
+      const returnsToManual = cameFromManualSheet(item)
+      setTimeout(() => (returnsToManual ? setManualSheetOpen(true) : setActiveSheetItem(item)), SHEET_HANDOFF_MS)
     },
-    [transferItem],
+    [transferItem, cameFromManualSheet],
   )
 
   const declineTransfer = useCallback(() => {
     const item = transferItem
     setTransferItem(null)
-    if (item) setTimeout(() => setActiveSheetItem(item), SHEET_HANDOFF_MS)
-  }, [transferItem])
+    if (!item) return
+    const returnsToManual = cameFromManualSheet(item)
+    setTimeout(() => (returnsToManual ? setManualSheetOpen(true) : setActiveSheetItem(item)), SHEET_HANDOFF_MS)
+  }, [transferItem, cameFromManualSheet])
 
   // Removes one link. unmark rather than delete, so the dismissal it writes stops the next
   // detection pass re-creating the pair the user just took apart.
@@ -232,47 +276,20 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     setActiveSheetItem(null)
   }, [activeSheetItem, unmarkTransferItem])
 
-  // The transfer sheet needs the saved shape of the edit, but the feed hasn't refetched yet, so
-  // project the input onto the existing item.
-  const editedManualAsFeedItem = useCallback(
-    (input: ManualInput): FeedItem | null => {
-      if (!editingManual) return null
-      const existing = feed.find((item) => item.id === editingManual.id)
-      if (!existing) return null
-      return { ...existing, amount: Number(input.amount), date: input.date }
-    },
-    [editingManual, feed],
-  )
-
-  const saveManualAndMarkTransfer = useCallback(
-    async (input: ManualInput) => {
+  // The manual-edit counterpart of the detail sheet's toggles: hand the (unsaved) edit to the
+  // transfer sheet the moment a toggle flips. The manual sheet closes but keeps editingManual —
+  // that's how confirm/decline know to come back here rather than to the detail sheet.
+  const openManualTransfer = useCallback(
+    (input: ManualInput, forcedKind?: TransferKind) => {
       const item = editedManualAsFeedItem(input)
-      await saveManual(input)
-      if (item)
-        setTimeout(() => {
-          // Cleared explicitly: a forced kind left over from an earlier reimbursement flow
-          // would otherwise lock this plain transfer marking to the wrong kind.
-          setTransferForcedKind(undefined)
-          setTransferItem(item)
-        }, MANUAL_HANDOFF_MS)
+      if (!item) return
+      // Set (or cleared) explicitly: a forced kind left over from an earlier reimbursement
+      // flow would otherwise lock a plain transfer marking to the wrong kind.
+      setTransferForcedKind(forcedKind)
+      setManualSheetOpen(false)
+      setTimeout(() => setTransferItem(item), MANUAL_HANDOFF_MS)
     },
-    [editedManualAsFeedItem, saveManual],
-  )
-
-  // The manual-edit counterpart of the detail sheet's "Mark as Reimbursement" toggle — cash
-  // legs live as manual transactions (paid back in cash, or a cash expense paid back), and
-  // they deserve the same flow as Plaid rows.
-  const saveManualAndMarkReimbursement = useCallback(
-    async (input: ManualInput) => {
-      const item = editedManualAsFeedItem(input)
-      await saveManual(input)
-      if (item)
-        setTimeout(() => {
-          setTransferForcedKind('reimbursement')
-          setTransferItem(item)
-        }, MANUAL_HANDOFF_MS)
-    },
-    [editedManualAsFeedItem, saveManual],
+    [editedManualAsFeedItem],
   )
 
   const saveManualAndUnmarkTransfer = useCallback(
@@ -364,8 +381,7 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     declineTransfer,
     clearPendingTransfer: useCallback(() => setPendingTransfer(null), []),
     unmarkTransfer,
-    saveManualAndMarkTransfer,
-    saveManualAndMarkReimbursement,
+    openManualTransfer,
     saveManualAndUnmarkTransfer,
     editingManualIsTransfer: editingManual
       ? feed.find((item) => item.id === editingManual.id)?.transferKind != null

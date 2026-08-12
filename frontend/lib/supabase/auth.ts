@@ -1,4 +1,5 @@
 import { GoogleSignin, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin'
+import * as AppleAuthentication from 'expo-apple-authentication'
 import { createClient, type Session } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
@@ -66,6 +67,42 @@ export async function signInWithGoogle() {
   const { data, error } = await supabaseAuth.auth.signInWithIdToken({
     provider: 'google',
     token: idToken,
+  })
+  if (error) throw error
+  return data
+}
+
+// The App Store requires Sign in with Apple alongside any third-party login (guideline 4.8).
+// Same shape as Google: native sheet mints an identity token, Supabase's Apple provider
+// verifies it against this app's bundle id. Returns null on cancel — tapping outside the
+// sheet is not a failure. Apple only shares full name/email on the FIRST authorization, so
+// nothing here depends on them; Supabase reads what the token carries.
+export async function signInWithApple() {
+  let identityToken: string
+  try {
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    })
+    if (!credential.identityToken) throw new Error('Apple did not return an identity token.')
+    identityToken = credential.identityToken
+  } catch (err) {
+    const code = (err as { code?: string }).code
+    if (code === 'ERR_REQUEST_CANCELED') return null
+    // Any other ERR_* means the sheet failed before Apple issued a token — most commonly a
+    // device with no Apple ID signed in. The raw exception text is developer-speak; the
+    // banner should say something a person can act on.
+    if (typeof code === 'string' && code.startsWith('ERR_')) {
+      throw new Error('Apple sign-in didn’t complete. Make sure this device is signed in to an Apple ID, then try again.')
+    }
+    throw err
+  }
+
+  const { data, error } = await supabaseAuth.auth.signInWithIdToken({
+    provider: 'apple',
+    token: identityToken,
   })
   if (error) throw error
   return data
