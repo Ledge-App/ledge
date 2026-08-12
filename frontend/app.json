@@ -10,7 +10,7 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#FAFAF8",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.qihongw08.ledge",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
