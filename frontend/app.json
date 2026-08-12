@@ -37,6 +37,7 @@
       "expo-secure-store",
       "@react-native-community/datetimepicker",
       "expo-updates",
+      "expo-apple-authentication",
       [
         "@react-native-google-signin/google-signin",
         {
