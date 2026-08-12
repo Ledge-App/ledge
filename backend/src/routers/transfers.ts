@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { protectedProcedure, router } from '../trpc/trpc.js'
 import { transferRepository } from '../repositories/transferRepository.js'
+import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 import { AUTO_TRANSFER_KINDS, TRANSFER_KINDS } from '../lib/transfers/kinds.js'
 
 const transferInputSchema = z.object({
@@ -44,7 +45,14 @@ export const transfersRouter = router({
 
   create: protectedProcedure
     .input(transferInputSchema)
-    .mutation(({ ctx, input }) => transferRepository.create(ctx.jwt, ctx.userId, input)),
+    .mutation(async ({ ctx, input }) => {
+      // Plaid legs are free-form ids with no FK; only the manual legs reference a table
+      // where a foreign row could be attached (and cascade-deleted from under us).
+      await assertOwnedRefs(ctx.jwt, {
+        manualTransactionIds: [input.expenseManualTransactionId, input.incomeManualTransactionId],
+      })
+      return transferRepository.create(ctx.jwt, ctx.userId, input)
+    }),
 
   // Bulk endpoint for auto-apply: one round-trip from the phone for a whole backfill.
   // Conflicts (a leg already in a transfer — e.g. a multi-device race) are skipped

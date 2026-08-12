@@ -2,13 +2,17 @@ import { z } from 'zod'
 import { protectedProcedure, router } from '../trpc/trpc.js'
 import { budgetRepository } from '../repositories/budgetRepository.js'
 import { budgetService } from '../services/budgetService.js'
+import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 
 export const budgetsRouter = router({
   list: protectedProcedure.query(({ ctx }) => budgetRepository.list(ctx.jwt)),
 
   create: protectedProcedure
     .input(z.object({ categoryId: z.string().uuid(), amount: z.string(), period: z.enum(['monthly', 'weekly', 'yearly']) }))
-    .mutation(({ ctx, input }) => budgetRepository.create(ctx.jwt, ctx.userId, input)),
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId })
+      return budgetRepository.create(ctx.jwt, ctx.userId, input)
+    }),
 
   update: protectedProcedure
     .input(z.object({ id: z.string().uuid(), amount: z.string().optional(), period: z.enum(['monthly', 'weekly', 'yearly']).optional() }))

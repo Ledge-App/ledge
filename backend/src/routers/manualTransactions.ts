@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { protectedProcedure, router } from '../trpc/trpc.js'
 import { manualTransactionRepository } from '../repositories/manualTransactionRepository.js'
+import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 
 const amountSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, 'Amount must be a positive decimal')
 
@@ -18,7 +19,10 @@ export const manualTransactionsRouter = router({
         note: z.string().nullable(),
       }),
     )
-    .mutation(({ ctx, input }) => manualTransactionRepository.create(ctx.jwt, ctx.userId, input)),
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      return manualTransactionRepository.create(ctx.jwt, ctx.userId, input)
+    }),
 
   update: protectedProcedure
     .input(
@@ -32,8 +36,9 @@ export const manualTransactionsRouter = router({
         note: z.string().nullable().optional(),
       }),
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...patch } = input
+      await assertOwnedRefs(ctx.jwt, { categoryId: patch.categoryId, subcategoryId: patch.subcategoryId })
       return manualTransactionRepository.update(ctx.jwt, id, patch)
     }),
 

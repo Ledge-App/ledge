@@ -3,12 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const repoMock = { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() }
 vi.mock('../repositories/manualTransactionRepository.js', () => ({ manualTransactionRepository: repoMock }))
 
+// The ownership guard resolves referenced category/subcategory ids through these
+// repositories, so they have to be mocked too — otherwise mutations would reach a
+// real Supabase client.
+const categoryRepoMock = { findById: vi.fn() }
+vi.mock('../repositories/categoryRepository.js', () => ({ categoryRepository: categoryRepoMock }))
+const subcategoryRepoMock = { findById: vi.fn() }
+vi.mock('../repositories/subcategoryRepository.js', () => ({ subcategoryRepository: subcategoryRepoMock }))
+
 const categoryId = '11111111-1111-1111-1111-111111111111'
 
 describe('manualTransactions router', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('create defaults amount to a positive value regardless of type', async () => {
+    categoryRepoMock.findById.mockResolvedValue({ id: categoryId })
     repoMock.create.mockResolvedValue({ id: 'mt-1', amount: '5.00', type: 'expense', categoryId, subcategoryId: null, date: '2026-06-21', note: 'Street food' })
     const { manualTransactionsRouter } = await import('./manualTransactions.js')
     const caller = manualTransactionsRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
