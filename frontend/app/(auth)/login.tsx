@@ -7,10 +7,10 @@ import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { Reveal } from '@/components/ui/Reveal'
 
-// The only auth screen: Google sign-in doubles as signup, so there is no form, no second
-// screen, and nothing to cross-link to. Composition is a masthead — wordmark, full-bleed
-// ledger rule, one line of copy — held at the top third, with the single action anchored
-// at the thumb rather than floated in the middle of the screen.
+// The only auth screen: signing in doubles as signup, so there is no form, no second screen,
+// and nothing to cross-link to. Composition is a masthead — wordmark, full-bleed ledger rule,
+// one line of copy — held at the top third, with the two provider buttons anchored at the
+// thumb rather than floated in the middle of the screen.
 export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)

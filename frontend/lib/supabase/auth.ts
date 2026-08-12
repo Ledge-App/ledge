@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { Platform } from 'react-native'
 
 // Auth only: sign in, session, refresh — no data queries (see architecture.md).
-// Google is the only identity provider; the Email provider is disabled in the Supabase
+// Apple and Google are the identity providers; the Email provider is disabled in the Supabase
 // dashboard, so there is no password path to fall back to.
 
 // expo-secure-store has no web implementation (iOS is the only shipped platform

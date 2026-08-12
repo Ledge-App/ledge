@@ -94,19 +94,26 @@ Frontend:
 Covered by 12 new backend tests (ordering, Plaid-failure tolerance, no-Plaid accounts, auth-user
 failure surfacing, and that revocation precedes the row delete).
 
-> **Deployment prerequisite.** `getServiceClient()` was dead code until now, so
-> `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` may never have been set in the Vercel
-> production environment. Deletion throws at runtime without them. **Verify before submitting.**
+> `getServiceClient()` was dead code until this shipped. `SUPABASE_SERVICE_ROLE_KEY` is
+> confirmed set in the Vercel production environment, so the admin delete has what it needs.
 
-### 1.3 BLOCKER — Google is the only sign-in option
+### 1.3 ~~BLOCKER~~ DONE — Sign in with Apple
 
-`app/(auth)/login.tsx` offers Google Sign-In and nothing else.
+**Guideline 4.8** requires an equivalent privacy-preserving login alongside any third-party
+login service. Shipped on `main` (PR #39) and merged into this branch.
 
-**Guideline 4.8 Login Services** — if the app uses a third-party login service (Google is one)
-as its only login option, it must also offer an equivalent option that limits data collection to
-name and email, lets the user keep the email private, and doesn't track. In practice: add
-**Sign in with Apple**. `expo-apple-authentication` + Supabase's Apple provider is the direct
-path. This also requires a new native build (entitlement).
+- `lib/supabase/auth.ts` — `signInWithApple()` via `expo-apple-authentication`, mirroring the
+  Google path: native sheet mints an identity token, Supabase's Apple provider verifies it.
+  Cancels return null rather than surfacing an error.
+- `components/auth/AppleSignInButton.tsx`, rendered **above** Google in `login.tsx` — 4.8 wants
+  Sign in with Apple at least as prominent, and review reads order as prominence.
+- `app.json` — `expo-apple-authentication` plugin; introspection confirms the
+  `com.apple.developer.applesignin` entitlement is applied.
+
+> **Prerequisites outside the repo, both unverified from here.** The Apple Developer portal App
+> ID needs the Sign in with Apple capability enabled, and Supabase's Apple provider needs to be
+> configured with the bundle ID as its client ID. Sign-in fails at runtime without either.
+> Requires a new native build — the entitlement cannot go out OTA.
 
 ---
 
@@ -133,7 +140,7 @@ It describes:
 
 Live at <https://ledge-oauth-88792.netlify.app/support.html> and entered in App Store Connect as
 both the support and marketing URL. Source: `oauth-redirect/support.html`. Contact address is
-qihongw08@gmail.com. Covers Plaid setup, linking, categorization, transfers, reimbursements,
+tofi.wallet@gmail.com. Covers Plaid setup, linking, categorization, transfers, reimbursements,
 disconnecting an institution, and account deletion.
 
 Terms of service also shipped at `/terms.html` (§2.3).
@@ -268,15 +275,17 @@ Demo account: <email> / <how to sign in>
 This account already has bank data linked, so the reviewer lands directly on the dashboard and
 does not need to complete any account-linking setup.
 
-Sign in: tap "Continue with Google" on the launch screen.
-Privacy policy: <url>   Support: <url>
+Sign in: tap "Sign in with Apple" on the launch screen (Google is also available).
+Account deletion: Settings > Delete Account. Self-service, no email required.
+Privacy policy: https://ledge-oauth-88792.netlify.app/privacy.html
+Support: https://ledge-oauth-88792.netlify.app/support.html
 
 ToFi has no user-generated public content, no messaging, and no user-to-user interaction, so
 there are no reporting or blocking surfaces.
 ```
 
-Note: Google Sign-In can be awkward for reviewers. Once Sign in with Apple exists (§1.3), that's
-the path to point them at.
+Sign in with Apple is the path to point reviewers at — Google Sign-In can be awkward inside the
+review environment.
 
 ---
 
@@ -354,7 +363,7 @@ with saved credentials and linked account data, so signing in lands directly on 
 with no setup required:
 
   Email: <demo email>
-  Sign-in: tap "Continue with Google" on the launch screen
+  Sign-in: tap "Sign in with Apple" or "Continue with Google" on the launch screen
 
 Testing:
 After sign-in, the Dashboard, Transactions, Budgets, and Accounts tabs are all populated and
@@ -384,8 +393,9 @@ ship manual account entry as the default experience. Worth having that scoped be
 - [x] Bundle ID decision final — staying `com.qihongw08.ledge`
 - [x] Typecheck + tests pass on both packages
 - [x] In-app account deletion shipped (§1.2) — still needs an end-to-end run on a real account
-- [ ] **Verify `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_URL` are set in Vercel production** (§1.2)
-- [ ] **Sign in with Apple added (§1.3)** — hard 4.8 rejection
+- [x] `SUPABASE_SERVICE_ROLE_KEY` confirmed set in Vercel production (§1.2)
+- [x] Sign in with Apple added (§1.3)
+- [ ] **Verify Apple capability on the App ID and the Supabase Apple provider** (§1.3)
 - [x] Privacy policy live and entered in ASC (§2.1)
 - [x] Support URL live and entered in ASC (§2.2)
 - [x] Terms of service live (§2.3)
