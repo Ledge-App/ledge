@@ -95,4 +95,13 @@ export const plaidItemRepository = {
   async delete(userId: string, itemId: string): Promise<void> {
     await db.delete(plaidItems).where(and(eq(plaidItems.userId, userId), eq(plaidItems.itemId, itemId)))
   },
+
+  // Disconnected items included, unlike listDecryptedTokens. Account deletion has to revoke
+  // every Item the user ever linked, and a disconnected one is still live at Plaid — that is
+  // the whole point of the soft disconnect. Missing them would leave tokens valid for data
+  // the user asked us to erase.
+  async listAllDecryptedTokens(userId: string): Promise<Array<{ itemId: string; accessToken: string }>> {
+    const rows = await db.select().from(plaidItems).where(eq(plaidItems.userId, userId))
+    return rows.map((row) => ({ itemId: row.itemId, accessToken: decrypt(row.encryptedAccessToken) }))
+  },
 }

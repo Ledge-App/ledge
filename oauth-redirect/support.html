@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Support — ToFi</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <p class="wordmark">ToFi<span>.</span></p>
+      <hr class="rule" />
+
+      <h1>Support</h1>
+      <p class="effective">Every account, one number.</p>
+
+      <div class="card">
+        <p>
+          <strong>Need help?</strong> Email
+          <a href="mailto:tofi.wallet@gmail.com">tofi.wallet@gmail.com</a> and we will get back to you. Telling us
+          which screen you were on and what you expected to happen makes it much faster to sort
+          out.
+        </p>
+      </div>
+
+      <h2>Getting started</h2>
+
+      <h3>Connecting your Plaid developer account</h3>
+      <p>
+        ToFi runs your bank connections under your own free Plaid developer account, so your
+        linked institutions stay under your own usage rather than pooled with other users'. On
+        first launch the app asks for a Plaid Client ID and secret. To get them:
+      </p>
+      <ul>
+        <li>Create a free account at
+          <a href="https://dashboard.plaid.com/signup">dashboard.plaid.com/signup</a></li>
+        <li>Find your Client ID and secret under <strong>Developers → Keys</strong></li>
+        <li>To connect real bank accounts, request Plaid's free Trial plan or Production access</li>
+      </ul>
+      <p>
+        Your environment is fixed once saved, because linked banks are tied to the environment
+        they were connected in. You can rotate your secret later from
+        <strong>Settings → Plaid Developer Account</strong>.
+      </p>
+
+      <h3>Linking an account</h3>
+      <p>
+        Go to <strong>Settings → Linked Institutions</strong> and add an institution. Your bank
+        username and password are entered inside Plaid's own secure screen and go straight to your
+        bank — ToFi never sees them.
+      </p>
+
+      <h2>Common questions</h2>
+
+      <h3>A transaction is in the wrong category</h3>
+      <p>
+        Tap the transaction and change its category. ToFi remembers the merchant and applies your
+        choice to future transactions from them.
+      </p>
+
+      <h3>A transfer between my own accounts is showing as spending</h3>
+      <p>
+        ToFi matches transfers between your own accounts and keeps them out of spending totals. If
+        one was missed, open the transaction and mark it as a transfer, then pick its counterpart.
+      </p>
+
+      <h3>Someone owes me money for a purchase</h3>
+      <p>
+        Mark the transaction as a reimbursement. It stays out of your spending totals until it is
+        settled.
+      </p>
+
+      <h3>My balances look out of date</h3>
+      <p>
+        ToFi refreshes from your institutions through Plaid. Banks occasionally require you to
+        re-authenticate; if an institution needs attention it is flagged under
+        <strong>Settings → Linked Institutions</strong>.
+      </p>
+
+      <h3>How do I disconnect a bank?</h3>
+      <p>
+        <strong>Settings → Linked Institutions</strong>, then remove the institution. Its accounts
+        and transactions are removed and ToFi's access is revoked.
+      </p>
+
+      <h3>How do I delete my account?</h3>
+      <p>
+        <strong>Settings → Delete Account</strong>. The app shows you exactly what will be removed
+        and asks you to confirm. Deletion is immediate and cannot be undone — your account, all
+        your financial data, and your saved Plaid credentials are deleted, and ToFi's access to
+        every institution you linked is revoked. Your own Plaid developer account and your bank
+        accounts are untouched.
+      </p>
+
+      <h2>Privacy</h2>
+      <p>
+        ToFi requests no device permissions, contains no advertising or tracking, and never sells
+        or shares your data for marketing. Full details are in the
+        <a href="/privacy.html">privacy policy</a>.
+      </p>
+
+      <footer>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/support.html">Support</a>
+      </footer>
+    </main>
+  </body>
+</html>

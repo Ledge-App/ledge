@@ -80,6 +80,22 @@ export async function signOut() {
   if (error) throw error
 }
 
+/**
+ * Ends the session on this device only, without asking the auth server to revoke it.
+ *
+ * For the one case where the account no longer exists: after deletion the server has already
+ * invalidated everything, and a normal `signOut()` — which calls the server — can come back an
+ * error for the missing user and throw. That would leave a local session pointing at a deleted
+ * account, i.e. the user still "signed in" to nothing. `scope: 'local'` skips the server call,
+ * which is all that is left to do anyway.
+ *
+ * Still emits SIGNED_OUT, so `useResetCacheOnUserChange` clears the query and MMKV caches.
+ */
+export async function clearLocalSession() {
+  await GoogleSignin.signOut()
+  await supabaseAuth.auth.signOut({ scope: 'local' })
+}
+
 interface SessionState {
   session: Session | null
   isLoading: boolean

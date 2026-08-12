@@ -140,5 +140,23 @@ describe('plaidItemRepository', () => {
       await plaidItemRepository.setDisabled('user-1', 'item-1', false)
       expect(applied[1]).toEqual({ disabledAt: null })
     })
+
+    // Account deletion revokes through this, and a disconnected Item is still live at Plaid —
+    // skipping it would leave a token valid for data the user asked us to erase.
+    it('listAllDecryptedTokens keeps disconnected items', async () => {
+      const where = mockSelect([
+        { itemId: 'item-1', encryptedAccessToken: 'enc(access-1)', disabledAt: null },
+        { itemId: 'item-2', encryptedAccessToken: 'enc(access-2)', disabledAt: new Date() },
+      ])
+
+      const { plaidItemRepository } = await import('./plaidItemRepository.js')
+      const result = await plaidItemRepository.listAllDecryptedTokens('user-1')
+
+      expect(conditions(where.mock.calls[0][0]).some((c) => c.op === 'isNull')).toBe(false)
+      expect(result).toEqual([
+        { itemId: 'item-1', accessToken: 'access-1' },
+        { itemId: 'item-2', accessToken: 'access-2' },
+      ])
+    })
   })
 })

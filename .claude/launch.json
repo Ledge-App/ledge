@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["expo", "start", "--web", "--port", "8081"],
       "port": 8081
+    },
+    {
+      "name": "legal-pages",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "oauth-redirect", "-l", "4321"],
+      "port": 4321
     }
   ]
 }

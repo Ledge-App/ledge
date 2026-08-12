@@ -35,7 +35,7 @@ export default function LoginScreen() {
       <View className="flex-1 justify-end pb-12">
         <Reveal>
           <Text className="font-display text-3xl leading-[56px] text-textPrimary">
-            Ledge<Text className="text-primary">.</Text>
+            ToFi<Text className="text-primary">.</Text>
           </Text>
         </Reveal>
 

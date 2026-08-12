@@ -27,7 +27,7 @@ export default function LinkAccountScreen() {
           <Text className="font-sansSemi text-xl text-textPrimary">Link your first account</Text>
           <Text className="font-sans text-base leading-6 text-textSecondary">
             Connect a checking, savings, credit card, or investment account through Plaid. Your
-            credentials go straight to your bank — Ledge never sees them.
+            credentials go straight to your bank — ToFi never sees them.
           </Text>
         </View>
 

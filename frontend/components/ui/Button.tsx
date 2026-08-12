@@ -4,7 +4,7 @@ import { colors } from '@/constants/theme'
 interface ButtonProps {
   label: string
   onPress: () => void
-  variant?: 'primary' | 'secondary' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   disabled?: boolean
   loading?: boolean
 }
@@ -16,12 +16,14 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading 
     primary: 'bg-primary',
     secondary: 'bg-transparent border border-border',
     ghost: 'bg-transparent',
+    danger: 'bg-expense',
   }[variant]
 
   const textClass = {
     primary: 'text-textInverse',
     secondary: 'text-textPrimary',
     ghost: 'text-primary',
+    danger: 'text-textInverse',
   }[variant]
 
   return (
@@ -35,7 +37,9 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading 
       }`}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.textInverse : colors.primary} />
+        <ActivityIndicator
+          color={variant === 'primary' || variant === 'danger' ? colors.textInverse : colors.primary}
+        />
       ) : (
         <Text className={`font-sansSemi text-base ${textClass}`}>{label}</Text>
       )}
