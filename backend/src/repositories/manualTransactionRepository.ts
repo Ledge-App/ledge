@@ -33,6 +33,13 @@ function fromRow(row: {
 const COLUMNS = 'id, amount, type, category_id, subcategory_id, date, note'
 
 export const manualTransactionRepository = {
+  async findById(jwt: string, id: string): Promise<ManualTransaction | null> {
+    const client = getScopedClient(jwt)
+    const { data, error } = await client.from('manual_transactions').select(COLUMNS).eq('id', id).maybeSingle()
+    if (error) throw error
+    return data ? fromRow(data) : null
+  },
+
   async list(jwt: string): Promise<ManualTransaction[]> {
     const client = getScopedClient(jwt)
     const { data, error } = await client.from('manual_transactions').select(COLUMNS).order('date', { ascending: false })

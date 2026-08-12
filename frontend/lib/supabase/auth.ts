@@ -18,7 +18,12 @@ const SecureStoreAdapter = {
   },
   setItem: (key: string, value: string) => {
     if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.setItem(key, value))
-    return SecureStore.setItemAsync(key, value)
+    // THIS_DEVICE_ONLY keeps the session out of iCloud/iTunes backups — the default
+    // WHEN_UNLOCKED class lets a restored backup carry the refresh token onto another
+    // device, sidestepping usePurgeSessionOnFreshInstall.
+    return SecureStore.setItemAsync(key, value, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    })
   },
   removeItem: (key: string) => {
     if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.removeItem(key))

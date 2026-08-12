@@ -1,15 +1,17 @@
 import { z } from 'zod'
 import { protectedProcedure, router } from '../trpc/trpc.js'
 import { vendorMappingRepository } from '../repositories/vendorMappingRepository.js'
+import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 
 export const vendorMappingsRouter = router({
   list: protectedProcedure.query(({ ctx }) => vendorMappingRepository.list(ctx.jwt)),
 
   upsert: protectedProcedure
     .input(z.object({ vendorName: z.string().min(1), categoryId: z.string().uuid(), subcategoryId: z.string().uuid().nullable() }))
-    .mutation(({ ctx, input }) =>
-      vendorMappingRepository.upsert(ctx.jwt, ctx.userId, { ...input, source: 'user_defined' }),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      return vendorMappingRepository.upsert(ctx.jwt, ctx.userId, { ...input, source: 'user_defined' })
+    }),
 
   bulkRecategorize: protectedProcedure
     .input(
@@ -20,5 +22,8 @@ export const vendorMappingsRouter = router({
         subcategoryId: z.string().uuid().nullable(),
       }),
     )
-    .mutation(({ ctx, input }) => vendorMappingRepository.bulkRecategorize(ctx.jwt, ctx.userId, input)),
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+      return vendorMappingRepository.bulkRecategorize(ctx.jwt, ctx.userId, input)
+    }),
 })

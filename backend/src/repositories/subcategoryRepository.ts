@@ -7,6 +7,13 @@ export interface Subcategory {
 }
 
 export const subcategoryRepository = {
+  async findById(jwt: string, id: string): Promise<Subcategory | null> {
+    const client = getScopedClient(jwt)
+    const { data, error } = await client.from('subcategories').select('id, category_id, name').eq('id', id).maybeSingle()
+    if (error) throw error
+    return data ? { id: data.id, categoryId: data.category_id, name: data.name } : null
+  },
+
   async list(jwt: string, categoryId?: string): Promise<Subcategory[]> {
     const client = getScopedClient(jwt)
     let query = client.from('subcategories').select('id, category_id, name').order('name')

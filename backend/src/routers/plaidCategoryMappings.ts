@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { protectedProcedure, router } from '../trpc/trpc.js'
 import { assertCategoryIsNotDefault } from '../lib/categories/defaultGuard.js'
+import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 import { plaidCategoryMappingRepository } from '../repositories/plaidCategoryMappingRepository.js'
 
 /** Resolves the category a mapping currently belongs to, so a guard can be applied to it. */
@@ -19,6 +20,9 @@ export const plaidCategoryMappingsRouter = router({
   create: protectedProcedure
     .input(z.object({ plaidPfcPrimary: z.string().min(1), plaidPfcDetailed: z.string().nullable(), categoryId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // The default-guard passes on a missing row by design, so it does not cover
+      // a categoryId the caller cannot see — this does.
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId })
       await assertCategoryIsNotDefault(ctx.jwt, input.categoryId, 'edited')
       return plaidCategoryMappingRepository.create(ctx.jwt, ctx.userId, input)
     }),
@@ -28,6 +32,7 @@ export const plaidCategoryMappingsRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Both ends matter: moving a code off a default strips it, moving one onto a default adds to
       // its fixed set.
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId })
       await assertCategoryIsNotDefault(ctx.jwt, await categoryIdOfMapping(ctx.jwt, input.id), 'edited')
       await assertCategoryIsNotDefault(ctx.jwt, input.categoryId, 'edited')
       return plaidCategoryMappingRepository.update(ctx.jwt, input.id, input.categoryId)
