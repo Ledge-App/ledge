@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { Platform } from 'react-native'
 
 // Auth only: sign in, session, refresh — no data queries (see architecture.md).
-// Google is the only identity provider; the Email provider is disabled in the Supabase
+// Apple and Google are the identity providers; the Email provider is disabled in the Supabase
 // dashboard, so there is no password path to fall back to.
 
 // expo-secure-store has no web implementation (iOS is the only shipped platform
@@ -115,6 +115,22 @@ export async function signOut() {
   await GoogleSignin.signOut()
   const { error } = await supabaseAuth.auth.signOut()
   if (error) throw error
+}
+
+/**
+ * Ends the session on this device only, without asking the auth server to revoke it.
+ *
+ * For the one case where the account no longer exists: after deletion the server has already
+ * invalidated everything, and a normal `signOut()` — which calls the server — can come back an
+ * error for the missing user and throw. That would leave a local session pointing at a deleted
+ * account, i.e. the user still "signed in" to nothing. `scope: 'local'` skips the server call,
+ * which is all that is left to do anyway.
+ *
+ * Still emits SIGNED_OUT, so `useResetCacheOnUserChange` clears the query and MMKV caches.
+ */
+export async function clearLocalSession() {
+  await GoogleSignin.signOut()
+  await supabaseAuth.auth.signOut({ scope: 'local' })
 }
 
 interface SessionState {

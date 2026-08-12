@@ -139,7 +139,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
         <View className="gap-2">
           <Text className="font-sansSemi text-lg text-textPrimary">Plaid Developer Account</Text>
           <Text className="font-sans text-sm leading-5 text-textSecondary">
-            Ledge uses your own free Plaid developer account so your linked banks stay under your own
+            ToFi uses your own free Plaid developer account so your linked banks stay under your own
             usage.
           </Text>
         </View>

@@ -26,7 +26,7 @@ async function removeItem(client: PlaidApi, userId: string, item: { itemId: stri
 function baseLinkTokenRequest(userId: string) {
   return {
     user: { client_user_id: userId },
-    client_name: 'Ledge',
+    client_name: 'ToFi',
     country_codes: ['US'],
     language: 'en',
   }
