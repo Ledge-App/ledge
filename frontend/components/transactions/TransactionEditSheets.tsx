@@ -44,8 +44,9 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
         onDelete={editor.editingManual ? editor.deleteManual : undefined}
         isTransfer={editor.editingManualIsTransfer}
         isReimbursed={editor.editingManualIsReimbursed}
-        onSaveAndMarkTransfer={editor.saveManualAndMarkTransfer}
-        onSaveAndMarkReimbursement={editor.saveManualAndMarkReimbursement}
+        pendingTransfer={editor.pendingTransfer}
+        onOpenTransfer={editor.openManualTransfer}
+        onClearPendingTransfer={editor.clearPendingTransfer}
         onSaveAndUnmarkTransfer={editor.saveManualAndUnmarkTransfer}
       />
     </>
