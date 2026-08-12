@@ -239,7 +239,12 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       if (!editingManual) return null
       const existing = feed.find((item) => item.id === editingManual.id)
       if (!existing) return null
-      return { ...existing, amount: Number(input.amount), date: input.date }
+      // The form's amount is unsigned; the feed convention is positive = expense, negative =
+      // income (resolveFeed applies the same mapping). Handing the sheet an unsigned amount
+      // made every manual income look like an expense, so its transfer/reimbursement
+      // candidate lists were sign-inverted and the real counterpart never appeared.
+      const signedAmount = input.type === 'expense' ? Number(input.amount) : -Number(input.amount)
+      return { ...existing, amount: signedAmount, date: input.date }
     },
     [editingManual, feed],
   )
