@@ -7,8 +7,11 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { TextField } from '@/components/ui/TextField'
 import { Button } from '@/components/ui/Button'
-import { colors } from '@/constants/theme'
-import type { Category, ManualTransaction, Subcategory } from '@/types/domain'
+import { colors, hexToRgba } from '@/constants/theme'
+import { formatAmount } from '@/lib/format/money'
+import { TRANSFER_TYPES } from '@/lib/transfers/registry'
+import type { FeedItem } from '@/lib/transactions/resolveFeed'
+import type { Category, ManualTransaction, Subcategory, TransferKind } from '@/types/domain'
 
 // `date` is a calendar day (YYYY-MM-DD) with no timezone. DateTimePicker works in the device's
 // LOCAL timezone, so converting via Date.toISOString()/new Date(string) — both UTC — shifts the
@@ -38,10 +41,11 @@ interface ManualTransactionSheetProps {
   isTransfer?: boolean
   /** True when this transaction is already part of a reimbursement (either leg). */
   isReimbursed?: boolean
-  /** Persists the edit, then opens the transfer sheet to pick a counterparty. */
-  onSaveAndMarkTransfer?: (input: ManualTransactionInput) => void
-  /** Persists the edit, then opens the transfer sheet forced to reimbursement. */
-  onSaveAndMarkReimbursement?: (input: ManualTransactionInput) => void
+  /** The counterpart picked in the transfer sheet, waiting to be written on save. */
+  pendingTransfer?: { kind: TransferKind; counterpartItems: FeedItem[] } | null
+  /** Opens the transfer sheet immediately with the current (unsaved) form values. */
+  onOpenTransfer?: (input: ManualTransactionInput, forcedKind?: TransferKind) => void
+  onClearPendingTransfer?: () => void
   /** Persists the edit and deletes the transfer link. */
   onSaveAndUnmarkTransfer?: (input: ManualTransactionInput) => void
 }
@@ -66,8 +70,9 @@ export function ManualTransactionSheet({
   onDelete,
   isTransfer = false,
   isReimbursed = false,
-  onSaveAndMarkTransfer,
-  onSaveAndMarkReimbursement,
+  pendingTransfer = null,
+  onOpenTransfer,
+  onClearPendingTransfer,
   onSaveAndUnmarkTransfer,
 }: ManualTransactionSheetProps) {
   const sheetScroll = useSheetScroll()
@@ -82,6 +87,9 @@ export function ManualTransactionSheet({
   const [markReimbursed, setMarkReimbursed] = useState(isReimbursed)
   const [isNoteFocused, setIsNoteFocused] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+  // Set when this sheet closes to hand off to the transfer sheet: the reopen that follows
+  // confirm/decline must keep the user's mid-edit values instead of re-seeding the form.
+  const returningFromTransfer = useRef(false)
 
   useEffect(() => {
     if (!isNoteFocused) return
@@ -101,6 +109,10 @@ export function ManualTransactionSheet({
   // Gated on visible so closing doesn't blank the fields mid exit-animation.
   useEffect(() => {
     if (!visible) return
+    if (returningFromTransfer.current) {
+      returningFromTransfer.current = false
+      return
+    }
     setType(transaction?.type ?? 'expense')
     setAmountText(transaction?.amount ?? '')
     setCategoryId(transaction?.categoryId ?? null)
@@ -115,11 +127,15 @@ export function ManualTransactionSheet({
   const availableSubcategories = subcategories.filter((s) => s.categoryId === categoryId)
   const isValidAmount = /^\d+(\.\d{1,2})?$/.test(amountText) && Number(amountText) > 0
 
-  const canMarkTransfer = transaction != null && onSaveAndMarkTransfer != null
-  const canMarkReimbursement = transaction != null && onSaveAndMarkReimbursement != null
+  const canMark = transaction != null && onOpenTransfer != null
+  const isReimbursementPending = pendingTransfer?.kind === 'reimbursement'
+  const isTransferPending = pendingTransfer != null && pendingTransfer.kind !== 'reimbursement'
+  const effectiveMarkReimbursed = markReimbursed || isReimbursementPending
+  const effectiveMarkTransfer = markTransfer || isTransferPending
+  const pendingType = pendingTransfer ? TRANSFER_TYPES[pendingTransfer.kind] : null
 
-  function handleSave() {
-    const input: ManualTransactionInput = {
+  function currentInput(): ManualTransactionInput {
+    return {
       amount: amountText,
       type,
       categoryId,
@@ -127,18 +143,33 @@ export function ManualTransactionSheet({
       date,
       note: note.trim().length > 0 ? note.trim() : null,
     }
+  }
 
-    if (canMarkReimbursement && markReimbursed && !isReimbursed) {
-      onSaveAndMarkReimbursement!(input)
-    } else if (isReimbursed && !markReimbursed && onSaveAndUnmarkTransfer) {
+  // Mirrors the Plaid detail sheet: flipping a mark toggle opens the linking sheet right away.
+  // Gated on a valid amount — the counterpart suggestions are scored against it.
+  function openLinking(forcedKind?: TransferKind) {
+    if (!isValidAmount || !onOpenTransfer) return
+    returningFromTransfer.current = true
+    onOpenTransfer(currentInput(), forcedKind)
+  }
+
+  function handleSave() {
+    const input = currentInput()
+
+    if (isReimbursed && !effectiveMarkReimbursed && onSaveAndUnmarkTransfer) {
       // Unmarking a reimbursement and unmarking a transfer are the same operation: drop the
       // item's links.
       onSaveAndUnmarkTransfer(input)
-    } else if (canMarkTransfer && markTransfer && !isTransfer) {
-      onSaveAndMarkTransfer!(input)
-    } else if (isTransfer && !markTransfer && onSaveAndUnmarkTransfer) {
+    } else if (isTransfer && !effectiveMarkTransfer && onSaveAndUnmarkTransfer) {
       onSaveAndUnmarkTransfer(input)
+    } else if (canMark && effectiveMarkReimbursed && !isReimbursed && !isReimbursementPending) {
+      // Toggle is on but nothing was linked (the sheet was declined) — re-prompt rather than
+      // silently saving an unmarked transaction, same as the detail sheet.
+      openLinking('reimbursement')
+    } else if (canMark && effectiveMarkTransfer && !isTransfer && !isTransferPending) {
+      openLinking()
     } else {
+      // Writes the edit, and the pending link with it if one was picked.
       onSave(input)
     }
   }
@@ -239,31 +270,71 @@ export function ManualTransactionSheet({
           onBlur={() => setIsNoteFocused(false)}
         />
 
-        {canMarkReimbursement ? (
+        {canMark ? (
           <View className="flex-row items-center justify-between py-3">
             <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">
               {type === 'expense' ? 'Mark as Reimbursed' : 'Mark as Reimbursement'}
             </Text>
             <Switch
-              value={markReimbursed}
+              value={effectiveMarkReimbursed}
               onValueChange={(next) => {
                 setMarkReimbursed(next)
-                if (next) setMarkTransfer(false)
+                if (next) {
+                  setMarkTransfer(false)
+                  if (isTransferPending) onClearPendingTransfer?.()
+                  if (!isReimbursementPending) openLinking('reimbursement')
+                } else if (isReimbursementPending) {
+                  onClearPendingTransfer?.()
+                }
               }}
             />
           </View>
         ) : null}
 
-        {canMarkTransfer ? (
+        {isReimbursementPending && pendingType ? (
+          <View className="rounded-lg border px-3 py-3" style={{ borderColor: pendingType.color, backgroundColor: hexToRgba(pendingType.color, 0.08) }}>
+            <View className="flex-row items-center gap-2">
+              <Ionicons name={pendingType.icon} size={14} color={pendingType.color} />
+              <Text className="font-sansMed text-sm" style={{ color: pendingType.color }}>{pendingType.label}</Text>
+            </View>
+            {pendingTransfer!.counterpartItems.map((linked) => (
+              <Text key={linked.id} className="mt-1 font-sans text-sm text-textSecondary" numberOfLines={1}>
+                {linked.merchantName} · {formatAmount(Math.abs(linked.amount))}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {canMark ? (
           <View className="flex-row items-center justify-between py-3">
             <Text className="flex-1 pr-3 font-sans text-base text-textPrimary">Mark as Transfer</Text>
             <Switch
-              value={markTransfer}
+              value={effectiveMarkTransfer}
               onValueChange={(next) => {
                 setMarkTransfer(next)
-                if (next) setMarkReimbursed(false)
+                if (next) {
+                  setMarkReimbursed(false)
+                  if (isReimbursementPending) onClearPendingTransfer?.()
+                  if (!isTransferPending) openLinking()
+                } else if (isTransferPending) {
+                  onClearPendingTransfer?.()
+                }
               }}
             />
+          </View>
+        ) : null}
+
+        {isTransferPending && pendingType ? (
+          <View className="rounded-lg border px-3 py-3" style={{ borderColor: pendingType.color, backgroundColor: hexToRgba(pendingType.color, 0.08) }}>
+            <View className="flex-row items-center gap-2">
+              <Ionicons name={pendingType.icon} size={14} color={pendingType.color} />
+              <Text className="font-sansMed text-sm" style={{ color: pendingType.color }}>{pendingType.label}</Text>
+            </View>
+            {pendingTransfer!.counterpartItems.map((linked) => (
+              <Text key={linked.id} className="mt-1 font-sans text-sm text-textSecondary" numberOfLines={1}>
+                {linked.merchantName} · {formatAmount(Math.abs(linked.amount))}
+              </Text>
+            ))}
           </View>
         ) : null}
 
