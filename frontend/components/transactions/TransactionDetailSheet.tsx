@@ -122,7 +122,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
           {item.pending ? (
             <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: hexToRgba(colors.textMuted, 0.14) }}>
               <Text className="font-sansMed text-xs" style={{ color: colors.textMuted }}>
-                Pending — waiting for the bank to post
+                Pending — not yet reflected in the account balance
               </Text>
             </View>
           ) : null}
