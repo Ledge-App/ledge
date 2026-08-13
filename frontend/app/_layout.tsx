@@ -16,7 +16,7 @@ import { queryPersister } from '@/lib/storage/queryPersister'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { Stack } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { usePurgeSessionOnFreshInstall } from '@/hooks/usePurgeSessionOnFreshInstall'
@@ -57,7 +57,22 @@ export default function RootLayout() {
   // runs against the session being torn down.
   const isPurgingSession = usePurgeSessionOnFreshInstall()
 
-  const isReady = fontsLoaded && !isPurgingSession
+  // The persisted-cache restore finishes a beat after first render. Without waiting for it,
+  // that beat renders every query as "loading" — a one-frame flash of the loading screen
+  // before the snapshot lands, which reads as a glitch. Holding the native splash until the
+  // restore reports done makes launch go splash -> content with nothing in between.
+  const [isCacheRestored, setIsCacheRestored] = useState(false)
+  // Failsafe: a restore that throws (corrupt snapshot, storage error) never calls onSuccess.
+  // Better one flash of the loading screen than a splash that never lifts.
+  const restoreFailsafe = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    restoreFailsafe.current = setTimeout(() => setIsCacheRestored(true), 1500)
+    return () => {
+      if (restoreFailsafe.current) clearTimeout(restoreFailsafe.current)
+    }
+  }, [])
+
+  const isReady = fontsLoaded && !isPurgingSession && isCacheRestored
 
   useEffect(() => {
     if (isReady) {
@@ -65,26 +80,30 @@ export default function RootLayout() {
     }
   }, [isReady])
 
-  if (!isReady) {
-    return <View className="flex-1 bg-background" />
-  }
-
+  // The providers mount unconditionally so the cache restore runs in parallel with font
+  // loading and the fresh-install purge, rather than starting only after they finish.
   return (
     <SafeAreaProvider>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}
+        onSuccess={() => setIsCacheRestored(true)}
       >
         <api.Provider client={trpcClient} queryClient={queryClient}>
-          <View className="flex-1 bg-background">
-            <StatusBar style="dark" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.background },
-              }}
-            />
-          </View>
+          {isReady ? (
+            <View className="flex-1 bg-background">
+              <StatusBar style="dark" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: colors.background },
+                }}
+              />
+            </View>
+          ) : (
+            // Splash is still covering the window; this only has to hold the space.
+            <View className="flex-1 bg-background" />
+          )}
         </api.Provider>
       </PersistQueryClientProvider>
     </SafeAreaProvider>
