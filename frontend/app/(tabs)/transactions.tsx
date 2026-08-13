@@ -37,7 +37,7 @@ export default function TransactionsScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const sectionOffsets = useRef(new Map<string, number>())
 
-  const { feed, categoryById, transferSuggestions, isLoading, error } = useTransactionFeed()
+  const { feed, categoryById, transferSuggestions, pendingTransferPreviews, isLoading, error } = useTransactionFeed()
   // Every edit sheet — category, transfer, manual — and all the state behind them. Shared with the
   // dashboard's category drill-down and the account sheet, so tapping a row behaves the same anywhere.
   const editor = useTransactionEditor(feed)
@@ -202,9 +202,9 @@ export default function TransactionsScreen() {
           </View>
         </View>
 
-        {transferSuggestions.length > 0 ? (
+        {transferSuggestions.length + pendingTransferPreviews.length > 0 ? (
           <View className="mx-5 mb-4">
-            <TransferSuggestionsBanner count={transferSuggestions.length} onPress={() => setSuggestionsSheetOpen(true)} />
+            <TransferSuggestionsBanner count={transferSuggestions.length + pendingTransferPreviews.length} onPress={() => setSuggestionsSheetOpen(true)} />
           </View>
         ) : null}
 
@@ -238,6 +238,7 @@ export default function TransactionsScreen() {
       <TransferSuggestionsSheet
         visible={suggestionsSheetOpen}
         suggestions={transferSuggestions}
+        pendingPreviews={pendingTransferPreviews}
         accounts={accounts.data ?? []}
         onClose={() => setSuggestionsSheetOpen(false)}
         onConfirm={handleConfirmSuggestion}

@@ -6,6 +6,7 @@ import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
+import type { TransferDraft } from '@/lib/transfers/autoMatch'
 import type { TransferSuggestion } from '@/hooks/useTransactionFeed'
 import type { Account } from '@/types/domain'
 
@@ -54,21 +55,23 @@ export function TransferSuggestionsBanner({ count, onPress }: TransferSuggestion
 interface TransferSuggestionsSheetProps {
   visible: boolean
   suggestions: TransferSuggestion[]
+  /** Pairs with a still-pending leg: informational only, matched for real once posted. */
+  pendingPreviews?: TransferDraft[]
   accounts: Account[]
   onClose: () => void
   onConfirm: (suggestion: TransferSuggestion) => Promise<void>
   onDismiss: (suggestion: TransferSuggestion) => Promise<void>
 }
 
-export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClose, onConfirm, onDismiss }: TransferSuggestionsSheetProps) {
+export function TransferSuggestionsSheet({ visible, suggestions, pendingPreviews = [], accounts, onClose, onConfirm, onDismiss }: TransferSuggestionsSheetProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
   const sheetScroll = useSheetScroll()
 
   // Acting on the last suggestion leaves nothing to decide — close rather than show an
-  // empty sheet.
+  // empty sheet. Pending previews count as content: a sheet of only-pending pairs stays open.
   useEffect(() => {
-    if (visible && suggestions.length === 0) onClose()
-  }, [visible, suggestions.length, onClose])
+    if (visible && suggestions.length === 0 && pendingPreviews.length === 0) onClose()
+  }, [visible, suggestions.length, pendingPreviews.length, onClose])
 
   // Institution name + mask ("Bank of America ··0533") — the way people identify a card;
   // Plaid has no abbreviated institution form. Merchant string only as a last resort.
@@ -94,7 +97,9 @@ export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClo
           <Ionicons name="close" size={22} color={colors.textSecondary} />
         </Pressable>
         <Text className="mx-3 flex-1 text-center font-display text-md text-textPrimary">
-          {suggestions.length === 1 ? 'Possible transfer' : `Possible transfers (${suggestions.length})`}
+          {suggestions.length + pendingPreviews.length === 1
+            ? 'Possible transfer'
+            : `Possible transfers (${suggestions.length + pendingPreviews.length})`}
         </Text>
         <View style={{ width: 22 }} />
       </View>
@@ -159,6 +164,49 @@ export function TransferSuggestionsSheet({ visible, suggestions, accounts, onClo
             </View>
           )
         })}
+
+        {pendingPreviews.length > 0 ? (
+          <View className="gap-5">
+            <View className="gap-1">
+              <Text className="font-display text-base text-textPrimary">Waiting to post</Text>
+              <Text className="font-sans text-xs leading-4 text-textMuted">
+                These look like transfers, but a side is still pending. They'll be matched
+                automatically once both transactions post — usually 1–3 business days.
+              </Text>
+            </View>
+            {pendingPreviews.map((preview) => {
+              const type = TRANSFER_TYPES[preview.kind]
+              return (
+                <View
+                  key={`${preview.expense.id}:${preview.income.id}`}
+                  className="gap-3 border-b pb-5"
+                  style={{ borderColor: colors.border, opacity: 0.85 }}
+                >
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: hexToRgba(type.color, 0.12) }}>
+                      <Ionicons name="time-outline" size={18} color={type.color} />
+                    </View>
+                    <View className="flex-1 gap-1">
+                      <Text className="font-sansSemi text-base text-textPrimary" numberOfLines={1} ellipsizeMode="middle">
+                        {accountLabel(preview.expense)}
+                      </Text>
+                      <Ionicons name="arrow-down" size={14} color={colors.textMuted} />
+                      <Text className="font-sansSemi text-base text-textPrimary" numberOfLines={1} ellipsizeMode="middle">
+                        {accountLabel(preview.income)}
+                      </Text>
+                    </View>
+                    <View className="ml-3 items-end gap-1">
+                      <Text className="font-mono text-base text-textPrimary">{formatAmount(preview.amount)}</Text>
+                      <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: hexToRgba(type.color, 0.14) }}>
+                        <Text className="font-sansMed text-xs" style={{ color: type.color }}>Pending</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        ) : null}
       </ScrollView>
     </BottomSheet>
   )

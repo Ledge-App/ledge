@@ -21,7 +21,7 @@ import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
-import { detectTransfers } from '@/lib/transfers/autoMatch'
+import { detectPendingPreviews, detectTransfers } from '@/lib/transfers/autoMatch'
 import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
 import { useTransferDismissals } from './useTransferDismissals'
 import type { AutoMatchResult, TransferDraft } from '@/lib/transfers/autoMatch'
@@ -283,6 +283,23 @@ export function useTransactionFeed() {
     [detection],
   )
 
+  // Pairs whose legs haven't all posted yet — informational only, never confirmable. Surfaced
+  // so a transfer visibly sitting in the feed reads as "matching once posted" rather than as
+  // detection silently failing during the banks' 1-3 day posting window.
+  const pendingTransferPreviews = useMemo<TransferDraft[]>(() => {
+    if (feed.length === 0 || !accounts.data?.length || !dismissals.data) return []
+    const dismissedIds = new Set(dismissals.data.map((d) => d.expensePlaidTransactionId))
+    const previews = detectPendingPreviews({ feed, accounts: accounts.data, dismissedIds })
+    // A posted leg can appear in a REAL draft (posted counterpart) and a preview (pending
+    // counterpart of the same amount) at once. The real draft wins — the confirmable row is
+    // actionable now, and a second row claiming the same transaction would read as two
+    // different transfers.
+    const claimed = new Set(
+      [...detection.autoApply, ...detection.suggestions].flatMap((d) => [d.expense.id, d.income.id]),
+    )
+    return previews.filter((p) => !claimed.has(p.expense.id) && !claimed.has(p.income.id))
+  }, [feed, accounts.data, dismissals.data, detection])
+
   // ORPHAN SWEEP (phase 6): dissolve transfers whose leg Plaid retracted (queued durably in
   // onSuccess above) or whose auto-paired amounts drifted after a `modified`. Deleting goes
   // through transfers.delete, NOT unmark — no dismissal is written, because the pair wasn't
@@ -326,6 +343,7 @@ export function useTransactionFeed() {
     feed,
     categoryById,
     transferSuggestions,
+    pendingTransferPreviews,
     spendByCategory: aggregate.spendByCategory,
     spendByDay: aggregate.spendByDay,
     isLoading:
