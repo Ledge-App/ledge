@@ -53,30 +53,11 @@ export interface NetWorthTotals {
   netWorth: number
 }
 
-/**
- * The balance the app displays and totals. Depository accounts (checking, savings, cash
- * management) use `available` — the institution's own pending-aware number, the same headline
- * figure the bank's app shows — so a pending debit moves the balance here at the same moment
- * it appears as a pending row in the feed. Credit and loan accounts keep `current` (amount
- * owed; their `available` is the remaining credit line), and investment accounts keep
- * `current` (market value; their `available` is only withdrawable cash).
- *
- * `available` over hand-computed current-minus-pending, deliberately: institutions differ on
- * whether `current` already folds pending in, so doing the subtraction ourselves would
- * double-count at some banks. The bank's own figure is always self-consistent.
- */
-export function displayBalance(account: Account): number {
-  if (account.type === 'depository') {
-    return account.balances?.available ?? account.balances?.current ?? 0
-  }
-  return account.balances?.current ?? 0
-}
-
 export function computeNetWorthTotals(accounts: Account[], feed: FeedItem[]): NetWorthTotals {
   let linkedAssets = 0
   let totalLiabilities = 0
   for (const account of accounts) {
-    const balance = displayBalance(account)
+    const balance = account.balances?.current ?? 0
     if (isLiabilityAccount(account)) totalLiabilities += balance
     else linkedAssets += balance
   }

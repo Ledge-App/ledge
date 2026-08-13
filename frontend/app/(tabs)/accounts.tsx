@@ -18,7 +18,7 @@ import { NetWorthTrendSheet } from '@/components/accounts/NetWorthTrendSheet'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatMaskableAmount } from '@/lib/format/money'
-import { computeNetWorthTotals, displayBalance, isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/netWorth'
+import { computeNetWorthTotals, isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/netWorth'
 import type { Account } from '@/types/domain'
 
 export default function AccountsTab() {
@@ -45,7 +45,7 @@ export default function AccountsTab() {
   )
   const investmentAccounts = useMemo(() => (accounts.data ?? []).filter(isInvestmentAccount), [accounts.data])
   const investmentsValue = useMemo(
-    () => investmentAccounts.reduce((sum, a) => sum + displayBalance(a), 0),
+    () => investmentAccounts.reduce((sum, a) => sum + (a.balances?.current ?? 0), 0),
     [investmentAccounts],
   )
   const creditAccounts = useMemo(() => (accounts.data ?? []).filter(isLiabilityAccount), [accounts.data])
@@ -78,7 +78,7 @@ export default function AccountsTab() {
     }
     return {
       title: detailTarget.name,
-      balance: displayBalance(detailTarget),
+      balance: detailTarget.balances?.current ?? 0,
       variant: isLiabilityAccount(detailTarget) ? ('credit' as const) : isInvestmentAccount(detailTarget) ? ('investment' as const) : ('cash' as const),
       items: feed.filter((item) => item.accountId === detailTarget.account_id),
       emptyLabel: 'No transactions for this account',
@@ -179,7 +179,7 @@ export default function AccountsTab() {
                   <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
                     <AccountRow
                       name={account.name}
-                      balance={displayBalance(account)}
+                      balance={account.balances?.current ?? 0}
                       variant="cash"
                       logo={account.institutionLogo}
                       isMasked={isMasked}
@@ -215,7 +215,7 @@ export default function AccountsTab() {
                   <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
                     <AccountRow
                       name={account.name}
-                      balance={displayBalance(account)}
+                      balance={account.balances?.current ?? 0}
                       variant="investment"
                       logo={account.institutionLogo}
                       isMasked={isMasked}
@@ -243,7 +243,7 @@ export default function AccountsTab() {
                   <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
                     <AccountRow
                       name={account.name}
-                      balance={displayBalance(account)}
+                      balance={account.balances?.current ?? 0}
                       variant="credit"
                       logo={account.institutionLogo}
                       limit={account.balances?.limit ?? null}
