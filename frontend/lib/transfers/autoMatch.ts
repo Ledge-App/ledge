@@ -370,3 +370,83 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
 
   return { autoApply, suggestions }
 }
+
+/**
+ * Pairs that WILL be considered once they post: the same shape the detector above looks for,
+ * but with at least one leg still pending. Without this, a transfer whose legs are both
+ * visible in the feed shows nothing at all for the 1–3 days the bank takes to post them —
+ * indistinguishable from detection not working.
+ *
+ * Pending ids are REPLACED when a transaction posts (and amounts can drift — tips, holds), so
+ * nothing here may ever be persisted or confirmed. The output is ephemeral UI ("possible
+ * transfer — pending"), recomputed from scratch on every pass; when the legs post, the pair
+ * leaves this list and re-enters detectTransfers as a real draft.
+ */
+export function detectPendingPreviews(input: Omit<AutoMatchInput, 'deltaIds'>): TransferDraft[] {
+  const { feed, accounts, dismissedIds } = input
+  const accountById = new Map(accounts.map((a) => [a.account_id, a]))
+  const dismissed = dismissedIds ?? new Set<string>()
+
+  // Mirrors the main detector's eligibility, minus the pending exclusion that defines this pass.
+  function isEligible(item: FeedItem): boolean {
+    if (item.source === 'manual') return false
+    if (item.amount === 0) return false
+    if (item.transferId !== null || item.transferKind !== null) return false
+    if (item.reimbursedAmount !== null || item.isReimbursementIncome) return false
+    if (dismissed.has(item.id)) return false
+    const account = item.accountId ? accountById.get(item.accountId) : undefined
+    if (!account) return false
+    if (item.amount > 0 && isLiabilityAccount(account)) return false
+    if (item.amount < 0 && (item.pfcDetailed?.startsWith('INCOME_') ?? false)) return false
+    return true
+  }
+
+  // At least a weak transfer-shaped signal on one leg, so two coincidental equal charges
+  // (two $12 lunches the same week) never preview as a transfer.
+  function hasTransferSignal(outflow: FeedItem, inflow: FeedItem): boolean {
+    for (const item of [outflow, inflow]) {
+      const code = item.pfcDetailed
+      if (code === 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' || code?.startsWith('TRANSFER_')) return true
+      if (item.isBrokerageCashAccount) return true
+    }
+    return isCreditAccount(accountById.get(inflow.accountId!))
+  }
+
+  const eligible = feed.filter(isEligible)
+  const inflowsByAmount = new Map<number, FeedItem[]>()
+  for (const item of eligible) {
+    if (item.amount >= 0) continue
+    const key = centsKey(item)
+    const bucket = inflowsByAmount.get(key)
+    if (bucket) bucket.push(item)
+    else inflowsByAmount.set(key, [item])
+  }
+
+  const previews: TransferDraft[] = []
+  const used = new Set<string>()
+  for (const outflow of eligible) {
+    if (outflow.amount <= 0 || used.has(outflow.id)) continue
+    const candidates = (inflowsByAmount.get(centsKey(outflow)) ?? []).filter((inflow) => {
+      if (used.has(inflow.id)) return false
+      // At least one pending leg — fully posted pairs belong to detectTransfers.
+      if (!outflow.pending && !inflow.pending) return false
+      if (outflow.accountId === inflow.accountId) return false
+      if (daysBetween(outflow.date, inflow.date) > AUTO_MATCH_WINDOW_DAYS) return false
+      if (accountById.get(inflow.accountId!)?.type === 'loan') return false
+      return hasTransferSignal(outflow, inflow)
+    })
+    if (candidates.length === 0) continue
+    const inflow = [...candidates].sort(
+      (a, b) => daysBetween(outflow.date, a.date) - daysBetween(outflow.date, b.date) || a.id.localeCompare(b.id),
+    )[0]
+    used.add(outflow.id)
+    used.add(inflow.id)
+    previews.push({
+      kind: isCreditAccount(accountById.get(inflow.accountId!)) ? 'credit_card_payment' : 'account_transfer',
+      expense: outflow,
+      income: inflow,
+      amount: Math.abs(outflow.amount),
+    })
+  }
+  return previews
+}

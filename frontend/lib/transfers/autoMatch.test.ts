@@ -625,3 +625,50 @@ describe('investment rows as transfer legs', () => {
     expect(result.autoApply[0].income.id).toBe('itx-contrib')
   })
 })
+
+// ---------------------------------------------------------------------------------------------
+
+import { detectPendingPreviews } from './autoMatch'
+
+describe('detectPendingPreviews', () => {
+  const pendingOut = item({
+    id: 'pend-out', amount: 600, date: '2026-08-11', accountId: 'checking',
+    pending: true, pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER',
+  })
+  const postedIn = item({ id: 'posted-in', amount: -600, date: '2026-08-11', accountId: 'savings' })
+
+  it('previews a pair when a leg is pending and a transfer signal exists', () => {
+    const previews = detectPendingPreviews({ feed: [pendingOut, postedIn], accounts })
+    expect(previews).toHaveLength(1)
+    expect(previews[0].expense.id).toBe('pend-out')
+    expect(previews[0].income.id).toBe('posted-in')
+    expect(previews[0].kind).toBe('account_transfer')
+  })
+
+  it('ignores fully posted pairs — those belong to detectTransfers', () => {
+    const out = { ...pendingOut, pending: false }
+    expect(detectPendingPreviews({ feed: [out, postedIn], accounts })).toHaveLength(0)
+  })
+
+  it('requires a transfer-shaped signal so coincidental equal charges never preview', () => {
+    const blandOut = item({ id: 'lunch-1', amount: 12, date: '2026-08-11', accountId: 'checking', pending: true })
+    const blandIn = item({ id: 'lunch-2', amount: -12, date: '2026-08-11', accountId: 'savings' })
+    expect(detectPendingPreviews({ feed: [blandOut, blandIn], accounts })).toHaveLength(0)
+  })
+
+  it('classifies a pending credit-account inflow as a credit card payment', () => {
+    const cardIn = item({ id: 'card-in', amount: -600, date: '2026-08-12', accountId: 'visa', pending: true })
+    const out = item({ id: 'chk-out', amount: 600, date: '2026-08-11', accountId: 'checking' })
+    const previews = detectPendingPreviews({ feed: [out, cardIn], accounts })
+    expect(previews).toHaveLength(1)
+    expect(previews[0].kind).toBe('credit_card_payment')
+  })
+
+  it('respects dismissals and the date window', () => {
+    expect(
+      detectPendingPreviews({ feed: [pendingOut, postedIn], accounts, dismissedIds: new Set(['pend-out']) }),
+    ).toHaveLength(0)
+    const lateIn = { ...postedIn, date: '2026-08-25' }
+    expect(detectPendingPreviews({ feed: [pendingOut, lateIn], accounts })).toHaveLength(0)
+  })
+})
