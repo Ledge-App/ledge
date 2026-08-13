@@ -47,7 +47,13 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       ? { label: reimbursementPill, color: colors.reimbursed }
       : isInvestmentSweep(item)
         ? { label: 'Investment', color: colors.textMuted }
-        : null
+        : item.pending
+          ? // The bank hasn't settled this yet, which is also why the account's balance won't
+            // reflect it — Plaid's `current` balance moves only when a transaction posts.
+            // Labelling the row is what makes that mismatch read as "in progress" rather
+            // than "wrong". Muted: it's a state, not a link the user made.
+            { label: 'Pending', color: colors.textMuted }
+          : null
   const iconColor = transferType ? transferType.color : item.isReimbursementIncome ? colors.reimbursed : categoryColor
   const iconBg = hexToRgba(iconColor, 0.18)
 
