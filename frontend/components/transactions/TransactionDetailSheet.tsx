@@ -119,6 +119,14 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
           </Text>
           <Text className="font-sansMed text-sm text-textSecondary">{formatFullDate(item.date)}</Text>
 
+          {item.pending ? (
+            <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: hexToRgba(colors.textMuted, 0.14) }}>
+              <Text className="font-sansMed text-xs" style={{ color: colors.textMuted }}>
+                Pending — waiting for the bank to post
+              </Text>
+            </View>
+          ) : null}
+
           {pillLabel ? (
             <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: hexToRgba(colors.reimbursed, 0.14) }}>
               <Text className="font-sansMed text-xs" style={{ color: colors.reimbursed }}>{pillLabel}</Text>
