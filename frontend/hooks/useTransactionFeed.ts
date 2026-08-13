@@ -335,7 +335,11 @@ export function useTransactionFeed() {
       vendorMappings.isLoading ||
       plaidCategoryMappings.isLoading ||
       categories.isLoading ||
-      syncMutation.isLoading,
+      // The sync blocks first paint only when there is nothing cached to paint — a first run
+      // (or fresh install) has no transactions until the initial sync lands. Every later open
+      // renders the MMKV cache immediately and lets the sync land in the background; the feed
+      // re-derives off syncCompletedAt when it does.
+      (syncMutation.isLoading && rawTransactions.length === 0),
     error:
       accounts.error ??
       manualTransactions.error ??
