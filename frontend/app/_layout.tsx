@@ -10,7 +10,9 @@ import {
   useFonts as useInterFonts,
 } from '@expo-google-fonts/inter'
 import { JetBrainsMono_400Regular, useFonts as useMonoFonts } from '@expo-google-fonts/jetbrains-mono'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
+import { queryPersister } from '@/lib/storage/queryPersister'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { Stack } from 'expo-router'
@@ -30,7 +32,20 @@ export default function RootLayout() {
   const [monoLoaded] = useMonoFonts({ JetBrainsMono_400Regular })
   const fontsLoaded = dmSansLoaded && interLoaded && monoLoaded
 
-  const [queryClient] = useState(() => new QueryClient())
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Stale-while-revalidate: restored/persisted data renders immediately and anything
+            // older than a minute refetches in the background. cacheTime must outlive maxAge
+            // below, or restored queries would be garbage-collected on arrival.
+            staleTime: 60 * 1000,
+            cacheTime: 24 * 60 * 60 * 1000,
+          },
+        },
+      }),
+  )
   const [trpcClient] = useState(() => createApiClient())
 
   // The caches outlive any one session — drop them when the signed-in user changes so one
@@ -56,7 +71,10 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}
+      >
         <api.Provider client={trpcClient} queryClient={queryClient}>
           <View className="flex-1 bg-background">
             <StatusBar style="dark" />
@@ -68,7 +86,7 @@ export default function RootLayout() {
             />
           </View>
         </api.Provider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </SafeAreaProvider>
   )
 }

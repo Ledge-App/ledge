@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { shouldResetCache } from '@/lib/auth/shouldResetCache'
 import { clearTransactionCache } from '@/lib/storage/mmkv'
+import { clearPersistedQueryCache } from '@/lib/storage/queryPersister'
 import { supabaseAuth } from '@/lib/supabase/auth'
 
 /**
@@ -28,6 +29,10 @@ export function useResetCacheOnUserChange(queryClient: QueryClient): void {
       if (shouldResetCache(cachedUserId.current, nextUserId)) {
         queryClient.clear()
         clearTransactionCache()
+        // The persisted snapshot too, not just the live cache: the persister writes on a
+        // throttle, so an app killed right after this clear could otherwise hand the previous
+        // user's queries to the next launch.
+        clearPersistedQueryCache()
       }
       cachedUserId.current = nextUserId
     })
