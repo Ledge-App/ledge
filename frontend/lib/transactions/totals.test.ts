@@ -213,3 +213,15 @@ describe('investment-source items in totals', () => {
     expect(countsTowardTotals(item({ source: 'plaid', amount: 42 }))).toBe(true)
   })
 })
+
+describe('pending exclusion', () => {
+  it('a pending transaction is visible in the feed but counts toward nothing', () => {
+    const pendingExpense = item({ id: 'p1', amount: 42, pending: true })
+    expect(countsTowardTotals(pendingExpense)).toBe(false)
+  })
+
+  it('the same transaction counts once it posts', () => {
+    const posted = item({ id: 'p2', amount: 42, pending: false })
+    expect(countsTowardTotals(posted)).toBe(true)
+  })
+})
