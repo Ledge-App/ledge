@@ -90,12 +90,29 @@ describe('suggestBudgetAmount', () => {
   }
   const today = new Date(2026, 7, 15) // Aug 2026 -> looks at May, Jun, Jul
 
-  it('suggests the median of the last three full months, rounded to a human number', () => {
+  it('suggests the average of the last three full months, rounded to a human number', () => {
     const feed = [
       spend('1', '2026-05-10', 380), spend('2', '2026-06-10', 442), spend('3', '2026-07-10', 401),
       spend('4', '2026-08-10', 999), // current month is partial — ignored
     ]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBe(400) // median 401 -> rounded to 400
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(410) // (380+442+401)/3 = 407.67 -> 410
+  })
+
+  it('counts zero-spend months inside the window as zeros', () => {
+    // Long-running category (history before the window), spent in only 1 of the last 3 months.
+    const feed = [spend('1', '2026-01-10', 999), spend('2', '2026-06-10', 300)]
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(100) // 300/3, not 300/1
+  })
+
+  it('does not dilute a category younger than the window', () => {
+    // First-ever spend in July at $50: divide by 1 month of history, not 3.
+    const feed = [spend('1', '2025-01-10', 900, 'other'), spend('2', '2026-07-10', 50)]
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(50) // 50/1, not 50/3
+  })
+
+  it('returns null for a dormant category with no spend in the window', () => {
+    const feed = [spend('1', '2026-01-10', 500)]
+    expect(suggestBudgetAmount(feed, 'food', today)).toBeNull()
   })
 
   it('ignores pending rows and other categories, and returns null with no history', () => {

@@ -89,36 +89,43 @@ export function dailyAllowance(remaining: number, month: YearMonth, today: Date 
 }
 
 /**
- * A starting amount for a category the user hasn't budgeted: the median of its last three
+ * A starting amount for a category the user hasn't budgeted: the average of its last three
  * FULL months of spending (the current month is partial and would drag the number down).
- * Median over mean so one vacation month doesn't set the bar. Null when there's no history —
- * an empty suggestion beats a made-up one.
+ * Zero-spend months inside the window count as zeros — the question is "what does a typical
+ * month cost", not "what does a spending month cost" — but the window never reaches back
+ * before the category's first-ever spend, so a subscription started last month suggests its
+ * real monthly cost instead of a third of it. Null when the window has no spending at all —
+ * an empty suggestion beats a made-up one (and a stale one from a dormant category).
  */
 export function suggestBudgetAmount(
   feed: FeedItem[],
   categoryId: string,
   today: Date = new Date(),
 ): number | null {
-  const monthKeys: string[] = []
+  const windowKeys: string[] = []
   for (let back = 1; back <= 3; back++) {
     const d = new Date(today.getFullYear(), today.getMonth() - back, 1)
-    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    windowKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
-  const spendByMonth = new Map<string, number>(monthKeys.map((k) => [k, 0]))
+  const spendByMonth = new Map<string, number>(windowKeys.map((k) => [k, 0]))
+  let firstSpendKey: string | null = null
   for (const item of feed) {
     if (item.categoryId !== categoryId || !countsTowardTotals(item)) continue
     const net = item.netAmount ?? item.amount
     if (net <= 0) continue // budgets track spending, not income
     const key = item.date.slice(0, 7)
+    if (firstSpendKey === null || key < firstSpendKey) firstSpendKey = key
     if (!spendByMonth.has(key)) continue
     spendByMonth.set(key, spendByMonth.get(key)! + net)
   }
 
-  const values = [...spendByMonth.values()].filter((v) => v > 0).sort((a, b) => a - b)
-  if (values.length === 0) return null
-  const mid = Math.floor(values.length / 2)
-  const median = values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2
+  const total = [...spendByMonth.values()].reduce((sum, v) => sum + v, 0)
+  if (total === 0 || firstSpendKey === null) return null
+
+  // A category younger than the window divides by its own age, not by 3.
+  const monthsWithHistory = windowKeys.filter((k) => k >= firstSpendKey).length
+  const average = total / Math.max(1, monthsWithHistory)
   // A budget of $83.47 reads as noise — round to a number a person would have picked.
-  return Math.max(5, Math.round(median / 5) * 5)
+  return Math.max(5, Math.round(average / 5) * 5)
 }
