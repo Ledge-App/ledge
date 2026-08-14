@@ -193,6 +193,7 @@ export default function BudgetsScreen() {
               spent={spent}
               amount={budget.amount}
               status={status}
+              paceFraction={paceFraction}
               onPress={() => openSheet(budget.categoryId)}
             />
           ))}

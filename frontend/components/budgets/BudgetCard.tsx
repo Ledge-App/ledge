@@ -18,12 +18,13 @@ interface BudgetCardProps {
   spent: number
   amount: number
   status: BudgetStatus
+  paceFraction: number | null
   onPress?: () => void
 }
 
-// No pace tick here: the status pill already says how the pace reads, and the labeled tick on
-// the overall bar is where "today" lives — one calendar marker on the screen, not five.
-export function BudgetCard({ categoryName, categoryIcon, categoryColor, spent, amount, status, onPress }: BudgetCardProps) {
+// The tick renders unlabeled here: the "Today" caption lives on the overall bar, which teaches
+// what every tick on the screen means without repeating the word five times.
+export function BudgetCard({ categoryName, categoryIcon, categoryColor, spent, amount, status, paceFraction, onPress }: BudgetCardProps) {
   const chip = statusColor(status)
   return (
     <Pressable onPress={onPress} accessibilityRole="button" className="gap-2.5 rounded-md bg-surface p-4" style={shadow.sm}>
@@ -38,7 +39,7 @@ export function BudgetCard({ categoryName, categoryIcon, categoryColor, spent, a
           </Text>
         </View>
       </View>
-      <BudgetSplitBar spent={spent} amount={amount} status={status} paceFraction={null} />
+      <BudgetSplitBar spent={spent} amount={amount} status={status} paceFraction={paceFraction} />
     </Pressable>
   )
 }
