@@ -1,0 +1,78 @@
+import { describe, expect, it } from 'vitest'
+import { planSyncMerge } from './planSyncMerge'
+import type { SyncResultShape } from './planSyncMerge'
+import type { PlaidTransaction } from '@/types/domain'
+
+function txn(transaction_id: string, account_id: string, amount = 10): PlaidTransaction {
+  return { transaction_id, account_id, amount } as PlaidTransaction
+}
+
+const ACCOUNT_TO_ITEM = new Map([
+  ['acc-1', 'item-1'],
+  ['acc-2', 'item-2'],
+])
+
+function result(overrides: Partial<SyncResultShape>): SyncResultShape {
+  return { added: [], modified: [], removed: [], cursors: {}, ...overrides }
+}
+
+describe('planSyncMerge', () => {
+  it('appends added transactions to their item cache', () => {
+    const plan = planSyncMerge(
+      result({ added: [txn('t2', 'acc-1')], cursors: { 'item-1': 'cur-2' } }),
+      ['item-1'],
+      ACCOUNT_TO_ITEM,
+      new Map([['item-1', [txn('t1', 'acc-1')]]]),
+    )
+    expect(plan.mergedByItem.get('item-1')?.map((t) => t.transaction_id).sort()).toEqual(['t1', 't2'])
+    expect(plan.cursors).toEqual({ 'item-1': 'cur-2' })
+  })
+
+  it('replaces modified transactions instead of duplicating them', () => {
+    const plan = planSyncMerge(
+      result({ modified: [txn('t1', 'acc-1', 99)] }),
+      ['item-1'],
+      ACCOUNT_TO_ITEM,
+      new Map([['item-1', [txn('t1', 'acc-1', 10)]]]),
+    )
+    const merged = plan.mergedByItem.get('item-1') ?? []
+    expect(merged).toHaveLength(1)
+    expect(merged[0].amount).toBe(99)
+  })
+
+  it('drops removed transactions and reports their ids for the orphan queue', () => {
+    const plan = planSyncMerge(
+      result({ removed: [{ transaction_id: 't1' }] }),
+      ['item-1'],
+      ACCOUNT_TO_ITEM,
+      new Map([['item-1', [txn('t1', 'acc-1'), txn('t2', 'acc-1')]]]),
+    )
+    expect(plan.mergedByItem.get('item-1')?.map((t) => t.transaction_id)).toEqual(['t2'])
+    expect(plan.removedIds).toEqual(['t1'])
+  })
+
+  it('routes transactions to the right item and ignores unknown accounts', () => {
+    const plan = planSyncMerge(
+      result({ added: [txn('t1', 'acc-1'), txn('t2', 'acc-2'), txn('t3', 'acc-unknown')] }),
+      ['item-1', 'item-2'],
+      ACCOUNT_TO_ITEM,
+      new Map(),
+    )
+    expect(plan.mergedByItem.get('item-1')?.map((t) => t.transaction_id)).toEqual(['t1'])
+    expect(plan.mergedByItem.get('item-2')?.map((t) => t.transaction_id)).toEqual(['t2'])
+  })
+
+  it('is idempotent: re-applying the same payload changes nothing', () => {
+    const payload = result({ added: [txn('t2', 'acc-1')], removed: [{ transaction_id: 't1' }] })
+    const cached = new Map([['item-1', [txn('t1', 'acc-1'), txn('t2', 'acc-1')]]])
+    const once = planSyncMerge(payload, ['item-1'], ACCOUNT_TO_ITEM, cached)
+    const twice = planSyncMerge(payload, ['item-1'], ACCOUNT_TO_ITEM, once.mergedByItem)
+    expect(twice.mergedByItem.get('item-1')).toEqual(once.mergedByItem.get('item-1'))
+  })
+
+  it('reports hasMore when any item has pages left', () => {
+    expect(planSyncMerge(result({ hasMore: { a: false, b: true } }), [], ACCOUNT_TO_ITEM, new Map()).hasMore).toBe(true)
+    expect(planSyncMerge(result({ hasMore: { a: false } }), [], ACCOUNT_TO_ITEM, new Map()).hasMore).toBe(false)
+    expect(planSyncMerge(result({}), [], ACCOUNT_TO_ITEM, new Map()).hasMore).toBe(false)
+  })
+})

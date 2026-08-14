@@ -1,5 +1,5 @@
 import { createTRPCReact } from '@trpc/react-query'
-import { httpBatchLink } from '@trpc/client'
+import { createTRPCProxyClient, httpBatchLink } from '@trpc/client'
 import type { AppRouter } from '@/types/backend'
 import { supabaseAuth } from '@/lib/supabase/auth'
 
@@ -18,17 +18,27 @@ function resolveApiUrl(): string {
   return url
 }
 
+function authedLinks() {
+  return [
+    httpBatchLink({
+      url: `${resolveApiUrl()}/trpc`,
+      headers: async () => {
+        const { data } = await supabaseAuth.auth.getSession()
+        const token = data.session?.access_token
+        return token ? { Authorization: `Bearer ${token}` } : {}
+      },
+    }),
+  ]
+}
+
 export function createApiClient() {
-  return api.createClient({
-    links: [
-      httpBatchLink({
-        url: `${resolveApiUrl()}/trpc`,
-        headers: async () => {
-          const { data } = await supabaseAuth.auth.getSession()
-          const token = data.session?.access_token
-          return token ? { Authorization: `Bearer ${token}` } : {}
-        },
-      }),
-    ],
-  })
+  return api.createClient({ links: authedLinks() })
+}
+
+/**
+ * Imperative client for code that runs outside the React tree — the background alert task has
+ * no provider to hang the react-query client on. Same URL, same auth header, same batching.
+ */
+export function createHeadlessApiClient() {
+  return createTRPCProxyClient<AppRouter>({ links: authedLinks() })
 }
