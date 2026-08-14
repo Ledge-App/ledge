@@ -172,7 +172,7 @@ export default function BudgetsScreen() {
               <Text className="font-sansSemi text-base text-textPrimary">Monthly budget</Text>
               <Text className="font-mono text-base text-textPrimary">{formatAmount(totalBudget)}</Text>
             </View>
-            <BudgetSplitBar spent={totalSpent} amount={totalBudget} status={overallStatus} paceFraction={paceFraction} />
+            <BudgetSplitBar spent={totalSpent} amount={totalBudget} status={overallStatus} paceFraction={paceFraction} todayLabel />
             {allowance != null && totalRemaining > 0 ? (
               <Text className="font-sans text-sm text-textMuted">
                 About <Text className="font-mono text-textSecondary">{formatAmount(allowance)}</Text> a day for the rest of the month.

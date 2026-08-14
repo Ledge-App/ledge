@@ -22,6 +22,8 @@ interface BudgetCardProps {
   onPress?: () => void
 }
 
+// The tick renders unlabeled here: the "Today" caption lives on the overall bar, which teaches
+// what every tick on the screen means without repeating the word five times.
 export function BudgetCard({ categoryName, categoryIcon, categoryColor, spent, amount, status, paceFraction, onPress }: BudgetCardProps) {
   const chip = statusColor(status)
   return (
