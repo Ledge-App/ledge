@@ -85,6 +85,13 @@
       "when": 1786300000000,
       "tag": "0011_add_plaid_item_disabled_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786677988297,
+      "tag": "0012_budgets_effective_dated",
+      "breakpoints": true
     }
   ]
 }

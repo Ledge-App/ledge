@@ -10,7 +10,10 @@ vi.mock('../lib/crypto/aes.js', () => ({
 // Conditions become inspectable markers so a test can assert which filters a query applied —
 // the `where` mocks below resolve regardless of their argument, so without this the difference
 // between "live items only" and "every item" would be invisible.
-vi.mock('drizzle-orm', () => ({
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  // Real module underneath: the schema evaluates drizzle helpers (sql\`\`, defaults) at import
+  // time, so a closed mock breaks on every helper the schema grows to use.
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   eq: vi.fn((col: unknown, val: unknown) => ({ op: 'eq', col, val })),
   and: vi.fn((...conds: unknown[]) => ({ op: 'and', conds })),
   isNull: vi.fn((col: unknown) => ({ op: 'isNull', col })),

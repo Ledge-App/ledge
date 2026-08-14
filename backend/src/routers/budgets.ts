@@ -7,6 +7,22 @@ import { assertOwnedRefs } from '../lib/ownership/assertOwnedRefs.js'
 export const budgetsRouter = router({
   list: protectedProcedure.query(({ ctx }) => budgetRepository.list(ctx.jwt)),
 
+  // The v2 write path: one upsert per (category, month). amount null = stop budgeting from
+  // that month on (tombstone); alertThreshold null = alerts off.
+  set: protectedProcedure
+    .input(
+      z.object({
+        categoryId: z.string().uuid(),
+        effectiveMonth: z.string().regex(/^\d{4}-\d{2}-01$/),
+        amount: z.string().regex(/^\d+(\.\d{1,2})?$/).nullable(),
+        alertThreshold: z.number().int().min(1).max(100).nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnedRefs(ctx.jwt, { categoryId: input.categoryId })
+      return budgetRepository.set(ctx.jwt, ctx.userId, input)
+    }),
+
   create: protectedProcedure
     .input(z.object({ categoryId: z.string().uuid(), amount: z.string(), period: z.enum(['monthly', 'weekly', 'yearly']) }))
     .mutation(async ({ ctx, input }) => {
@@ -31,9 +47,12 @@ export const budgetsRouter = router({
     .input(z.object({ spendByCategory: z.record(z.string()) }))
     .query(async ({ ctx, input }) => {
       const budgets = await budgetRepository.list(ctx.jwt)
-      return budgets.map((budget) => ({
-        ...budget,
-        ...budgetService.calculateProgress(budget, input.spendByCategory[budget.categoryId] ?? '0.00'),
-      }))
+      // Tombstones (amount null) mark "stopped budgeting" boundaries — nothing to calculate.
+      return budgets
+        .filter((budget): budget is typeof budget & { amount: string } => budget.amount !== null)
+        .map((budget) => ({
+          ...budget,
+          ...budgetService.calculateProgress(budget, input.spendByCategory[budget.categoryId] ?? '0.00'),
+        }))
     }),
 })
