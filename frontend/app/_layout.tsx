@@ -22,6 +22,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { usePurgeSessionOnFreshInstall } from '@/hooks/usePurgeSessionOnFreshInstall'
 import { useResetCacheOnUserChange } from '@/hooks/useResetCacheOnUserChange'
 import { api, createApiClient } from '@/lib/api/client'
+// Side-effect import: defineTask must run at module scope so the task exists when iOS
+// launches the app headless for a background wake — not just when the UI mounts.
+import { registerBudgetAlertTask } from '@/lib/background/budgetAlertTask'
 import { colors } from '@/constants/theme'
 
 SplashScreen.preventAutoHideAsync()
@@ -73,6 +76,10 @@ export default function RootLayout() {
   }, [])
 
   const isReady = fontsLoaded && !isPurgingSession && isCacheRestored
+
+  useEffect(() => {
+    void registerBudgetAlertTask()
+  }, [])
 
   useEffect(() => {
     if (isReady) {

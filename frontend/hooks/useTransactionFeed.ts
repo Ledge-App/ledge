@@ -18,6 +18,7 @@ import {
   setPendingRemovedTransactionIds,
 } from '@/lib/storage/mmkv'
 import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
+import { planSyncMerge } from '@/lib/transactions/planSyncMerge'
 import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
@@ -107,39 +108,19 @@ export function useTransactionFeed() {
   // every completed sync re-keyed the query (new cache entry + possible refetch loop).
   const syncMutation = api.transactions.sync.useMutation({
     onSuccess: (result) => {
-      const byItem = new Map<string, PlaidTransaction[]>()
-      for (const itemId of itemIds) byItem.set(itemId, getCachedTransactions(itemId))
+      const cachedByItem = new Map<string, PlaidTransaction[]>()
+      for (const itemId of itemIds) cachedByItem.set(itemId, getCachedTransactions(itemId))
 
-      const removedIds = new Set(result.removed.map((r) => r.transaction_id))
-      const modifiedIds = new Set(result.modified.map((t) => t.transaction_id))
-
-      // Keyed by transaction_id so the merge is idempotent: re-running this handler with
-      // the same payload (retry, double invocation) overwrites rather than duplicating.
-      const mergedByItem = new Map<string, Map<string, PlaidTransaction>>()
-      for (const [itemId, cached] of byItem) {
-        const map = new Map<string, PlaidTransaction>()
-        for (const txn of cached) {
-          if (removedIds.has(txn.transaction_id) || modifiedIds.has(txn.transaction_id)) continue
-          map.set(txn.transaction_id, txn)
-        }
-        mergedByItem.set(itemId, map)
-      }
-
-      for (const txn of [...result.added, ...result.modified]) {
-        const itemId = accountIdToItemId.get(txn.account_id)
-        if (!itemId) continue
-        const map = mergedByItem.get(itemId) ?? new Map<string, PlaidTransaction>()
-        map.set(txn.transaction_id, txn)
-        mergedByItem.set(itemId, map)
-      }
-
-      for (const [itemId, map] of mergedByItem) setCachedTransactions(itemId, Array.from(map.values()))
-      for (const [itemId, cursor] of Object.entries(result.cursors)) setCursor(itemId, cursor)
+      // Merge semantics live in planSyncMerge, shared with the background alert task so a
+      // background sync can never fold a response differently than the app would have.
+      const plan = planSyncMerge(result, itemIds, accountIdToItemId, cachedByItem)
+      for (const [itemId, merged] of plan.mergedByItem) setCachedTransactions(itemId, merged)
+      for (const [itemId, cursor] of Object.entries(plan.cursors)) setCursor(itemId, cursor)
       // Queue removals durably BEFORE announcing the sync: Plaid emits each removal exactly
       // once, and after the merge above the transaction is gone from the cache — this queue
       // is the only remaining evidence a transfer referencing it must be dissolved (orphan
       // sweep below). MMKV so an app death here can't lose it.
-      appendPendingRemovedTransactionIds(result.removed.map((r) => r.transaction_id))
+      appendPendingRemovedTransactionIds(plan.removedIds)
       setSyncCompletedAt(Date.now())
 
       // Keep draining while the backend reports any item has more pages. Cursors were
@@ -147,7 +128,7 @@ export function useTransactionFeed() {
       // ended. All items' cursors are sent (not only the undrained ones): the backend
       // syncs every linked item, and an omitted cursor would re-download that item's
       // entire history from scratch.
-      if (Object.values(result.hasMore ?? {}).some(Boolean) && drainRoundsRef.current < MAX_DRAIN_ROUNDS) {
+      if (plan.hasMore && drainRoundsRef.current < MAX_DRAIN_ROUNDS) {
         drainRoundsRef.current += 1
         const cursors: Record<string, string> = {}
         for (const itemId of itemIds) {
