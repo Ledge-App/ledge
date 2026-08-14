@@ -83,9 +83,9 @@ export default function BudgetsScreen() {
   const unbudgetedCategories = useMemo(() => {
     return (categories.data ?? [])
       .filter((c) => !resolved.has(c.id))
-      .map((category) => ({ category, typical: suggestBudgetAmount(feed, category.id) }))
-      .sort((a, b) => (b.typical ?? 0) - (a.typical ?? 0) || a.category.name.localeCompare(b.category.name))
-  }, [categories.data, resolved, feed])
+      .map((category) => ({ category, typical: suggestBudgetAmount(feed, category.id, month) }))
+      .sort((a, b) => (b.typical?.amount ?? 0) - (a.typical?.amount ?? 0) || a.category.name.localeCompare(b.category.name))
+  }, [categories.data, resolved, feed, month])
 
   const totalBudget = budgetedRows.reduce((sum, row) => sum + row.budget.amount, 0)
   const totalSpent = budgetedRows.reduce((sum, row) => sum + row.spent, 0)
@@ -96,8 +96,8 @@ export default function BudgetsScreen() {
   const editingBudget = editingCategoryId ? (resolved.get(editingCategoryId) ?? null) : null
   const editingCategory = editingCategoryId ? categoryById.get(editingCategoryId) : null
   const suggestion = useMemo(
-    () => (editingCategoryId && !editingBudget ? suggestBudgetAmount(feed, editingCategoryId) : null),
-    [feed, editingCategoryId, editingBudget],
+    () => (editingCategoryId && !editingBudget ? suggestBudgetAmount(feed, editingCategoryId, month) : null),
+    [feed, editingCategoryId, editingBudget, month],
   )
 
   const isValidAmount = /^\d+(\.\d{1,2})?$/.test(amountText) && Number(amountText) > 0
@@ -215,7 +215,7 @@ export default function BudgetsScreen() {
                     {category.name}
                   </Text>
                   {typical != null ? (
-                    <Text className="font-sans text-xs text-textMuted">~{formatAmount(typical)}/mo</Text>
+                    <Text className="font-sans text-xs text-textMuted">~{formatAmount(typical.amount)}/mo</Text>
                   ) : null}
                 </View>
                 <Text className="font-sansMed text-sm text-primary">Set</Text>
@@ -254,13 +254,14 @@ export default function BudgetsScreen() {
               value={amountText}
               onChangeText={setAmountText}
               keyboardType="decimal-pad"
-              placeholder={suggestion != null ? String(suggestion) : '200.00'}
+              placeholder={suggestion != null ? String(suggestion.amount) : '200.00'}
               mono
             />
             {suggestion != null && !editingBudget ? (
-              <Pressable onPress={() => setAmountText(String(suggestion))}>
+              <Pressable onPress={() => setAmountText(String(suggestion.amount))}>
                 <Text className="font-sans text-sm text-textMuted">
-                  You typically spend about <Text className="font-mono text-textSecondary">{formatAmount(suggestion)}</Text> a month —{' '}
+                  You've spent about <Text className="font-mono text-textSecondary">{formatAmount(suggestion.amount)}</Text> a month over the past{' '}
+                  {suggestion.months === 1 ? 'month' : `${suggestion.months} months`} —{' '}
                   <Text className="font-sansMed text-primary">use it</Text>
                 </Text>
               </Pressable>

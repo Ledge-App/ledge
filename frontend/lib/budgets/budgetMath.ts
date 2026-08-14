@@ -88,9 +88,17 @@ export function dailyAllowance(remaining: number, month: YearMonth, today: Date 
   return Math.max(0, remaining) / daysLeft
 }
 
+export interface BudgetSuggestion {
+  amount: number
+  /** Full months of history behind the average (1-3) — lets copy say "past N months" honestly. */
+  months: number
+}
+
 /**
- * A starting amount for a category the user hasn't budgeted: the average of its last three
- * FULL months of spending (the current month is partial and would drag the number down).
+ * A starting amount for a category the user hasn't budgeted: the average of the three FULL
+ * months before the VIEWED month — browsing back to July suggests from April-June, because a
+ * budget set from July takes effect in July. Months that haven't finished yet (the current
+ * real month, anything future) can't testify and are dropped from the window entirely.
  * Zero-spend months inside the window count as zeros — the question is "what does a typical
  * month cost", not "what does a spending month cost" — but the window never reaches back
  * before the category's first-ever spend, so a subscription started last month suggests its
@@ -100,13 +108,18 @@ export function dailyAllowance(remaining: number, month: YearMonth, today: Date 
 export function suggestBudgetAmount(
   feed: FeedItem[],
   categoryId: string,
+  viewedMonth: YearMonth,
   today: Date = new Date(),
-): number | null {
+): BudgetSuggestion | null {
+  const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   const windowKeys: string[] = []
   for (let back = 1; back <= 3; back++) {
-    const d = new Date(today.getFullYear(), today.getMonth() - back, 1)
-    windowKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    const d = new Date(viewedMonth.year, viewedMonth.month - 1 - back, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    if (key >= currentKey) continue // a month still in progress (or future) can't testify
+    windowKeys.push(key)
   }
+  if (windowKeys.length === 0) return null
 
   const spendByMonth = new Map<string, number>(windowKeys.map((k) => [k, 0]))
   let firstSpendKey: string | null = null
@@ -127,5 +140,5 @@ export function suggestBudgetAmount(
   const monthsWithHistory = windowKeys.filter((k) => k >= firstSpendKey).length
   const average = total / Math.max(1, monthsWithHistory)
   // A budget of $83.47 reads as noise — round to a number a person would have picked.
-  return Math.max(5, Math.round(average / 5) * 5)
+  return { amount: Math.max(5, Math.round(average / 5) * 5), months: monthsWithHistory }
 }
