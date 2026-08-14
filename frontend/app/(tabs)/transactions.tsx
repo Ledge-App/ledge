@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useTransfers } from '@/hooks/useTransfers'
@@ -37,7 +38,8 @@ export default function TransactionsScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const sectionOffsets = useRef(new Map<string, number>())
 
-  const { feed, categoryById, transferSuggestions, pendingTransferPreviews, isLoading, error } = useTransactionFeed()
+  const { feed, categoryById, transferSuggestions, pendingTransferPreviews, isLoading, error, refresh } = useTransactionFeed()
+  const refreshControl = usePullToRefresh(refresh)
   // Every edit sheet — category, transfer, manual — and all the state behind them. Shared with the
   // dashboard's category drill-down and the account sheet, so tapping a row behaves the same anywhere.
   const editor = useTransactionEditor(feed)
@@ -157,7 +159,7 @@ export default function TransactionsScreen() {
       {editor.saveError ? <ErrorBanner message={editor.saveError} onDismiss={editor.dismissSaveError} /> : null}
       {suggestionError ? <ErrorBanner message={suggestionError} onDismiss={() => setSuggestionError(null)} /> : null}
 
-      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }} refreshControl={refreshControl}>
         {/* Calendar */}
         <View className="mx-5 mb-4 rounded-xl bg-surface p-3">
           <View className="mb-1 flex-row">

@@ -7,6 +7,7 @@ import { colors } from '@/constants/theme'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { useAddAccountFlow } from '@/hooks/useAddAccountFlow'
 import { HeroCard } from '@/components/dashboard/HeroCard'
@@ -31,7 +32,9 @@ export default function AccountsTab() {
   const [trendOpen, setTrendOpen] = useState(false)
   const accounts = useAccounts()
   const { isMasked, toggleMask } = useAmountsMasked()
-  const { feed, categoryById, isLoading: feedIsLoading } = useTransactionFeed()
+  const { feed, categoryById, isLoading: feedIsLoading, refresh } = useTransactionFeed()
+  // Also refetches accounts.list inside, which is where every balance on this screen lives.
+  const refreshControl = usePullToRefresh(refresh)
   const credentials = usePlaidCredentials()
   const addAccount = useAddAccountFlow()
   const { error, setError, isConnecting } = addAccount
@@ -116,7 +119,7 @@ export default function AccountsTab() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <ScrollView contentContainerClassName="gap-5 px-5 py-4">
+      <ScrollView contentContainerClassName="gap-5 px-5 py-4" refreshControl={refreshControl}>
         <View className="flex-row items-center justify-between">
           <Text className="font-sansSemi text-lg text-primary">All</Text>
           <Pressable onPress={addAccount.beginAddAccount} accessibilityLabel="Add account" disabled={isConnecting}>
