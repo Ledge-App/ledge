@@ -89,36 +89,40 @@ export function dailyAllowance(remaining: number, month: YearMonth, today: Date 
 }
 
 /**
- * A starting amount for a category the user hasn't budgeted: the median of its last three
- * FULL months of spending (the current month is partial and would drag the number down).
- * Median over mean so one vacation month doesn't set the bar. Null when there's no history —
- * an empty suggestion beats a made-up one.
+ * A starting amount for a category the user hasn't budgeted: the average over every FULL month
+ * since the category's first spend (the current month is partial and would drag the number
+ * down). Zero-spend months inside that span count — the question is "what does a typical month
+ * cost", not "what does a spending month cost" — but the span starts at the category's own
+ * first spend, so a subscription started two months ago isn't diluted across two years of
+ * feed history it wasn't part of. Null when there's no history — an empty suggestion beats a
+ * made-up one.
  */
 export function suggestBudgetAmount(
   feed: FeedItem[],
   categoryId: string,
   today: Date = new Date(),
 ): number | null {
-  const monthKeys: string[] = []
-  for (let back = 1; back <= 3; back++) {
-    const d = new Date(today.getFullYear(), today.getMonth() - back, 1)
-    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
+  const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
 
-  const spendByMonth = new Map<string, number>(monthKeys.map((k) => [k, 0]))
+  const spendByMonth = new Map<string, number>()
   for (const item of feed) {
     if (item.categoryId !== categoryId || !countsTowardTotals(item)) continue
     const net = item.netAmount ?? item.amount
     if (net <= 0) continue // budgets track spending, not income
     const key = item.date.slice(0, 7)
-    if (!spendByMonth.has(key)) continue
-    spendByMonth.set(key, spendByMonth.get(key)! + net)
+    if (key >= currentKey) continue // partial current month (and any future-dated rows)
+    spendByMonth.set(key, (spendByMonth.get(key) ?? 0) + net)
   }
+  if (spendByMonth.size === 0) return null
 
-  const values = [...spendByMonth.values()].filter((v) => v > 0).sort((a, b) => a - b)
-  if (values.length === 0) return null
-  const mid = Math.floor(values.length / 2)
-  const median = values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2
+  // Full months from the first spend through last month, inclusive — the divisor that makes
+  // skipped months count as zeros.
+  const firstKey = [...spendByMonth.keys()].sort()[0]
+  const [firstYear, firstMonth] = firstKey.split('-').map(Number)
+  const monthsSpanned = (today.getFullYear() - firstYear) * 12 + (today.getMonth() + 1 - firstMonth)
+
+  const total = [...spendByMonth.values()].reduce((sum, v) => sum + v, 0)
+  const average = total / Math.max(1, monthsSpanned)
   // A budget of $83.47 reads as noise — round to a number a person would have picked.
-  return Math.max(5, Math.round(median / 5) * 5)
+  return Math.max(5, Math.round(average / 5) * 5)
 }

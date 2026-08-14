@@ -90,12 +90,24 @@ describe('suggestBudgetAmount', () => {
   }
   const today = new Date(2026, 7, 15) // Aug 2026 -> looks at May, Jun, Jul
 
-  it('suggests the median of the last three full months, rounded to a human number', () => {
+  it('suggests the all-time average of full months, rounded to a human number', () => {
     const feed = [
       spend('1', '2026-05-10', 380), spend('2', '2026-06-10', 442), spend('3', '2026-07-10', 401),
       spend('4', '2026-08-10', 999), // current month is partial — ignored
     ]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBe(400) // median 401 -> rounded to 400
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(410) // (380+442+401)/3 = 407.67 -> 410
+  })
+
+  it('starts the average at the first spend and counts skipped months as zeros', () => {
+    // First spend Feb, nothing in Mar-Jun, spend again in Jul: 6 full months spanned.
+    const feed = [spend('1', '2026-02-10', 600), spend('2', '2026-07-10', 600)]
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(200) // 1200/6
+  })
+
+  it('does not dilute a recently started category across older feed history', () => {
+    // Other categories go back to 2025; this one started in July at $50.
+    const feed = [spend('1', '2025-01-10', 900, 'other'), spend('2', '2026-07-10', 50)]
+    expect(suggestBudgetAmount(feed, 'food', today)).toBe(50) // 50/1, not 50/19
   })
 
   it('ignores pending rows and other categories, and returns null with no history', () => {
