@@ -88,31 +88,48 @@ describe('suggestBudgetAmount', () => {
       isBrokerageCashAccount: false, isSweptOutflow: false, links: [],
     } as FeedItem
   }
-  const today = new Date(2026, 7, 15) // Aug 2026 -> looks at May, Jun, Jul
+  const today = new Date(2026, 7, 15) // Aug 15, 2026
+  const august = { year: 2026, month: 8 } // viewing the current month -> window May, Jun, Jul
 
-  it('suggests the average of the last three full months, rounded to a human number', () => {
+  it('suggests the average of the three full months before the viewed month', () => {
     const feed = [
       spend('1', '2026-05-10', 380), spend('2', '2026-06-10', 442), spend('3', '2026-07-10', 401),
       spend('4', '2026-08-10', 999), // current month is partial — ignored
     ]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBe(410) // (380+442+401)/3 = 407.67 -> 410
+    expect(suggestBudgetAmount(feed, 'food', august, today)).toEqual({ amount: 410, months: 3 }) // 407.67 -> 410
+  })
+
+  it('rolls the window with the viewed month, not with today', () => {
+    const feed = [
+      spend('1', '2026-03-10', 100), spend('2', '2026-04-10', 200), spend('3', '2026-05-10', 300),
+      spend('4', '2026-06-10', 600), spend('5', '2026-07-10', 900),
+    ]
+    // Viewing July -> Apr, May, Jun; viewing August -> May, Jun, Jul.
+    expect(suggestBudgetAmount(feed, 'food', { year: 2026, month: 7 }, today)!.amount).toBe(365) // (200+300+600)/3
+    expect(suggestBudgetAmount(feed, 'food', august, today)!.amount).toBe(600) // (300+600+900)/3
+  })
+
+  it('drops unfinished months from a future viewed month instead of averaging them', () => {
+    const feed = [spend('1', '2026-06-10', 300), spend('2', '2026-07-10', 600), spend('3', '2026-08-10', 999)]
+    // Viewing September -> Jun, Jul, Aug, but August is still in progress: average Jun+Jul only.
+    expect(suggestBudgetAmount(feed, 'food', { year: 2026, month: 9 }, today)).toEqual({ amount: 450, months: 2 })
   })
 
   it('counts zero-spend months inside the window as zeros', () => {
     // Long-running category (history before the window), spent in only 1 of the last 3 months.
     const feed = [spend('1', '2026-01-10', 999), spend('2', '2026-06-10', 300)]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBe(100) // 300/3, not 300/1
+    expect(suggestBudgetAmount(feed, 'food', august, today)).toEqual({ amount: 100, months: 3 }) // 300/3
   })
 
   it('does not dilute a category younger than the window', () => {
     // First-ever spend in July at $50: divide by 1 month of history, not 3.
     const feed = [spend('1', '2025-01-10', 900, 'other'), spend('2', '2026-07-10', 50)]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBe(50) // 50/1, not 50/3
+    expect(suggestBudgetAmount(feed, 'food', august, today)).toEqual({ amount: 50, months: 1 })
   })
 
   it('returns null for a dormant category with no spend in the window', () => {
     const feed = [spend('1', '2026-01-10', 500)]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBeNull()
+    expect(suggestBudgetAmount(feed, 'food', august, today)).toBeNull()
   })
 
   it('ignores pending rows and other categories, and returns null with no history', () => {
@@ -120,6 +137,6 @@ describe('suggestBudgetAmount', () => {
       { ...spend('1', '2026-06-10', 300), pending: true },
       spend('2', '2026-06-11', 120, 'other'),
     ]
-    expect(suggestBudgetAmount(feed, 'food', today)).toBeNull()
+    expect(suggestBudgetAmount(feed, 'food', august, today)).toBeNull()
   })
 })
