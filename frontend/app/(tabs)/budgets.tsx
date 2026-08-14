@@ -1,18 +1,17 @@
 import { useMemo, useState } from 'react'
-import { ScrollView, Text, View } from 'react-native'
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { colors } from '@/constants/theme'
+import { colors, shadow } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { useBudgets } from '@/hooks/useBudgets'
 import { useCategories } from '@/hooks/useCategories'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { BudgetCard } from '@/components/budgets/BudgetCard'
-import { BudgetProgressBar } from '@/components/budgets/BudgetProgressBar'
+import { BudgetSplitBar } from '@/components/budgets/BudgetSplitBar'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { TextField } from '@/components/ui/TextField'
-import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -21,13 +20,38 @@ import { formatAmount } from '@/lib/format/money'
 import { filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { useSelectedMonth } from '@/hooks/useSelectedMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
-import type { Budget } from '@/types/domain'
+import {
+  budgetStatus,
+  dailyAllowance,
+  monthElapsedFraction,
+  monthKey,
+  resolveBudgetsForMonth,
+  suggestBudgetAmount,
+} from '@/lib/budgets/budgetMath'
+
+const ALERT_PRESETS = [50, 75, 90, 100]
+
+/** Dollars → whole-percent-of-budget, the unit alerts are stored in (they scale with edits). */
+function toThresholdPercent(alertDollars: number, budgetDollars: number): number {
+  return Math.min(100, Math.max(1, Math.round((alertDollars / budgetDollars) * 100)))
+}
+
+function toDollarText(n: number): string {
+  return String(Math.round(n * 100) / 100)
+}
+
+function formatEffectiveMonth(effectiveMonth: string): string {
+  const [year, month] = effectiveMonth.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
 
 export default function BudgetsScreen() {
   const [month, setMonth] = useSelectedMonth()
-  const [settingCategoryId, setSettingCategoryId] = useState<string | null>(null)
-  const [newAmount, setNewAmount] = useState('')
-  const [newPeriod, setNewPeriod] = useState<Budget['period']>('monthly')
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [amountText, setAmountText] = useState('')
+  const [alertOn, setAlertOn] = useState(false)
+  const [alertAmountText, setAlertAmountText] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const { feed, isLoading, error } = useTransactionFeed()
@@ -35,40 +59,87 @@ export default function BudgetsScreen() {
   const categories = useCategories()
 
   const monthFeed = useMemo(() => filterByMonth(feed, month), [feed, month])
-
   const { spendByCategory } = useMemo(() => aggregateMonth(monthFeed), [monthFeed])
-
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 
+  // Budgets are effective-dated: the viewed month sees whatever amount was in force then, so
+  // browsing back never rewrites history with today's numbers.
+  const resolved = useMemo(() => resolveBudgetsForMonth(budgets.data ?? [], month), [budgets.data, month])
+  const elapsed = useMemo(() => monthElapsedFraction(month), [month])
+  const paceFraction = elapsed > 0 && elapsed < 1 ? elapsed : null
+
   const budgetedRows = useMemo(() => {
-    return (budgets.data ?? [])
+    return [...resolved.values()]
       .map((budget) => {
         const spent = spendByCategory.get(budget.categoryId) ?? 0
-        const percent = Number(budget.amount) > 0 ? (spent / Number(budget.amount)) * 100 : 0
-        return { budget, spent, percent }
+        return { budget, spent, status: budgetStatus(spent, budget.amount, elapsed) }
       })
-      .sort((a, b) => b.percent - a.percent)
-  }, [budgets.data, spendByCategory])
+      .sort((a, b) => b.spent / b.budget.amount - a.spent / a.budget.amount)
+  }, [resolved, spendByCategory, elapsed])
 
+  // Categories with real spending history float to the top with their typical month shown —
+  // that's where a budget is actually useful. Income-ish categories naturally sink to the
+  // bottom because they have no net spend (categories carry no income/expense flag to filter on).
   const unbudgetedCategories = useMemo(() => {
-    const budgetedIds = new Set((budgets.data ?? []).map((b) => b.categoryId))
-    return (categories.data ?? []).filter((c) => !budgetedIds.has(c.id))
-  }, [categories.data, budgets.data])
+    return (categories.data ?? [])
+      .filter((c) => !resolved.has(c.id))
+      .map((category) => ({ category, typical: suggestBudgetAmount(feed, category.id) }))
+      .sort((a, b) => (b.typical ?? 0) - (a.typical ?? 0) || a.category.name.localeCompare(b.category.name))
+  }, [categories.data, resolved, feed])
 
-  const totalSpent = (budgets.data ?? []).reduce((sum, b) => sum + (spendByCategory.get(b.categoryId) ?? 0), 0)
-  const totalBudget = (budgets.data ?? []).reduce((sum, b) => sum + Number(b.amount), 0)
-  const overallPercent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
+  const totalBudget = budgetedRows.reduce((sum, row) => sum + row.budget.amount, 0)
+  const totalSpent = budgetedRows.reduce((sum, row) => sum + row.spent, 0)
+  const totalRemaining = totalBudget - totalSpent
+  const allowance = dailyAllowance(totalRemaining, month)
+  const overallStatus = budgetStatus(totalSpent, totalBudget, elapsed)
 
-  const isValidAmount = /^\d+(\.\d{1,2})?$/.test(newAmount) && Number(newAmount) > 0
+  const editingBudget = editingCategoryId ? (resolved.get(editingCategoryId) ?? null) : null
+  const editingCategory = editingCategoryId ? categoryById.get(editingCategoryId) : null
+  const suggestion = useMemo(
+    () => (editingCategoryId && !editingBudget ? suggestBudgetAmount(feed, editingCategoryId) : null),
+    [feed, editingCategoryId, editingBudget],
+  )
 
-  async function handleSetBudget() {
-    if (!settingCategoryId || !isValidAmount) return
+  const isValidAmount = /^\d+(\.\d{1,2})?$/.test(amountText) && Number(amountText) > 0
+  const isValidAlertAmount =
+    /^\d+(\.\d{1,2})?$/.test(alertAmountText) &&
+    Number(alertAmountText) > 0 &&
+    isValidAmount &&
+    Number(alertAmountText) <= Number(amountText)
+  const alertPercent = isValidAlertAmount ? toThresholdPercent(Number(alertAmountText), Number(amountText)) : null
+
+  function openSheet(categoryId: string) {
+    const existing = resolved.get(categoryId)
+    setAmountText(existing ? String(existing.amount) : '')
+    setAlertOn(existing?.alertThreshold != null)
+    setAlertAmountText(
+      existing?.alertThreshold != null ? toDollarText((existing.alertThreshold / 100) * existing.amount) : '',
+    )
+    setSaveError(null)
+    setEditingCategoryId(categoryId)
+  }
+
+  function enableAlert(on: boolean) {
+    setAlertOn(on)
+    // Seed a sensible default so the box isn't empty the moment the toggle flips on.
+    if (on && alertAmountText === '' && isValidAmount) setAlertAmountText(toDollarText(Number(amountText) * 0.9))
+  }
+
+  async function save(amount: string | null) {
+    if (!editingCategoryId) return
+    setIsSaving(true)
     try {
-      await budgets.create({ categoryId: settingCategoryId, amount: newAmount, period: newPeriod })
-      setSettingCategoryId(null)
-      setNewAmount('')
+      await budgets.set({
+        categoryId: editingCategoryId,
+        effectiveMonth: monthKey(month),
+        amount,
+        alertThreshold: amount !== null && alertOn && alertPercent != null ? alertPercent : null,
+      })
+      setEditingCategoryId(null)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save this budget. Try again.')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -94,24 +165,36 @@ export default function BudgetsScreen() {
         </View>
 
         {error ? <ErrorBanner message="Something went wrong loading your budgets." /> : null}
-        {saveError ? <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} /> : null}
 
-        <View className="gap-2">
-          <Text className="font-sans text-base text-textSecondary">
-            Overall {formatAmount(totalSpent)} / {formatAmount(totalBudget)}
-          </Text>
-          <BudgetProgressBar percent={overallPercent} />
-        </View>
+        {budgetedRows.length > 0 ? (
+          <View className="gap-3 rounded-md bg-surface p-4" style={shadow.sm}>
+            <View className="flex-row items-baseline justify-between">
+              <Text className="font-sansSemi text-base text-textPrimary">Monthly budget</Text>
+              <Text className="font-mono text-base text-textPrimary">{formatAmount(totalBudget)}</Text>
+            </View>
+            <BudgetSplitBar spent={totalSpent} amount={totalBudget} status={overallStatus} paceFraction={paceFraction} />
+            {allowance != null && totalRemaining > 0 ? (
+              <Text className="font-sans text-sm text-textMuted">
+                About <Text className="font-mono text-textSecondary">{formatAmount(allowance)}</Text> a day for the rest of the month.
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <EmptyState message="No budgets for this month yet. Pick a category below to set one." />
+        )}
 
         <View className="gap-3">
-          {budgetedRows.map(({ budget, spent }) => (
+          {budgetedRows.map(({ budget, spent, status }) => (
             <BudgetCard
-              key={budget.id}
+              key={budget.budgetId}
               categoryName={categoryById.get(budget.categoryId)?.name ?? 'Unknown'}
               categoryIcon={categoryById.get(budget.categoryId)?.icon ?? null}
+              categoryColor={categoryById.get(budget.categoryId)?.color}
               spent={spent}
-              budget={Number(budget.amount)}
-              onPress={() => router.push({ pathname: '/(tabs)/transactions', params: { categoryId: budget.categoryId } })}
+              amount={budget.amount}
+              status={status}
+              paceFraction={paceFraction}
+              onPress={() => openSheet(budget.categoryId)}
             />
           ))}
         </View>
@@ -119,40 +202,150 @@ export default function BudgetsScreen() {
         {unbudgetedCategories.length > 0 ? (
           <View className="gap-2">
             <Text className="font-sansMed text-sm text-textMuted">No budget set</Text>
-            {unbudgetedCategories.map((category) => (
-              <View key={category.id} className="flex-row items-center justify-between rounded-md bg-surface p-4">
-                <View className="flex-row items-center gap-2">
+            {unbudgetedCategories.map(({ category, typical }) => (
+              <Pressable
+                key={category.id}
+                onPress={() => openSheet(category.id)}
+                accessibilityRole="button"
+                className="flex-row items-center justify-between rounded-md bg-surface p-4"
+              >
+                <View className="flex-1 flex-row items-center gap-2 pr-3">
                   <CategoryIcon icon={category.icon} size={18} color={category.color} />
-                  <Text className="font-sansMed text-base text-textPrimary">{category.name}</Text>
+                  <Text className="font-sansMed text-base text-textPrimary" numberOfLines={1}>
+                    {category.name}
+                  </Text>
+                  {typical != null ? (
+                    <Text className="font-sans text-xs text-textMuted">~{formatAmount(typical)}/mo</Text>
+                  ) : null}
                 </View>
-                <Text
-                  onPress={() => setSettingCategoryId(category.id)}
-                  className="font-sansMed text-sm text-primary"
-                >
-                  Set
-                </Text>
-              </View>
+                <Text className="font-sansMed text-sm text-primary">Set</Text>
+              </Pressable>
             ))}
           </View>
         ) : null}
       </ScrollView>
 
-      <BottomSheet visible={settingCategoryId != null} onClose={() => setSettingCategoryId(null)}>
-        <Text className="mb-4 font-sansSemi text-lg text-textPrimary">Set Budget</Text>
-        <TextField label="Amount" value={newAmount} onChangeText={setNewAmount} keyboardType="decimal-pad" placeholder="200.00" mono />
-        <View className="mt-4">
-          <SegmentedControl
-            options={[
-              { label: 'Weekly', value: 'weekly' as const },
-              { label: 'Monthly', value: 'monthly' as const },
-              { label: 'Yearly', value: 'yearly' as const },
-            ]}
-            value={newPeriod}
-            onChange={setNewPeriod}
-          />
-        </View>
-        <View className="mt-4">
-          <Button label="Save Budget" onPress={handleSetBudget} disabled={!isValidAmount} />
+      <BottomSheet visible={editingCategoryId != null} onClose={() => setEditingCategoryId(null)}>
+        <View className="px-5 pb-8">
+          <View className="mb-5 flex-row items-center gap-3">
+            {editingCategory ? <CategoryIcon icon={editingCategory.icon} size={34} color={editingCategory.color} /> : null}
+            <View className="flex-1">
+              <Text className="font-sansSemi text-base text-textPrimary" numberOfLines={1}>
+                {editingCategory?.name ?? 'Set budget'}
+              </Text>
+              {editingBudget ? (
+                <Text className="font-sans text-xs text-textMuted">
+                  Budgeting since {formatEffectiveMonth(editingBudget.effectiveMonth)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {saveError ? (
+            <View className="mb-4">
+              <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} />
+            </View>
+          ) : null}
+
+          <View className="gap-2">
+            <TextField
+              label="Monthly amount"
+              value={amountText}
+              onChangeText={setAmountText}
+              keyboardType="decimal-pad"
+              placeholder={suggestion != null ? String(suggestion) : '200.00'}
+              mono
+            />
+            {suggestion != null && !editingBudget ? (
+              <Pressable onPress={() => setAmountText(String(suggestion))}>
+                <Text className="font-sans text-sm text-textMuted">
+                  You typically spend about <Text className="font-mono text-textSecondary">{formatAmount(suggestion)}</Text> a month —{' '}
+                  <Text className="font-sansMed text-primary">use it</Text>
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <View className="my-5 h-px bg-border" />
+
+          <View className="gap-4">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 pr-3">
+                <Text className="font-sansMed text-base text-textPrimary">Notify me</Text>
+                <Text className="font-sans text-xs text-textMuted">Get an alert when spending reaches your line.</Text>
+              </View>
+              <Switch value={alertOn} onValueChange={enableAlert} />
+            </View>
+
+            {alertOn ? (
+              <View className="gap-2">
+                <TextField
+                  label="Alert me at"
+                  value={alertAmountText}
+                  onChangeText={setAlertAmountText}
+                  keyboardType="decimal-pad"
+                  placeholder={isValidAmount ? toDollarText(Number(amountText) * 0.9) : '450.00'}
+                  mono
+                />
+                <View className="flex-row gap-2">
+                  {ALERT_PRESETS.map((pct) => {
+                    const isSelected = alertPercent === pct
+                    return (
+                      <Pressable
+                        key={pct}
+                        onPress={() => {
+                          if (isValidAmount) setAlertAmountText(toDollarText(Number(amountText) * (pct / 100)))
+                        }}
+                        className={`flex-1 items-center rounded-full border px-3 py-1.5 ${
+                          isSelected ? 'border-primary bg-primaryMuted' : 'border-border bg-surface'
+                        }`}
+                      >
+                        <Text className={`font-sansMed text-sm ${isSelected ? 'text-primary' : 'text-textSecondary'}`}>
+                          {pct}%
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+                {alertPercent != null ? (
+                  <Text className="font-sans text-xs text-textMuted">
+                    That&apos;s about {alertPercent}% of this budget.
+                  </Text>
+                ) : alertAmountText !== '' ? (
+                  <Text className="font-sans text-xs text-textMuted">Pick an amount between $0 and your budget.</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          <View className="mt-6 gap-3">
+            <Button
+              label={editingBudget ? 'Save changes' : 'Set budget'}
+              onPress={() => save(amountText)}
+              disabled={!isValidAmount || (alertOn && alertPercent == null) || isSaving}
+            />
+            <View className="flex-row items-center justify-center gap-2">
+              <Text
+                onPress={() => {
+                  if (!editingCategoryId) return
+                  const categoryId = editingCategoryId
+                  setEditingCategoryId(null)
+                  router.push({ pathname: '/(tabs)/transactions', params: { categoryId } })
+                }}
+                className="px-2 py-1 font-sansMed text-sm text-primary"
+              >
+                View transactions
+              </Text>
+              {editingBudget ? (
+                <>
+                  <Text className="font-sans text-sm text-textMuted">·</Text>
+                  <Text onPress={() => save(null)} disabled={isSaving} className="px-2 py-1 font-sansMed text-sm text-expense">
+                    Stop budgeting
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
         </View>
       </BottomSheet>
     </SafeAreaView>

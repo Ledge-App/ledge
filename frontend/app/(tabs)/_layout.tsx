@@ -1,8 +1,15 @@
 import { Ionicons } from '@expo/vector-icons'
 import { Redirect, Tabs } from 'expo-router'
 import { useSession } from '@/lib/supabase/auth'
+import { useBudgetAlerts } from '@/hooks/useBudgetAlerts'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/constants/theme'
+
+// Rendered (not called) inside the authed layout so its data hooks never run logged-out.
+function BudgetAlertWatcher() {
+  useBudgetAlerts()
+  return null
+}
 
 export default function TabsLayout() {
   const { session, isLoading } = useSession()
@@ -11,7 +18,9 @@ export default function TabsLayout() {
   if (!session) return <Redirect href="/(auth)/login" />
 
   return (
-    <Tabs
+    <>
+      <BudgetAlertWatcher />
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -41,16 +50,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="budgets"
+        options={{
+          title: 'Budgets',
+          tabBarIcon: ({ color, size }) => <Ionicons name="pie-chart" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => <Ionicons name="settings" color={color} size={size} />,
         }}
       />
-      <Tabs.Screen
-        name="budgets"
-        options={{ href: null }}
-      />
-    </Tabs>
+      </Tabs>
+    </>
   )
 }

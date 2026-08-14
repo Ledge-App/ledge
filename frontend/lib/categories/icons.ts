@@ -71,3 +71,34 @@ export function resolveCategoryIcon(slug: string | null | undefined): FC<SvgProp
 export function isLegacyEmojiIcon(icon: string | null | undefined): boolean {
   return !!icon && !(icon in CATEGORY_ICONS)
 }
+
+/**
+ * Emoji stand-ins for the SVG set, for surfaces that can't render components — notification
+ * titles, share text. Legacy emoji icons are already emoji and pass through as-is.
+ */
+const CATEGORY_ICON_EMOJI: Record<string, string> = {
+  'bills-and-utilities': '🧾',
+  entertainment: '🎮',
+  fee: '🏦',
+  'food-and-drink': '🍔',
+  health: '💊',
+  home: '🏠',
+  income: '💵',
+  'loan-received': '💰',
+  other: '🗂️',
+  payments: '💳',
+  'personal-care': '🧴',
+  services: '🛠️',
+  shopping: '🛍️',
+  'transfer-in': '📥',
+  'transfer-out': '📤',
+  transport: '🚌',
+  travel: '✈️',
+  uncategorized: '💸',
+}
+
+export function categoryIconEmoji(icon: string | null | undefined): string {
+  if (!icon) return CATEGORY_ICON_EMOJI[FALLBACK_ICON_SLUG]
+  if (isLegacyEmojiIcon(icon)) return icon
+  return CATEGORY_ICON_EMOJI[icon] ?? CATEGORY_ICON_EMOJI[FALLBACK_ICON_SLUG]
+}

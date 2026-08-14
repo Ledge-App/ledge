@@ -22,6 +22,7 @@ import { useSelectedMonth } from '@/hooks/useSelectedMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { UNCATEGORIZED_ID, computeDonutSegments } from '@/lib/transactions/visualizationData'
 import type { DonutSegment } from '@/lib/transactions/visualizationData'
+import { resolveBudgetsForMonth } from '@/lib/budgets/budgetMath'
 
 export default function DashboardScreen() {
   const [month, setMonth] = useSelectedMonth()
@@ -46,6 +47,10 @@ export default function DashboardScreen() {
     () => aggregateMonth(monthFeed),
     [monthFeed],
   )
+
+  // Budgets are effective-dated: the ring on each card must reflect the amount in force for the
+  // viewed month (and vanish for months where the budget didn't exist or was stopped).
+  const resolvedBudgets = useMemo(() => resolveBudgetsForMonth(budgets.data ?? [], month), [budgets.data, month])
 
   // The category cards open the same detail sheet the donut chart does, so their segments are
   // built the same way — otherwise a card and its chart slice could disagree on percentage or
@@ -192,7 +197,7 @@ export default function DashboardScreen() {
                     icon={category.icon}
                     color={category.color}
                     spent={spendByCategory.get(category.id) ?? 0}
-                    budget={budgets.data?.find((b) => b.categoryId === category.id) ? Number(budgets.data.find((b) => b.categoryId === category.id)!.amount) : null}
+                    budget={resolvedBudgets.get(category.id)?.amount ?? null}
                     onPress={() => openCategoryDetail(category.id, 'expense')}
                   />
                 </View>

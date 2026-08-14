@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  integer,
   numeric,
   pgSchema,
   pgTable,
@@ -136,14 +137,25 @@ export const transactionOverrides = pgTable('transaction_overrides', {
   uniqueTransactionOverride: unique().on(table.userId, table.plaidTransactionId),
 }))
 
+// Budgets are monthly and EFFECTIVE-DATED: one row per (category, month-it-took-effect), and a
+// viewed month resolves each category's latest row with effective_month <= that month. Editing an
+// amount inserts a new row for the current month instead of rewriting the past, so July still
+// shows the budget that was in force in July. A NULL amount is a tombstone ("stopped budgeting
+// this from here on"). `period` is legacy — pre-migration rows were normalized to monthly and the
+// column stays only so old clients keep working.
 export const budgets = pgTable('budgets', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id),
   categoryId: uuid('category_id').notNull().references(() => categories.id),
-  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-  period: text('period').notNull(), // 'monthly' | 'weekly' | 'yearly'
+  amount: numeric('amount', { precision: 12, scale: 2 }),
+  period: text('period').notNull().default('monthly'),
+  effectiveMonth: date('effective_month').notNull().default(sql`date_trunc('month', now())::date`),
+  /** Notify when spend crosses this percent of the budget (1-100); null = no alert. */
+  alertThreshold: integer('alert_threshold'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => ({
+  uniqueCategoryMonth: unique().on(table.userId, table.categoryId, table.effectiveMonth),
+}))
 
 // A transfer between the user's own accounts (or a credit card payment) shows up twice in the
 // feed — once as an expense on the source account, once as income on the destination. Both legs

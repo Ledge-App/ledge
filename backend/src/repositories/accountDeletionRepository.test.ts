@@ -13,7 +13,10 @@ const tx = {
 const dbMock = { transaction: vi.fn(async (fn: (t: typeof tx) => Promise<void>) => fn(tx)) }
 vi.mock('../lib/db/client.js', () => ({ db: dbMock }))
 
-vi.mock('drizzle-orm', () => ({
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  // Real module underneath: the schema evaluates drizzle helpers (sql\`\`, defaults) at import
+  // time, so a closed mock breaks on every helper the schema grows to use.
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
   eq: vi.fn((col: unknown, val: unknown) => ({ op: 'eq', col, val })),
 }))
 
