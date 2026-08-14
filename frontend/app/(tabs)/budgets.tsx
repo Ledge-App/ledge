@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
-import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors, shadow } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
@@ -10,7 +9,7 @@ import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { BudgetCard } from '@/components/budgets/BudgetCard'
 import { BudgetSplitBar } from '@/components/budgets/BudgetSplitBar'
 import { MonthNavigator } from '@/components/transactions/MonthNavigator'
-import { BottomSheet } from '@/components/ui/BottomSheet'
+import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { TextField } from '@/components/ui/TextField'
 import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
@@ -46,6 +45,7 @@ function formatEffectiveMonth(effectiveMonth: string): string {
 }
 
 export default function BudgetsScreen() {
+  const sheetScroll = useSheetScroll()
   const [month, setMonth] = useSelectedMonth()
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [amountText, setAmountText] = useState('')
@@ -225,8 +225,9 @@ export default function BudgetsScreen() {
         ) : null}
       </ScrollView>
 
-      <BottomSheet visible={editingCategoryId != null} onClose={() => setEditingCategoryId(null)}>
-        <View className="px-5 pb-8">
+      <BottomSheet visible={editingCategoryId != null} onClose={() => setEditingCategoryId(null)} contentScroll={sheetScroll}>
+        {/* Scrollable so the save button stays reachable when the keyboard shrinks the sheet. */}
+        <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="pb-8" keyboardShouldPersistTaps="handled">
           <View className="mb-5 flex-row items-center gap-3">
             {editingCategory ? <CategoryIcon icon={editingCategory.icon} size={34} color={editingCategory.color} /> : null}
             <View className="flex-1">
@@ -324,29 +325,17 @@ export default function BudgetsScreen() {
               onPress={() => save(amountText)}
               disabled={!isValidAmount || (alertOn && alertPercent == null) || isSaving}
             />
-            <View className="flex-row items-center justify-center gap-2">
+            {editingBudget ? (
               <Text
-                onPress={() => {
-                  if (!editingCategoryId) return
-                  const categoryId = editingCategoryId
-                  setEditingCategoryId(null)
-                  router.push({ pathname: '/(tabs)/transactions', params: { categoryId } })
-                }}
-                className="px-2 py-1 font-sansMed text-sm text-primary"
+                onPress={() => save(null)}
+                disabled={isSaving}
+                className="self-center px-2 py-1 text-center font-sansMed text-sm text-expense"
               >
-                View transactions
+                Stop budgeting
               </Text>
-              {editingBudget ? (
-                <>
-                  <Text className="font-sans text-sm text-textMuted">·</Text>
-                  <Text onPress={() => save(null)} disabled={isSaving} className="px-2 py-1 font-sansMed text-sm text-expense">
-                    Stop budgeting
-                  </Text>
-                </>
-              ) : null}
-            </View>
+            ) : null}
           </View>
-        </View>
+        </ScrollView>
       </BottomSheet>
     </SafeAreaView>
   )
