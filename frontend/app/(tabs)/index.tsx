@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useBudgets } from '@/hooks/useBudgets'
 import { useCategories } from '@/hooks/useCategories'
@@ -31,7 +32,8 @@ export default function DashboardScreen() {
   const [vizMode, setVizMode] = useState(false)
   const [detailState, setDetailState] = useState<{ segment: DonutSegment; mode: 'expense' | 'income' } | null>(null)
 
-  const { feed, isLoading, error } = useTransactionFeed()
+  const { feed, isLoading, error, refresh } = useTransactionFeed()
+  const refreshControl = usePullToRefresh(refresh)
   const accounts = useAccounts()
   const budgets = useBudgets()
   const categories = useCategories()
@@ -175,7 +177,7 @@ export default function DashboardScreen() {
           />
         </>
       ) : (
-        <ScrollView contentContainerClassName="gap-5 px-5 py-4">
+        <ScrollView contentContainerClassName="gap-5 px-5 py-4" refreshControl={refreshControl}>
           {topBar}
           {errorBanner}
 

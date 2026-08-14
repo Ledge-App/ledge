@@ -159,13 +159,21 @@ export function useTransactionFeed() {
     },
   })
 
-  const { mutate: runSync } = syncMutation
+  const { mutate: runSync, mutateAsync: runSyncAsync } = syncMutation
+
+  // The in-flight user/effect-initiated sync. Pull-to-refresh awaits this promise, and an
+  // overlapping trigger (a second pull, a re-fired effect) joins it instead of racing a
+  // second request against the same cursors.
+  const syncPromiseRef = useRef<Promise<void> | null>(null)
 
   // Reads cursors fresh from MMKV at trigger time rather than memoizing them, so a sync
-  // never resends a cursor that a previous sync already advanced past.
+  // never resends a cursor that a previous sync already advanced past. Resolves once the
+  // first round has landed and merged (onSuccess runs before mutateAsync settles); any
+  // further drain rounds continue in the background, as they always have.
   const triggerSync = useCallback(
-    (ids: string[]) => {
-      if (ids.length === 0) return
+    (ids: string[]): Promise<void> => {
+      if (ids.length === 0) return Promise.resolve()
+      if (syncPromiseRef.current) return syncPromiseRef.current
       // A fresh user/effect-initiated sync starts a new drain sequence.
       drainRoundsRef.current = 0
       const cursors: Record<string, string> = {}
@@ -173,13 +181,24 @@ export function useTransactionFeed() {
         const cursor = getCursor(itemId)
         if (cursor) cursors[itemId] = cursor
       }
-      runSync({ cursors })
+      const promise = (async () => {
+        try {
+          await runSyncAsync({ cursors })
+        } catch {
+          // Swallowed on purpose: failures already surface through syncMutation.error, and
+          // awaiting callers (pull-to-refresh) only care that the attempt has settled.
+        } finally {
+          syncPromiseRef.current = null
+        }
+      })()
+      syncPromiseRef.current = promise
+      return promise
     },
-    [runSync],
+    [runSyncAsync],
   )
 
   useEffect(() => {
-    triggerSync(itemIds)
+    void triggerSync(itemIds)
   }, [itemIds, triggerSync])
 
   const rawTransactions = useMemo(
@@ -339,6 +358,10 @@ export function useTransactionFeed() {
     })()
   }, [feed, transfers.data, deleteTransfer])
 
+  // Memoized so pull-to-refresh consumers (usePullToRefresh) don't rebuild their
+  // RefreshControl on every feed render. Resolves when the sync settles — see triggerSync.
+  const refresh = useCallback(() => triggerSync(itemIds), [triggerSync, itemIds])
+
   return {
     feed,
     categoryById,
@@ -372,6 +395,6 @@ export function useTransactionFeed() {
     // The array is kept because the sync errors in it are genuinely diagnostic; any UI that
     // surfaces it must first filter down to the codes that are actionable for the user.
     itemErrors: [...(syncMutation.data?.itemErrors ?? []), ...investmentTransactions.itemErrors],
-    refresh: () => triggerSync(itemIds),
+    refresh,
   }
 }
