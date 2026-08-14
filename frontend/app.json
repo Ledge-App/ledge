@@ -35,7 +35,6 @@
       "output": "single"
     },
     "plugins": [
-      "./plugins/without-push-entitlement.js",
       "expo-router",
       "expo-status-bar",
       [
@@ -52,8 +51,7 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.466182310065-t4qljvrapvh4fq8ime2hffnb002ku6hl"
         }
-      ],
-      "expo-notifications"
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/96613371-347c-470f-9fee-122140c33376"
