@@ -23,15 +23,17 @@ interface TransactionDetailSheetProps {
   categories: Category[]
   subcategories: Subcategory[]
   pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
+  /** Covers the save's whole run of writes, not one mutation — see isSavingDetail on the editor. */
+  isSaving: boolean
   onClose: () => void
   onSave: (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean; note: string | null }) => void
   onOpenTransfer: (forcedKind?: TransferKind) => void
   onClearPendingTransfer: () => void
   onUnmarkTransfer: () => void
-  onUnlink: (link: FeedLink) => void
+  onUnlink: (link: FeedLink) => Promise<void>
 }
 
-export function TransactionDetailSheet({ visible, item, categories, subcategories, pendingTransfer, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
+export function TransactionDetailSheet({ visible, item, categories, subcategories, pendingTransfer, isSaving, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
   const sheetScroll = useSheetScroll()
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
@@ -279,7 +281,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
 
         <LinkedTransactions item={item} onUnlink={onUnlink} />
 
-        <Button label="Save Changes" onPress={handleSave} />
+        <Button label="Save Changes" onPress={handleSave} loading={isSaving} />
       </ScrollView>
     </BottomSheet>
   )

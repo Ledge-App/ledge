@@ -18,6 +18,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="categories" options={{ title: 'Categories' }} />
       <Stack.Screen name="category-form" options={{ title: 'Category' }} />
       <Stack.Screen name="institutions" options={{ title: 'Linked Institutions' }} />
+      <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
     </Stack>
   )
 }

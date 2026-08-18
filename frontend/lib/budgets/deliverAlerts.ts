@@ -3,6 +3,8 @@ import { MMKV } from 'react-native-mmkv'
 import { monthKey, resolveBudgetsForMonth } from '@/lib/budgets/budgetMath'
 import { findCrossedAlerts } from '@/lib/budgets/alertCheck'
 import { categoryIconEmoji } from '@/lib/categories/icons'
+import { ensureNotificationPermission } from '@/lib/notifications/permission'
+import { getBudgetAlertsEnabled } from '@/lib/notifications/preference'
 import { filterByMonth } from '@/lib/transactions/filterByMonth'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { formatAmount } from '@/lib/format/money'
@@ -17,10 +19,11 @@ const firedStore = new MMKV({ id: 'ledge-budget-alerts' })
  * the foreground watcher and the background task, so whichever sees a crossing first delivers
  * it and the other stays quiet.
  *
- * `canPrompt` gates the OS permission request: the foreground watcher may ask (the prompt lands
- * with obvious context — an alert is due), a background wake must not (iOS would reject it, and
- * a prompt with nobody looking is noise). Without permission the alerts stay unmarked, so
- * they're delivered the next time we run with permission granted.
+ * `canPrompt` is passed through to ensureNotificationPermission — the foreground watcher may ask,
+ * a background wake may not. This is no longer the only place the prompt can come from: arming an
+ * alert line on a budget asks at save time, so by the time a crossing lands permission is usually
+ * already settled. Without it the alerts stay unmarked, so they're delivered the next time we run
+ * with permission granted.
  */
 export async function deliverBudgetAlerts(input: {
   feed: FeedItem[]
@@ -28,6 +31,11 @@ export async function deliverBudgetAlerts(input: {
   categories: Category[]
   canPrompt: boolean
 }): Promise<number> {
+  // Checked before any work: switching alerts off should cost nothing per pass. The fired marks
+  // stay unwritten while off, so turning alerts back on announces whatever is still crossed —
+  // current facts about this month's budgets rather than a replay of moments that have passed.
+  if (!getBudgetAlertsEnabled()) return 0
+
   const today = new Date()
   const month = { year: today.getFullYear(), month: today.getMonth() + 1 }
   const resolved = resolveBudgetsForMonth(input.budgets, month)
@@ -37,11 +45,7 @@ export async function deliverBudgetAlerts(input: {
   const alerts = findCrossedAlerts(resolved, spendByCategory, monthKey(month), (key) => firedStore.getBoolean(key) ?? false)
   if (alerts.length === 0) return 0
 
-  let { granted, canAskAgain } = await Notifications.getPermissionsAsync()
-  if (!granted && canAskAgain && input.canPrompt) {
-    granted = (await Notifications.requestPermissionsAsync()).granted
-  }
-  if (!granted) return 0
+  if (!(await ensureNotificationPermission({ canPrompt: input.canPrompt }))) return 0
 
   const categoryById = new Map(input.categories.map((c) => [c.id, c]))
   let delivered = 0

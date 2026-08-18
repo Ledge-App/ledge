@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { ensureNotificationPermission } from '@/lib/notifications/permission'
 import { formatAmount } from '@/lib/format/money'
 import { filterByMonth, shiftMonth } from '@/lib/transactions/filterByMonth'
 import { useSelectedMonth } from '@/hooks/useSelectedMonth'
@@ -128,14 +129,20 @@ export default function BudgetsScreen() {
   async function save(amount: string | null) {
     if (!editingCategoryId) return
     setIsSaving(true)
+    const armsAlert = amount !== null && alertOn && alertPercent != null
     try {
       await budgets.set({
         categoryId: editingCategoryId,
         effectiveMonth: monthKey(month),
         amount,
-        alertThreshold: amount !== null && alertOn && alertPercent != null ? alertPercent : null,
+        alertThreshold: armsAlert ? alertPercent : null,
       })
       setEditingCategoryId(null)
+      // Ask here rather than waiting for the first crossing: the user just armed an alert, so the
+      // prompt is the answer to something they asked for, and it arms the background half now
+      // instead of leaving it mute until an app-open pass happens to catch a crossing. Not
+      // awaited — the sheet has already closed and the save must not hang on a dialog.
+      if (armsAlert) void ensureNotificationPermission({ canPrompt: true })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save this budget. Try again.')
     } finally {

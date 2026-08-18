@@ -1,4 +1,5 @@
-import { Image, Pressable, Text, View } from 'react-native'
+import { useState } from 'react'
+import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
@@ -8,7 +9,7 @@ import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 
 interface LinkedTransactionsProps {
   item: FeedItem
-  onUnlink: (link: FeedLink) => void
+  onUnlink: (link: FeedLink) => Promise<void>
 }
 
 /**
@@ -22,7 +23,20 @@ export function LinkedTransactions({ item, onUnlink }: LinkedTransactionsProps) 
   // Rides the shared accounts query cache, same as TransactionRow. Called before the early return
   // below so the hook order stays fixed across renders.
   const institutionLogos = useInstitutionLogos()
+  // Per link, not one flag for the section: unlinking is two round trips (the dismissal, then the
+  // delete) and several links can be listed, so the spinner has to name the one being removed.
+  // Held above the early return below to keep hook order fixed, same as the logos.
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const logoFor = (link: FeedLink) => (link.accountId ? institutionLogos.get(link.accountId) ?? null : null)
+
+  const handleUnlink = async (link: FeedLink) => {
+    setRemovingId(link.recordId)
+    try {
+      await onUnlink(link)
+    } finally {
+      setRemovingId(null)
+    }
+  }
 
   if (item.links.length === 0) return null
 
@@ -84,13 +98,29 @@ export function LinkedTransactions({ item, onUnlink }: LinkedTransactionsProps) 
           <View className="flex-row items-center justify-between gap-3">
             <Text className="font-sansMed text-sm text-textPrimary">{link.date}</Text>
             <Pressable
-              onPress={() => onUnlink(link)}
+              onPress={() => void handleUnlink(link)}
+              // Any removal in flight locks every chip: they all write to the same link set, and a
+              // second tap while one is mid-flight is the accidental double-unlink, not a choice.
+              disabled={removingId != null}
               hitSlop={8}
               accessibilityRole="button"
-              className="rounded-full border px-3 py-1"
-              style={{ borderColor: hexToRgba(type.color, 0.45) }}
+              accessibilityState={{ disabled: removingId != null, busy: removingId === link.recordId }}
+              // Minimum width keeps the chip from collapsing around the spinner, so the card holds
+              // its shape while the row it belongs to is on its way out.
+              // Fixed box, not padding: the spinner is taller than the label it replaces, and
+              // letting the chip grow would shove the card's last line down mid-removal. 24px is
+              // what px-3 py-1 around text-xs already measured.
+              className="h-[24px] min-w-[62px] items-center justify-center rounded-full border px-3"
+              style={{
+                borderColor: hexToRgba(type.color, 0.45),
+                opacity: removingId != null && removingId !== link.recordId ? 0.4 : 1,
+              }}
             >
-              <Text className="font-sansMed text-xs" style={{ color: type.color }}>Unlink</Text>
+              {removingId === link.recordId ? (
+                <ActivityIndicator size="small" color={type.color} />
+              ) : (
+                <Text className="font-sansMed text-xs" style={{ color: type.color }}>Unlink</Text>
+              )}
             </Pressable>
           </View>
         </View>
