@@ -15,13 +15,17 @@ interface TransferSheetProps {
   item: FeedItem | null
   candidateItems: FeedItem[]
   accounts: Account[]
-  isSaving: boolean
   forcedKind?: TransferKind
   onClose: () => void
+  /**
+   * Hands the choice back rather than writing it: nothing reaches the server until the sheet this
+   * came from is saved. That's why there's no saving state here — the spinner belongs to whichever
+   * sheet owns the write.
+   */
   onSave: (input: { kind: TransferKind; counterpartIds: string[] }) => void
 }
 
-export function TransferSheet({ visible, item, candidateItems, accounts, isSaving, forcedKind, onClose, onSave }: TransferSheetProps) {
+export function TransferSheet({ visible, item, candidateItems, accounts, forcedKind, onClose, onSave }: TransferSheetProps) {
   const sheetScroll = useSheetScroll()
   const applicableTypes = useMemo(
     () => (item ? TRANSFER_TYPE_LIST.filter((type) => type.kind !== 'reimbursement' && type.appliesTo(item, { accounts })) : []),
@@ -245,7 +249,6 @@ export function TransferSheet({ visible, item, candidateItems, accounts, isSavin
           label={selectedIds.length > 0 ? (isReimbursement ? 'Save Reimbursement' : 'Save Transfer') : 'Save without match'}
           onPress={() => onSave({ kind: selectedType.kind, counterpartIds: selectedIds })}
           disabled={!canSave}
-          loading={isSaving}
         />
       </ScrollView>
     </BottomSheet>

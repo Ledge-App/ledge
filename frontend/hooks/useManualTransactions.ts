@@ -10,6 +10,8 @@ export function useManualTransactions() {
   return {
     data: manualTransactions.data,
     isLoading: manualTransactions.isLoading,
+    // Distinct from isLoading (the list query): the write state a save button can spin on.
+    isSaving: createMutation.isLoading || updateMutation.isLoading || deleteMutation.isLoading,
     error: manualTransactions.error,
     create: createMutation.mutateAsync,
     update: updateMutation.mutateAsync,

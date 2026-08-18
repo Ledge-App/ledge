@@ -36,6 +36,13 @@ export interface TransactionEditor {
   manualSheetOpen: boolean
   editingManual: ManualTransaction | null
   isSavingManual: boolean
+  /**
+   * True for the whole of the detail sheet's save — the override, the optional vendor rule and one
+   * transfer create per counterpart — and for unmarking, which deletes one link at a time. Tracking
+   * the sequence rather than any single mutation is the point: between two awaits every individual
+   * mutation reads idle, which is exactly when the sheet looked frozen.
+   */
+  isSavingDetail: boolean
   saveError: string | null
   dismissSaveError: () => void
   /** Opens the detail sheet for Plaid items, the manual edit sheet for manual ones. */
@@ -54,7 +61,6 @@ export interface TransactionEditor {
   transferItem: FeedItem | null
   transferCandidateItems: FeedItem[]
   transferForcedKind: TransferKind | undefined
-  isSavingTransfer: boolean
   /** The pending choice, with counterpart ids resolved to items for the detail sheet's summary. */
   pendingTransfer: { kind: TransferKind; counterpartItems: FeedItem[] } | null
   openTransfer: (forcedKind?: TransferKind) => void
@@ -80,6 +86,8 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const [manualSheetOpen, setManualSheetOpen] = useState(false)
   const [editingManual, setEditingManual] = useState<ManualTransaction | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [isSavingDetail, setIsSavingDetail] = useState(false)
+  const [isSavingManual, setIsSavingManual] = useState(false)
   const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
   const [transferForcedKind, setTransferForcedKind] = useState<TransferKind | undefined>(undefined)
@@ -132,6 +140,7 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const saveCategory = useCallback(
     async (input: { categoryId: string | null; subcategoryId: string | null; applyToVendor: boolean; note: string | null }) => {
       if (!activeSheetItem) return
+      setIsSavingDetail(true)
       try {
         // One override row carries both edits, so a note is written whenever it changed even
         // if no category is picked — and a category-only save must not erase a saved note.
@@ -156,6 +165,8 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
         setActiveSheetItem(null)
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
+      } finally {
+        setIsSavingDetail(false)
       }
     },
     [activeSheetItem, feed, overrides, pendingTransfer, transfers, vendorMappings],
@@ -178,7 +189,10 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     [editingManual, feed],
   )
 
-  const saveManual = useCallback(
+  // The save itself, without the saving flag: the two entry points below each raise the flag once
+  // around their own whole sequence, so wrapping it here too would clear it early on the path that
+  // still has links to unmark.
+  const saveManualSequence = useCallback(
     async (input: ManualInput) => {
       try {
         if (editingManual) {
@@ -204,6 +218,18 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       }
     },
     [editingManual, manualTransactions, pendingTransfer, editedManualAsFeedItem, feed, transfers],
+  )
+
+  const saveManual = useCallback(
+    async (input: ManualInput) => {
+      setIsSavingManual(true)
+      try {
+        await saveManualSequence(input)
+      } finally {
+        setIsSavingManual(false)
+      }
+    },
+    [saveManualSequence],
   )
 
   const openTransfer = useCallback(
@@ -272,7 +298,12 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
 
   const unmarkTransfer = useCallback(async () => {
     if (!activeSheetItem) return
-    await unmarkTransferItem(activeSheetItem)
+    setIsSavingDetail(true)
+    try {
+      await unmarkTransferItem(activeSheetItem)
+    } finally {
+      setIsSavingDetail(false)
+    }
     setActiveSheetItem(null)
   }, [activeSheetItem, unmarkTransferItem])
 
@@ -295,10 +326,15 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const saveManualAndUnmarkTransfer = useCallback(
     async (input: ManualInput) => {
       const item = editedManualAsFeedItem(input)
-      await saveManual(input)
-      if (item) await unmarkTransferItem(item)
+      setIsSavingManual(true)
+      try {
+        await saveManualSequence(input)
+        if (item) await unmarkTransferItem(item)
+      } finally {
+        setIsSavingManual(false)
+      }
     },
-    [editedManualAsFeedItem, saveManual, unmarkTransferItem],
+    [editedManualAsFeedItem, saveManualSequence, unmarkTransferItem],
   )
 
   const transferCandidateItems = useMemo(
@@ -354,7 +390,8 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     activeSheetItem: liveActiveSheetItem,
     manualSheetOpen,
     editingManual,
-    isSavingManual: manualTransactions.isLoading,
+    isSavingManual,
+    isSavingDetail,
     saveError,
     dismissSaveError: useCallback(() => setSaveError(null), []),
     openTransaction,
@@ -374,7 +411,6 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     transferItem,
     transferCandidateItems,
     transferForcedKind,
-    isSavingTransfer: transfers.isSaving,
     pendingTransfer: resolvedPendingTransfer,
     openTransfer,
     confirmTransfer,

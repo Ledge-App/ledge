@@ -16,6 +16,7 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
         categories={editor.categories}
         subcategories={editor.subcategories}
         pendingTransfer={editor.pendingTransfer}
+        isSaving={editor.isSavingDetail}
         onClose={editor.closeDetailSheet}
         onSave={editor.saveCategory}
         onOpenTransfer={editor.openTransfer}
@@ -28,7 +29,6 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
         item={editor.transferItem}
         candidateItems={editor.transferCandidateItems}
         accounts={editor.accounts}
-        isSaving={editor.isSavingTransfer}
         forcedKind={editor.transferForcedKind}
         onClose={editor.declineTransfer}
         onSave={editor.confirmTransfer}

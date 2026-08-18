@@ -38,6 +38,17 @@ export default function SettingsIndexScreen() {
       </View>
 
       <View className="gap-1">
+        <Text className="px-4 font-sansMed text-sm text-textMuted">Preferences</Text>
+        <View className="gap-1 rounded-md bg-surface">
+          <SettingsRow
+            icon="notifications"
+            label="Notifications"
+            onPress={() => router.push('/(tabs)/settings/notifications')}
+          />
+        </View>
+      </View>
+
+      <View className="gap-1">
         <Text className="px-4 font-sansMed text-sm text-textMuted">Legal</Text>
         <View className="gap-1 rounded-md bg-surface">
           <SettingsRow
