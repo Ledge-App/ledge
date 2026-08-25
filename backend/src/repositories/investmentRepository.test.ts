@@ -63,6 +63,7 @@ describe('investmentRepository.getHoldings', () => {
         costBasis: 2500,
         institutionPrice: 250.04,
         closePrice: 248.0,
+        priceAsOf: null,
         optionContract: null,
         isoCurrencyCode: 'USD',
       },
@@ -76,6 +77,7 @@ describe('investmentRepository.getHoldings', () => {
         costBasis: 100,
         institutionPrice: 0.011,
         closePrice: null,
+        priceAsOf: null,
         optionContract: { underlyingTicker: 'NFLX', contractType: 'call', strikePrice: 355 },
         isoCurrencyCode: 'USD',
       },
@@ -90,6 +92,7 @@ describe('investmentRepository.getHoldings', () => {
         costBasis: null,
         institutionPrice: null,
         closePrice: null,
+        priceAsOf: null,
         optionContract: null,
         isoCurrencyCode: null,
       },
@@ -380,5 +383,37 @@ describe('investmentRepository.getTransactions', () => {
 
     expect(investmentsTransactionsGet).toHaveBeenCalledTimes(1)
     expect(transactions).toEqual([])
+  })
+})
+
+describe('investmentRepository.getHoldings price staleness', () => {
+  function clientReturning(holding: Record<string, unknown>) {
+    return {
+      investmentsHoldingsGet: vi.fn().mockResolvedValue({
+        data: { holdings: [{ security_id: 'sec-1', quantity: 1, ...holding }], securities: [] },
+      }),
+    } as never
+  }
+
+  it('prefers the precise datetime over the date-only field', async () => {
+    const client = clientReturning({
+      institution_price_as_of: '2026-08-23',
+      institution_price_datetime: '2026-08-23T20:00:00Z',
+    })
+    const [holding] = await investmentRepository.getHoldings(client, 't', 'acc')
+    expect(holding.priceAsOf).toBe('2026-08-23T20:00:00Z')
+  })
+
+  // Most institutions report the date only; that is still far better than our fetch time.
+  it('falls back to the date when no datetime is reported', async () => {
+    const client = clientReturning({ institution_price_as_of: '2026-08-23', institution_price_datetime: null })
+    const [holding] = await investmentRepository.getHoldings(client, 't', 'acc')
+    expect(holding.priceAsOf).toBe('2026-08-23')
+  })
+
+  it('is null when the institution never dates its price', async () => {
+    const client = clientReturning({})
+    const [holding] = await investmentRepository.getHoldings(client, 't', 'acc')
+    expect(holding.priceAsOf).toBeNull()
   })
 })

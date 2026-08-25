@@ -14,6 +14,7 @@ function holding(overrides: Partial<Holding>): Holding {
     costBasis: 800,
     institutionPrice: 100,
     closePrice: 98,
+    priceAsOf: null,
     optionContract: null,
     isoCurrencyCode: 'USD',
     ...overrides,

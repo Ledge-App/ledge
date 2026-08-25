@@ -20,6 +20,17 @@ export interface Holding {
   institutionPrice: number | null
   /** Previous trading session's close, for day-change math. May lag by institution. */
   closePrice: number | null
+  /**
+   * When the institution priced this holding — the instant `institutionValue` actually
+   * describes, which is NOT when we fetched it. Brokerages commonly reprice once a day after
+   * close, so a holding fetched seconds ago can carry a price from two days back.
+   *
+   * ISO 8601. Precision varies by institution and is deliberately preserved rather than
+   * normalized: `institution_price_datetime` gives a full timestamp, `institution_price_as_of`
+   * only a date, and rounding the second into the first would invent a time of day the
+   * institution never reported. Null when the institution never dates its prices.
+   */
+  priceAsOf: string | null
   /** Parsed option details when the security is a contract — display "NFLX 355C", never the raw OCC symbol. */
   optionContract: { underlyingTicker: string | null; contractType: string; strikePrice: number } | null
   isoCurrencyCode: string | null
@@ -120,6 +131,8 @@ export const investmentRepository = {
         costBasis: holding.cost_basis ?? null,
         institutionPrice: holding.institution_price ?? null,
         closePrice: security?.close_price ?? null,
+        // Datetime first: same fact at higher precision when the institution reports it.
+        priceAsOf: holding.institution_price_datetime ?? holding.institution_price_as_of ?? null,
         optionContract: security?.option_contract
           ? {
               underlyingTicker: security.option_contract.underlying_security_ticker ?? null,

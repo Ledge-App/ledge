@@ -1,4 +1,4 @@
-import { colors, hexToRgba } from '@/constants/theme'
+import { assetClassColors, colors, hexToRgba } from '@/constants/theme'
 import type { Holding } from '@/types/domain'
 
 /**
@@ -59,10 +59,93 @@ export function totalHoldingsValue(holdings: Holding[]): number {
   return holdings.reduce((sum, h) => sum + (h.institutionValue ?? 0), 0)
 }
 
+/**
+ * Unrealized gain: market value minus the total cost basis. Null when the institution
+ * reports no basis (sweeps and some brokerages) or no value.
+ *
+ * Guards more loosely than holdingGainPct below, on purpose: that one must divide by the
+ * basis and so needs it positive, while a zero-basis position (gifted shares, a fully
+ * written-down lot) has a perfectly real dollar gain and no meaningful percent.
+ */
+export function holdingGain(holding: Holding): number | null {
+  if (holding.costBasis == null || holding.institutionValue == null) return null
+  return holding.institutionValue - holding.costBasis
+}
+
 /** (value - total basis) / basis; null when the institution reports no usable basis. */
 export function holdingGainPct(holding: Holding): number | null {
   if (holding.costBasis == null || holding.costBasis <= 0 || holding.institutionValue == null) return null
   return (holding.institutionValue - holding.costBasis) / holding.costBasis
+}
+
+/**
+ * Holdings largest-position-first. Copies rather than sorts in place — the array comes
+ * straight from the query cache, and reordering that in place would mutate shared state.
+ *
+ * Matches the order the heat map lays its tiles in (computeAllocation sorts by weight),
+ * so the table reads top-to-bottom as the map reads left-to-right. Holdings the
+ * institution gave no value for sort last: they can't be ranked, and floating an unknown
+ * above a real position would misrepresent it as the biggest thing in the account.
+ */
+export function sortHoldingsByValue(holdings: Holding[]): Holding[] {
+  return [...holdings].sort((a, b) => (b.institutionValue ?? -Infinity) - (a.institutionValue ?? -Infinity))
+}
+
+/**
+ * When the account's holdings were last priced by the institution: the OLDEST date across
+ * them, not the newest.
+ *
+ * A total is only as current as its stalest input. Reporting the newest would let one
+ * actively-quoted position vouch for a portfolio whose other holdings haven't repriced in
+ * days — precisely the impression this label exists to prevent.
+ *
+ * Undated holdings are skipped rather than treated as infinitely old: cash sweeps routinely
+ * carry no price date, and letting one veto the label would hide the staleness of every real
+ * position beside it. Null only when nothing is dated at all.
+ */
+export function holdingsPricedAsOf(holdings: Holding[]): string | null {
+  return holdings.reduce<string | null>((oldest, holding) => {
+    if (!holding.priceAsOf) return oldest
+    // ISO 8601 sorts lexicographically, but only within one precision — comparing a date-only
+    // "2026-08-23" against "2026-08-23T20:00:00Z" would call the bare date older by prefix.
+    // Parsing sidesteps that entirely.
+    if (oldest == null) return holding.priceAsOf
+    return Date.parse(holding.priceAsOf) < Date.parse(oldest) ? holding.priceAsOf : oldest
+  }, null)
+}
+
+/**
+ * Width in px for one auto-sized table column: the widest cell across every text style
+ * rendered in it, plus a gutter.
+ *
+ * Character count times advance is only a sound measurement because the numeric cells use
+ * a fixed-advance (monospace) font, where every glyph is exactly `charWidth` across. Each
+ * group carries its own advance so a column can mix styles — PRICE stacks a 14px mono
+ * figure over a 10px "avg" subline, and the column has to clear both.
+ *
+ * Callers must NOT pass proportional-font text: "MMM" and "iii" have the same length and
+ * wildly different widths, so the result would be a guess wearing a number's clothes.
+ */
+export function columnWidth(groups: Array<{ cells: string[]; charWidth: number }>): number {
+  const widest = groups.reduce((max, group) => {
+    // reduce, not Math.max(...spread): an empty column must yield 0, not -Infinity.
+    const longest = group.cells.reduce((n, cell) => Math.max(n, cell.length), 0)
+    return Math.max(max, longest * group.charWidth)
+  }, 0)
+  return Math.ceil(widest + COLUMN_GUTTER)
+}
+
+/** Breathing room between auto-sized columns. */
+const COLUMN_GUTTER = 12
+
+/**
+ * Gain percent for display: always signed, so a gain reads as a gain at a glance rather
+ * than as a bare number. Em dash when the institution reported no usable basis — never
+ * "0.0%", which would claim the position is flat.
+ */
+export function formatGainPct(gainPct: number | null): string {
+  if (gainPct == null) return '\u2014'
+  return `${gainPct < 0 ? '-' : '+'}${Math.abs(gainPct * 100).toFixed(1)}%`
 }
 
 /**
@@ -92,22 +175,31 @@ export function monogramText(label: string): string {
 export interface AssetClass {
   key: string
   label: string
+  /** Brighter shade: tile backgrounds (tinted) and legend swatches. */
   color: string
+  /** Deep AA-safe shade for label text sitting on this class's tile. */
+  textColor: string
   /** Tile text for holdings with no ticker ("U S Dollar" -> CASH). */
   shortLabel: string
 }
 
 const ASSET_CLASSES: Record<string, AssetClass> = {
-  equity: { key: 'equity', label: 'Stocks', color: '#0E7490', shortLabel: 'STOCK' },
-  etf: { key: 'etf', label: 'ETFs', color: '#0F766E', shortLabel: 'ETF' },
-  'mutual fund': { key: 'mutual fund', label: 'Funds', color: '#7C3AED', shortLabel: 'FUND' },
-  'fixed income': { key: 'fixed income', label: 'Bonds', color: '#B45309', shortLabel: 'BOND' },
-  cash: { key: 'cash', label: 'Cash', color: '#6B7280', shortLabel: 'CASH' },
-  cryptocurrency: { key: 'cryptocurrency', label: 'Crypto', color: '#BE185D', shortLabel: 'CRYPTO' },
-  derivative: { key: 'derivative', label: 'Derivatives', color: '#4338CA', shortLabel: 'DERIV' },
+  equity: { key: 'equity', label: 'Stocks', color: assetClassColors.equity.fill, textColor: assetClassColors.equity.text, shortLabel: 'STOCK' },
+  etf: { key: 'etf', label: 'ETFs', color: assetClassColors.etf.fill, textColor: assetClassColors.etf.text, shortLabel: 'ETF' },
+  'mutual fund': { key: 'mutual fund', label: 'Funds', color: assetClassColors.mutualFund.fill, textColor: assetClassColors.mutualFund.text, shortLabel: 'FUND' },
+  'fixed income': { key: 'fixed income', label: 'Bonds', color: assetClassColors.fixedIncome.fill, textColor: assetClassColors.fixedIncome.text, shortLabel: 'BOND' },
+  cash: { key: 'cash', label: 'Cash', color: assetClassColors.cash.fill, textColor: assetClassColors.cash.text, shortLabel: 'CASH' },
+  cryptocurrency: { key: 'cryptocurrency', label: 'Crypto', color: assetClassColors.cryptocurrency.fill, textColor: assetClassColors.cryptocurrency.text, shortLabel: 'CRYPTO' },
+  derivative: { key: 'derivative', label: 'Derivatives', color: assetClassColors.derivative.fill, textColor: assetClassColors.derivative.text, shortLabel: 'DERIV' },
 }
 
-const UNKNOWN_CLASS: AssetClass = { key: 'other', label: 'Other', color: '#71717A', shortLabel: 'OTHER' }
+const UNKNOWN_CLASS: AssetClass = {
+  key: 'other',
+  label: 'Other',
+  color: assetClassColors.other.fill,
+  textColor: assetClassColors.other.text,
+  shortLabel: 'OTHER',
+}
 
 export function assetClass(type: string | null): AssetClass {
   return (type && ASSET_CLASSES[type]) || UNKNOWN_CLASS

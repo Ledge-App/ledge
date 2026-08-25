@@ -50,6 +50,34 @@ export const categoryColors = {
   other: '#71717A',
 } as const
 
+/**
+ * Asset-class scale for the holdings allocation map. Two tokens per class, following the
+ * same split as the semantic colors: `fill` is the brighter shade for tile backgrounds and
+ * legend swatches, `text` the deep AA-safe shade for labels sitting on those tiles.
+ *
+ * Generated as one OKLCH ramp at near-constant lightness — hue does the separating, so no
+ * class reads as heavier or more urgent than another. Allocation is a neutral fact and the
+ * map must not imply health or motion.
+ *
+ * The hue band (195°-305°, plus one warm neutral for cash) deliberately avoids every
+ * semantic hue: rose (~15°), amber (~70°) and emerald (~155°) sit outside it entirely, and
+ * crypto's violet is far less saturated than `reimbursed`. The previous palette used amber,
+ * violet and near-rose directly, which had the map speaking the budget-health language while
+ * meaning something else.
+ *
+ * Every `text` clears 6.3:1 against its own tile at 20% fill over `background`.
+ */
+export const assetClassColors = {
+  etf: { fill: '#2A9898', text: '#00585A' },
+  fixedIncome: { fill: '#638E99', text: '#1B4F5B' },
+  equity: { fill: '#3286C5', text: '#004A8E' },
+  mutualFund: { fill: '#657DBF', text: '#2C4188' },
+  derivative: { fill: '#7B79B1', text: '#433E7A' },
+  cryptocurrency: { fill: '#906DB7', text: '#592F7F' },
+  cash: { fill: '#8E8C84', text: '#4A483F' },
+  other: { fill: '#828E98', text: '#3E4954' },
+} as const
+
 // Fallback channels for malformed input. category.color is a free-text DB column (validated
 // only as a non-empty string), so a value like 'red' or '#f00' would otherwise parse to NaN
 // channels and crash React Native at render time. Falls back to `textMuted` (#A8A89C).
