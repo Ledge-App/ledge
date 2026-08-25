@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { PanResponder, Pressable, View } from 'react-native'
+import { PanResponder, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import type { ReactNode } from 'react'
 import { colors } from '@/constants/theme'
+import { targetForOffset } from '@/lib/accounts/order'
 
 /** How long a press must be held before the row lifts. Matches the iOS drag idiom. */
 const LIFT_DELAY_MS = 250
@@ -10,11 +11,23 @@ const LIFT_DELAY_MS = 250
 const DRAG_THRESHOLD = 2
 const SHIFT_DURATION_MS = 140
 
+/** Spread onto the row's own Pressable to make it draggable. */
+export interface DragHandlers {
+  onLongPress: () => void
+  onPressOut: () => void
+  delayLongPress: number
+}
+
 interface ReorderableListProps<T> {
   items: T[]
   keyExtractor: (item: T) => string
-  /** Rendered inside the draggable wrapper. `isLifted` is for the raised-row treatment. */
-  renderItem: (item: T, isLifted: boolean) => ReactNode
+  /**
+   * Rendered inside the draggable wrapper. `handlers` MUST be spread onto whatever Pressable
+   * the row already uses for its tap — this list deliberately renders no Pressable of its
+   * own, because a wrapping one never receives the touch (the inner row Pressable wins the
+   * responder on touch start, so the long-press would never fire).
+   */
+  renderItem: (item: T, state: { isLifted: boolean; handlers: DragHandlers }) => ReactNode
   /** Called on drop with the reordered array. Not called when the position is unchanged. */
   onReorder: (items: T[]) => void
   /** Lets the screen freeze its ScrollView while a row is in the air. */
@@ -51,9 +64,19 @@ export function ReorderableList<T>({
   // Read inside the PanResponder, which is built once and would otherwise close over the
   // state as it was on first render.
   const armedRef = useRef(false)
+  // True between grant and release. onPressOut cannot distinguish "the user lifted their
+  // finger" from "the PanResponder just took the gesture" — the Pressable is terminated in
+  // both cases, with identical state — so the disarm is deferred a tick and cancelled if a
+  // pan turns out to be running. Guarded on BOTH sides because the responder system does not
+  // promise whether termination or grant fires first.
+  const panActiveRef = useRef(false)
+  const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const liftedRef = useRef<number | null>(null)
   const targetRef = useRef<number | null>(null)
-  const rowHeightRef = useRef(0)
+  // Per-index, not one shared height: a long account name can wrap and make its row taller,
+  // and a single measured height would then drift the drop target further off with every row
+  // crossed.
+  const heightsRef = useRef<number[]>([])
   const itemsRef = useRef(items)
   itemsRef.current = items
 
@@ -84,20 +107,31 @@ export function ReorderableList<T>({
           armedRef.current && Math.abs(gesture.dy) > DRAG_THRESHOLD,
         onPanResponderMove: (_, gesture) => {
           const from = liftedRef.current
-          const height = rowHeightRef.current
-          if (from == null || height <= 0) return
+          if (from == null) return
           dragY.value = gesture.dy
-          const raw = from + Math.round(gesture.dy / height)
-          const next = Math.max(0, Math.min(itemsRef.current.length - 1, raw))
+          const next = targetForOffset(heightsRef.current, from, gesture.dy)
           if (next !== targetRef.current) {
             targetRef.current = next
             setTargetIndex(next)
           }
         },
-        onPanResponderRelease: () => endDrag(true),
+        onPanResponderGrant: () => {
+          panActiveRef.current = true
+          if (disarmTimer.current) {
+            clearTimeout(disarmTimer.current)
+            disarmTimer.current = null
+          }
+        },
+        onPanResponderRelease: () => {
+          panActiveRef.current = false
+          endDrag(true)
+        },
         // A terminated gesture (an incoming call, a parent claiming back) must not commit a
         // half-finished move — the row returns to where it started.
-        onPanResponderTerminate: () => endDrag(false),
+        onPanResponderTerminate: () => {
+          panActiveRef.current = false
+          endDrag(false)
+        },
         onPanResponderTerminationRequest: () => false,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,84 +140,79 @@ export function ReorderableList<T>({
 
   return (
     <View {...panResponder.panHandlers}>
-      {items.map((item, index) => (
-        <ReorderableRow
-          key={keyExtractor(item)}
-          index={index}
-          liftedIndex={liftedIndex}
-          targetIndex={targetIndex}
-          dragY={dragY}
-          onMeasure={(h) => {
-            if (rowHeightRef.current === 0) rowHeightRef.current = h
-          }}
-          onLift={() => {
+      {items.map((item, index) => {
+        const handlers: DragHandlers = {
+          delayLongPress: LIFT_DELAY_MS,
+          onLongPress: () => {
             armedRef.current = true
             liftedRef.current = index
             targetRef.current = index
             setLiftedIndex(index)
             setTargetIndex(index)
             onDragStateChange?.(true)
-          }}
-          onPressOut={() => {
-            // Fires both when a press ends normally AND when the PanResponder takes the
-            // gesture. Only the former should disarm, hence the in-flight check.
-            if (liftedRef.current != null && targetRef.current === liftedRef.current) {
-              if (dragY.value === 0) endDrag(false)
-            }
-          }}
-        >
-          {renderItem(item, index === liftedIndex)}
-        </ReorderableRow>
-      ))}
+          },
+          onPressOut: () => {
+            // Deferred, never immediate: this also fires when the pan claims the gesture, and
+            // at that instant the drag state is indistinguishable from an un-dragged press.
+            // A tick later, panActiveRef has the answer.
+            if (disarmTimer.current) clearTimeout(disarmTimer.current)
+            disarmTimer.current = setTimeout(() => {
+              disarmTimer.current = null
+              if (!panActiveRef.current && liftedRef.current != null) endDrag(false)
+            }, 0)
+          },
+        }
+        return (
+          <ReorderableRow
+            key={keyExtractor(item)}
+            isLifted={index === liftedIndex}
+            shift={shiftFor(index, liftedIndex, targetIndex)}
+            dragY={dragY}
+            liftedHeight={liftedIndex == null ? 0 : heightsRef.current[liftedIndex] ?? 0}
+            onMeasure={(h) => {
+              heightsRef.current[index] = h
+            }}
+          >
+            {renderItem(item, { isLifted: index === liftedIndex, handlers })}
+          </ReorderableRow>
+        )
+      })}
     </View>
   )
 }
 
+/** Which way a row steps aside to open a slot for the lifted one, in row-heights. */
+function shiftFor(index: number, liftedIndex: number | null, targetIndex: number | null): number {
+  if (liftedIndex == null || targetIndex == null || index === liftedIndex) return 0
+  if (liftedIndex < targetIndex && index > liftedIndex && index <= targetIndex) return -1
+  if (liftedIndex > targetIndex && index >= targetIndex && index < liftedIndex) return 1
+  return 0
+}
+
 interface ReorderableRowProps {
-  index: number
-  liftedIndex: number | null
-  targetIndex: number | null
+  isLifted: boolean
+  shift: number
   dragY: { value: number }
+  /** Height of the row in the air — the gap the others slide into. */
+  liftedHeight: number
   onMeasure: (height: number) => void
-  onLift: () => void
-  onPressOut: () => void
   children: ReactNode
 }
 
-function ReorderableRow({
-  index,
-  liftedIndex,
-  targetIndex,
-  dragY,
-  onMeasure,
-  onLift,
-  onPressOut,
-  children,
-}: ReorderableRowProps) {
-  const isLifted = index === liftedIndex
-  const height = useSharedValue(0)
-
-  // How far this row steps aside to open a slot for the lifted one. Rows between the lift
-  // point and the drop point shift by exactly one row, in the direction that closes the gap.
-  let shift = 0
-  if (liftedIndex != null && targetIndex != null && !isLifted) {
-    if (liftedIndex < targetIndex && index > liftedIndex && index <= targetIndex) shift = -1
-    else if (liftedIndex > targetIndex && index >= targetIndex && index < liftedIndex) shift = 1
-  }
+function ReorderableRow({ isLifted, shift, dragY, liftedHeight, onMeasure, children }: ReorderableRowProps) {
+  const gap = useSharedValue(0)
+  gap.value = liftedHeight
 
   const style = useAnimatedStyle(() => ({
     transform: [
-      { translateY: isLifted ? dragY.value : withTiming(shift * height.value, { duration: SHIFT_DURATION_MS }) },
+      { translateY: isLifted ? dragY.value : withTiming(shift * gap.value, { duration: SHIFT_DURATION_MS }) },
       { scale: withTiming(isLifted ? 1.02 : 1, { duration: SHIFT_DURATION_MS }) },
     ],
   }))
 
   return (
     <Animated.View
-      onLayout={(e) => {
-        height.value = e.nativeEvent.layout.height
-        onMeasure(e.nativeEvent.layout.height)
-      }}
+      onLayout={(e) => onMeasure(e.nativeEvent.layout.height)}
       style={[
         style,
         // Raised above its neighbours, and shadowed so it reads as picked up rather than
@@ -202,9 +231,7 @@ function ReorderableRow({
           : { zIndex: 0 },
       ]}
     >
-      <Pressable delayLongPress={LIFT_DELAY_MS} onLongPress={onLift} onPressOut={onPressOut}>
-        {children}
-      </Pressable>
+      {children}
     </Animated.View>
   )
 }

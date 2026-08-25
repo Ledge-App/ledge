@@ -66,3 +66,31 @@ export function applyGroupOrder(
   const untouched = existing.filter((o) => !reordered.has(o.accountId))
   return [...untouched, ...[...reordered].map(([accountId, position]) => ({ accountId, position }))]
 }
+
+/**
+ * Which index a row dragged `offset` px from `from` should land on.
+ *
+ * Walks real row heights outward rather than dividing by one nominal height: a row is
+ * crossed once the drag passes its MIDPOINT, which is what makes the swap happen where the
+ * finger visually is. Rows that never laid out (height 0) are skipped harmlessly.
+ */
+export function targetForOffset(heights: number[], from: number, offset: number): number {
+  let target = from
+  let travelled = 0
+  if (offset > 0) {
+    for (let i = from + 1; i < heights.length; i++) {
+      const h = heights[i] ?? 0
+      if (offset < travelled + h / 2) break
+      travelled += h
+      target = i
+    }
+  } else if (offset < 0) {
+    for (let i = from - 1; i >= 0; i--) {
+      const h = heights[i] ?? 0
+      if (-offset < travelled + h / 2) break
+      travelled += h
+      target = i
+    }
+  }
+  return target
+}

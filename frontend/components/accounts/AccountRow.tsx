@@ -12,6 +12,14 @@ interface AccountRowProps {
   /** Base64 PNG institution logo; replaces the generic variant icon when present. */
   logo?: string | null
   onPress?: () => void
+  /**
+   * Drag-to-reorder handlers, applied to the SAME Pressable that handles the tap. Wrapping
+   * this row in another Pressable would not work: the inner one wins the responder on touch
+   * start and the outer never sees the gesture at all.
+   */
+  onLongPress?: () => void
+  onPressOut?: () => void
+  delayLongPress?: number
 }
 
 const variantIcons: Record<string, { name: string; color: string }> = {
@@ -23,12 +31,29 @@ const variantIcons: Record<string, { name: string; color: string }> = {
   cashOnHand: { name: 'cash', color: colors.income },
 }
 
-export function AccountRow({ name, balance, variant, limit, isMasked, logo, onPress }: AccountRowProps) {
+export function AccountRow({
+  name,
+  balance,
+  variant,
+  limit,
+  isMasked,
+  logo,
+  onPress,
+  onLongPress,
+  onPressOut,
+  delayLongPress,
+}: AccountRowProps) {
   const balanceColor = variant === 'credit' ? colors.expense : colors.textPrimary
   const icon = variantIcons[variant] ?? variantIcons.cash
 
   return (
-    <Pressable onPress={onPress} className="flex-row items-center justify-between py-3.5">
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      onPressOut={onPressOut}
+      delayLongPress={delayLongPress}
+      className="flex-row items-center justify-between py-3.5"
+    >
       <View className="flex-1 flex-row items-center gap-3">
         {logo ? (
           <Image
