@@ -63,13 +63,20 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
         {transferType ? (
           <Ionicons name={transferType.icon} size={18} color={iconColor} />
         ) : item.isReimbursementIncome ? (
-          <Text style={{ fontSize: 18, color: iconColor }}>↩️</Text>
+          // Sourced from the transfer registry, not a second hardcoded copy: a reimbursement
+          // IS a transfer kind, so its icon lives there alongside the label and colour this
+          // row already reads from it. An emoji stood here before, which rendered at a
+          // different weight from every other row's Ionicon and ignored iconColor entirely.
+          <Ionicons name={TRANSFER_TYPES.reimbursement.icon} size={18} color={iconColor} />
         ) : (
           <CategoryIcon icon={categoryIcon} size={18} color={iconColor} />
         )}
         {item.source === 'manual' ? (
+          // Ionicon rather than an emoji, like every other glyph in this row: emoji carry
+          // their own colour, so this badge could never be tinted and rendered at a weight
+          // that didn't match the icon it sits on.
           <View className="absolute -bottom-0.5 -right-0.5 h-4 w-4 items-center justify-center rounded-full bg-surface">
-            <Text style={{ fontSize: 10 }}>✏️</Text>
+            <Ionicons name="pencil" size={9} color={colors.textSecondary} />
           </View>
         ) : null}
       </View>
@@ -123,7 +130,6 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
             </Text>
           </View>
         ) : null}
-        {item.confidenceLevel === 'MEDIUM' ? <Text style={{ fontSize: 11 }}>❓</Text> : null}
       </View>
     </Pressable>
   )

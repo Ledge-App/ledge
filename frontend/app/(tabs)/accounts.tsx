@@ -200,7 +200,7 @@ export default function AccountsTab() {
                   keyExtractor={(account) => account.account_id}
                   onDragStateChange={setIsDragging}
                   onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
-                  renderItem={(account) => (
+                  renderItem={(account, { handlers }) => (
                     <View className="border-t" style={{ borderColor: colors.border }}>
                       <AccountRow
                         name={account.name}
@@ -209,6 +209,7 @@ export default function AccountsTab() {
                         logo={account.institutionLogo}
                         isMasked={isMasked}
                         onPress={() => setDetailTarget(account)}
+                        {...handlers}
                       />
                     </View>
                   )}
@@ -242,7 +243,7 @@ export default function AccountsTab() {
                   keyExtractor={(account) => account.account_id}
                   onDragStateChange={setIsDragging}
                   onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
-                  renderItem={(account) => (
+                  renderItem={(account, { handlers }) => (
                     <View className="border-t" style={{ borderColor: colors.border }}>
                       <AccountRow
                         name={account.name}
@@ -251,6 +252,7 @@ export default function AccountsTab() {
                         logo={account.institutionLogo}
                         isMasked={isMasked}
                         onPress={() => setInvestmentDetail(account)}
+                        {...handlers}
                       />
                     </View>
                   )}
@@ -276,7 +278,7 @@ export default function AccountsTab() {
                   keyExtractor={(account) => account.account_id}
                   onDragStateChange={setIsDragging}
                   onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
-                  renderItem={(account) => (
+                  renderItem={(account, { handlers }) => (
                     <View className="border-t" style={{ borderColor: colors.border }}>
                       <AccountRow
                         name={account.name}
@@ -286,6 +288,7 @@ export default function AccountsTab() {
                         limit={account.balances?.limit ?? null}
                         isMasked={isMasked}
                         onPress={() => setDetailTarget(account)}
+                        {...handlers}
                       />
                     </View>
                   )}
