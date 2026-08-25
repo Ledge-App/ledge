@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { averageCost, formatShares, holdingLabel, totalHoldingsValue } from './holdings'
+import {
+  averageCost,
+  columnWidth,
+  formatGainPct,
+  formatShares,
+  holdingGain,
+  holdingGainPct,
+  holdingLabel,
+  holdingsPricedAsOf,
+  sortHoldingsByValue,
+  totalHoldingsValue,
+} from './holdings'
 import type { Holding } from '@/types/domain'
 
 function holding(overrides: Partial<Holding>): Holding {
@@ -13,6 +24,7 @@ function holding(overrides: Partial<Holding>): Holding {
     costBasis: 2000,
     institutionPrice: 250,
     closePrice: 245,
+    priceAsOf: '2026-08-25T20:00:00Z',
     optionContract: null,
     isoCurrencyCode: 'USD',
     ...overrides,
@@ -151,5 +163,119 @@ describe('compactSymbol', () => {
     const { compactSymbol } = await import('./holdings')
     expect(compactSymbol({ ticker: 'VTI', type: 'etf', optionContract: null })).toBe('VTI')
     expect(compactSymbol({ ticker: null, type: 'cash', optionContract: null })).toBeNull()
+  })
+})
+
+describe('holdingGain', () => {
+  it('subtracts total basis from market value', () => {
+    expect(holdingGain(holding({ institutionValue: 2500, costBasis: 2000 }))).toBe(500)
+  })
+
+  it('goes negative on an underwater position', () => {
+    expect(holdingGain(holding({ institutionValue: 1800, costBasis: 2000 }))).toBe(-200)
+  })
+
+  it('is null when the institution reported no basis', () => {
+    expect(holdingGain(holding({ costBasis: null }))).toBeNull()
+  })
+
+  it('is null when the institution reported no value', () => {
+    expect(holdingGain(holding({ institutionValue: null }))).toBeNull()
+  })
+
+  // Unlike holdingGainPct, which needs a positive basis to divide by: a gifted or
+  // fully-written-down position has a real dollar gain but no meaningful percent.
+  it('reports the full value as gain on a zero-basis position', () => {
+    expect(holdingGain(holding({ institutionValue: 900, costBasis: 0 }))).toBe(900)
+    expect(holdingGainPct(holding({ institutionValue: 900, costBasis: 0 }))).toBeNull()
+  })
+})
+
+describe('formatGainPct', () => {
+  it('signs gains explicitly so a gain never reads as a bare number', () => {
+    expect(formatGainPct(0.284)).toBe('+28.4%')
+  })
+
+  it('signs losses with a minus', () => {
+    expect(formatGainPct(-0.127)).toBe('-12.7%')
+  })
+
+  it('keeps a flat position at zero without a sign flip', () => {
+    expect(formatGainPct(0)).toBe('+0.0%')
+  })
+
+  it('renders a dash when there is no usable basis', () => {
+    expect(formatGainPct(null)).toBe('—')
+  })
+})
+
+describe('sortHoldingsByValue', () => {
+  it('orders the largest position first', () => {
+    const sorted = sortHoldingsByValue([
+      holding({ securityId: 'small', institutionValue: 100 }),
+      holding({ securityId: 'big', institutionValue: 9000 }),
+      holding({ securityId: 'mid', institutionValue: 500 }),
+    ])
+    expect(sorted.map((h) => h.securityId)).toEqual(['big', 'mid', 'small'])
+  })
+
+  // Same order the heat map lays tiles in, so the table reads as the map's legend.
+  it('sinks valueless holdings to the bottom rather than floating them', () => {
+    const sorted = sortHoldingsByValue([
+      holding({ securityId: 'unknown', institutionValue: null }),
+      holding({ securityId: 'real', institutionValue: 10 }),
+    ])
+    expect(sorted.map((h) => h.securityId)).toEqual(['real', 'unknown'])
+  })
+
+  it('does not mutate the caller array', () => {
+    const input = [holding({ securityId: 'a', institutionValue: 1 }), holding({ securityId: 'b', institutionValue: 2 })]
+    sortHoldingsByValue(input)
+    expect(input.map((h) => h.securityId)).toEqual(['a', 'b'])
+  })
+})
+
+describe('columnWidth', () => {
+  it('sizes to the longest cell so nothing needs truncating', () => {
+    const narrow = columnWidth([{ cells: ['$1'], charWidth: 10 }])
+    const wide = columnWidth([{ cells: ['$1', '$123456'], charWidth: 10 }])
+    expect(wide).toBeGreaterThan(narrow)
+    expect(wide).toBeGreaterThanOrEqual(7 * 10)
+  })
+
+  it('lets a long header win over short cells', () => {
+    const width = columnWidth([
+      { cells: ['$1'], charWidth: 10 },
+      { cells: ['SHARES'], charWidth: 10 },
+    ])
+    expect(width).toBeGreaterThanOrEqual(6 * 10)
+  })
+
+  it('handles an empty column without returning NaN or -Infinity', () => {
+    expect(columnWidth([{ cells: [], charWidth: 10 }])).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(columnWidth([{ cells: [], charWidth: 10 }]))).toBe(true)
+  })
+})
+
+describe('holdingsPricedAsOf', () => {
+  it('reports the stalest price, since a total is only as fresh as its oldest input', () => {
+    expect(
+      holdingsPricedAsOf([
+        holding({ priceAsOf: '2026-08-25T20:00:00Z' }),
+        holding({ priceAsOf: '2026-08-23T20:00:00Z' }),
+        holding({ priceAsOf: '2026-08-24T20:00:00Z' }),
+      ]),
+    ).toBe('2026-08-23T20:00:00Z')
+  })
+
+  // Cash sweeps routinely carry no price date. Letting one veto the label would hide the
+  // staleness of every real position beside it.
+  it('ignores undated holdings instead of giving up', () => {
+    expect(holdingsPricedAsOf([holding({ priceAsOf: null }), holding({ priceAsOf: '2026-08-23' })])).toBe('2026-08-23')
+  })
+
+  it('is null when nothing is dated at all', () => {
+    expect(holdingsPricedAsOf([holding({ priceAsOf: null })])).toBeNull()
+    expect(holdingsPricedAsOf([])).toBeNull()
   })
 })

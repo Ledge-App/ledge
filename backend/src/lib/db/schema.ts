@@ -221,6 +221,29 @@ export const transfers = pgTable('transfers', {
 // it every sync). Plaid ids only: auto-detection never touches manual transactions. Keyed on
 // the expense (outflow) leg — the stable anchor; the income leg it pairs with may change.
 // The full (non-partial) unique index is what lets creation be an ON CONFLICT-ignoring upsert.
+/**
+ * User-chosen display order for accounts, one row per positioned account.
+ *
+ * Keyed by Plaid's `account_id` because accounts are never persisted here — accounts.list
+ * fetches them live per item, so there is no local row to hang a position off. The
+ * consequence is that relinking an institution mints new account_ids and those accounts
+ * lose their position (they sort last again); the orphaned rows are harmless and ignored
+ * on read.
+ *
+ * `position` is only meaningful WITHIN an account's group (cash / investment / credit) —
+ * groups are derived from Plaid's type at render time, not stored, so nothing here needs
+ * to know which group a row belongs to.
+ */
+export const accountOrders = pgTable('account_orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => authUsers.id),
+  accountId: text('account_id').notNull(),
+  position: integer('position').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniquePerUser: uniqueIndex('account_orders_unique').on(table.userId, table.accountId),
+}))
+
 export const transferDismissals = pgTable('transfer_dismissals', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => authUsers.id),

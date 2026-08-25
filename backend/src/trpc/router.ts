@@ -3,6 +3,7 @@ import { plaidCredentialsRouter } from '../routers/plaidCredentials.js'
 import { plaidLinkRouter } from '../routers/plaidLink.js'
 import { transactionsRouter } from '../routers/transactions.js'
 import { accountsRouter } from '../routers/accounts.js'
+import { accountOrdersRouter } from '../routers/accountOrders.js'
 import { categoriesRouter } from '../routers/categories.js'
 import { subcategoriesRouter } from '../routers/subcategories.js'
 import { plaidCategoryMappingsRouter } from '../routers/plaidCategoryMappings.js'
@@ -21,6 +22,7 @@ export const appRouter = router({
   plaidLink: plaidLinkRouter,
   transactions: transactionsRouter,
   accounts: accountsRouter,
+  accountOrders: accountOrdersRouter,
   categories: categoriesRouter,
   subcategories: subcategoriesRouter,
   plaidCategoryMappings: plaidCategoryMappingsRouter,

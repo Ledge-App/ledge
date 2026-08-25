@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useAccountOrder } from '@/hooks/useAccountOrder'
 import { useAmountsMasked } from '@/hooks/useAmountsMasked'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { usePullToRefresh } from '@/hooks/usePullToRefresh'
@@ -12,6 +13,7 @@ import { usePlaidCredentials } from '@/hooks/usePlaidCredentials'
 import { useAddAccountFlow } from '@/hooks/useAddAccountFlow'
 import { HeroCard } from '@/components/dashboard/HeroCard'
 import { AccountRow } from '@/components/accounts/AccountRow'
+import { ReorderableList } from '@/components/accounts/ReorderableList'
 import { AddAccountSheet } from '@/components/accounts/AddAccountSheet'
 import { AccountDetailSheet } from '@/components/accounts/AccountDetailSheet'
 import { InvestmentDetailSheet } from '@/components/accounts/InvestmentDetailSheet'
@@ -31,6 +33,10 @@ export default function AccountsTab() {
   const [investmentDetail, setInvestmentDetail] = useState<Account | null>(null)
   const [trendOpen, setTrendOpen] = useState(false)
   const accounts = useAccounts()
+  const accountOrder = useAccountOrder()
+  // A lifted row and a scrolling page are the same downward drag, so the page stops while
+  // a row is in the air.
+  const [isDragging, setIsDragging] = useState(false)
   const { isMasked, toggleMask } = useAmountsMasked()
   const { feed, categoryById, isLoading: feedIsLoading, refresh } = useTransactionFeed()
   // Also refetches accounts.list inside, which is where every balance on this screen lives.
@@ -119,7 +125,11 @@ export default function AccountsTab() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <ScrollView contentContainerClassName="gap-5 px-5 py-4" refreshControl={refreshControl}>
+      <ScrollView
+        contentContainerClassName="gap-5 px-5 py-4"
+        refreshControl={refreshControl}
+        scrollEnabled={!isDragging}
+      >
         <View className="flex-row items-center justify-between">
           <Text className="font-sansSemi text-lg text-primary">All</Text>
           <Pressable onPress={addAccount.beginAddAccount} accessibilityLabel="Add account" disabled={isConnecting}>
@@ -128,6 +138,13 @@ export default function AccountsTab() {
         </View>
 
         {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+
+        {/* A failed reorder has already been rolled back to the server's order in the cache,
+            so this explains a move the user watched snap back rather than announcing a
+            failure they can't see. */}
+        {accountOrder.error ? (
+          <ErrorBanner message="Couldn't save the new account order." onDismiss={accountOrder.resetError} />
+        ) : null}
 
         {/* Per-institution failures. The rest of the screen is live, so these are shown inline
             rather than as an error state — before, any one of them took the whole screen down. */}
@@ -178,18 +195,24 @@ export default function AccountsTab() {
             </Pressable>
             {cashOpen ? (
               <View>
-                {cashAccounts.map((account) => (
-                  <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
-                    <AccountRow
-                      name={account.name}
-                      balance={account.balances?.current ?? 0}
-                      variant="cash"
-                      logo={account.institutionLogo}
-                      isMasked={isMasked}
-                      onPress={() => setDetailTarget(account)}
-                    />
-                  </View>
-                ))}
+                <ReorderableList
+                  items={cashAccounts}
+                  keyExtractor={(account) => account.account_id}
+                  onDragStateChange={setIsDragging}
+                  onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
+                  renderItem={(account) => (
+                    <View className="border-t" style={{ borderColor: colors.border }}>
+                      <AccountRow
+                        name={account.name}
+                        balance={account.balances?.current ?? 0}
+                        variant="cash"
+                        logo={account.institutionLogo}
+                        isMasked={isMasked}
+                        onPress={() => setDetailTarget(account)}
+                      />
+                    </View>
+                  )}
+                />
                 <View className="border-t" style={{ borderColor: colors.border }}>
                   <AccountRow
                     name="Cash"
@@ -214,18 +237,24 @@ export default function AccountsTab() {
             </Pressable>
             {investOpen ? (
               <View>
-                {investmentAccounts.map((account) => (
-                  <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
-                    <AccountRow
-                      name={account.name}
-                      balance={account.balances?.current ?? 0}
-                      variant="investment"
-                      logo={account.institutionLogo}
-                      isMasked={isMasked}
-                      onPress={() => setInvestmentDetail(account)}
-                    />
-                  </View>
-                ))}
+                <ReorderableList
+                  items={investmentAccounts}
+                  keyExtractor={(account) => account.account_id}
+                  onDragStateChange={setIsDragging}
+                  onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
+                  renderItem={(account) => (
+                    <View className="border-t" style={{ borderColor: colors.border }}>
+                      <AccountRow
+                        name={account.name}
+                        balance={account.balances?.current ?? 0}
+                        variant="investment"
+                        logo={account.institutionLogo}
+                        isMasked={isMasked}
+                        onPress={() => setInvestmentDetail(account)}
+                      />
+                    </View>
+                  )}
+                />
               </View>
             ) : null}
           </View>
@@ -242,19 +271,25 @@ export default function AccountsTab() {
             </Pressable>
             {creditOpen ? (
               <View>
-                {creditAccounts.map((account) => (
-                  <View key={account.account_id} className="border-t" style={{ borderColor: colors.border }}>
-                    <AccountRow
-                      name={account.name}
-                      balance={account.balances?.current ?? 0}
-                      variant="credit"
-                      logo={account.institutionLogo}
-                      limit={account.balances?.limit ?? null}
-                      isMasked={isMasked}
-                      onPress={() => setDetailTarget(account)}
-                    />
-                  </View>
-                ))}
+                <ReorderableList
+                  items={creditAccounts}
+                  keyExtractor={(account) => account.account_id}
+                  onDragStateChange={setIsDragging}
+                  onReorder={(next) => accountOrder.setOrder(next.map((a) => a.account_id))}
+                  renderItem={(account) => (
+                    <View className="border-t" style={{ borderColor: colors.border }}>
+                      <AccountRow
+                        name={account.name}
+                        balance={account.balances?.current ?? 0}
+                        variant="credit"
+                        logo={account.institutionLogo}
+                        limit={account.balances?.limit ?? null}
+                        isMasked={isMasked}
+                        onPress={() => setDetailTarget(account)}
+                      />
+                    </View>
+                  )}
+                />
               </View>
             ) : null}
           </View>
