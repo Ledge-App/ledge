@@ -144,26 +144,77 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
           </Text>
         </View>
 
-        <Pressable onPress={() => setIsHowToOpen((prev) => !prev)} className="flex-row items-center gap-1">
-          <Text className={`font-sansMed text-sm ${isHowToOpen ? 'text-primary' : 'text-textMuted'}`}>
-            How do I get these?
-          </Text>
+        <Pressable
+          onPress={() => setIsHowToOpen((prev) => !prev)}
+          accessibilityRole="button"
+          className="flex-row items-center gap-3 rounded-lg border p-4 active:opacity-80"
+          style={{ borderColor: colors.primary, backgroundColor: colors.primaryMuted }}
+        >
+          <View
+            className="h-9 w-9 items-center justify-center rounded-full"
+            style={{ backgroundColor: colors.primary }}
+          >
+            <Ionicons name="key" size={18} color={colors.textInverse} />
+          </View>
+          <View className="flex-1 gap-0.5">
+            <Text className="font-sansSemi text-base text-primary">How do I get these?</Text>
+            <Text className="font-sans text-xs text-textSecondary">
+              Free Plaid account — about 2 minutes
+            </Text>
+          </View>
           <Ionicons
             name={isHowToOpen ? 'chevron-up' : 'chevron-down'}
-            size={14}
-            color={isHowToOpen ? colors.primary : colors.textMuted}
+            size={18}
+            color={colors.primary}
           />
         </Pressable>
+
         {isHowToOpen ? (
-          <View className="gap-2 rounded-md bg-surface p-4">
-            <Text className="font-sans text-sm leading-5 text-textSecondary">
-              1. Create a free Plaid account at dashboard.plaid.com/signup{'\n'}
-              2. Find your Client ID and Secret under Developers → Keys{'\n'}
-              3. For real bank data, request the free Trial plan or Production access
-            </Text>
-            <Pressable onPress={() => Linking.openURL('https://dashboard.plaid.com/signup')}>
-              <Text className="font-sansMed text-sm text-primary">Open dashboard.plaid.com/signup</Text>
-            </Pressable>
+          <View className="gap-4 rounded-md bg-surface p-4">
+            <View className="flex-row gap-3">
+              <View className="h-5 w-5 items-center justify-center rounded-full bg-primaryMuted">
+                <Text className="font-sansSemi text-xs text-primary">1</Text>
+              </View>
+              <View className="flex-1 gap-1">
+                <Text className="font-sans text-sm leading-5 text-textSecondary">
+                  Create a free Plaid account — just an email and password, instant.
+                </Text>
+                <Text className="font-sans text-xs leading-4 text-textMuted">
+                  When it asks what the account is for, choose Personal.
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-3">
+              <View className="h-5 w-5 items-center justify-center rounded-full bg-primaryMuted">
+                <Text className="font-sansSemi text-xs text-primary">2</Text>
+              </View>
+              <View className="flex-1 gap-1">
+                <Text className="font-sans text-sm leading-5 text-textSecondary">
+                  Request free Trial access — this unlocks real bank data instead of test data.
+                </Text>
+                <Text className="font-sans text-xs leading-4 text-textMuted">
+                  Plaid will ask for your name and address here. That's Plaid's own requirement
+                  for real bank data, not ToFi's — approval is usually quick.
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-3">
+              <View className="h-5 w-5 items-center justify-center rounded-full bg-primaryMuted">
+                <Text className="font-sansSemi text-xs text-primary">3</Text>
+              </View>
+              <Text className="flex-1 font-sans text-sm leading-5 text-textSecondary">
+                Copy your Client ID and Secret from Developers → Keys, then come back here and
+                paste them in.
+              </Text>
+            </View>
+
+            <Button
+              label="Open Plaid Sign Up"
+              variant="secondary"
+              onPress={() => Linking.openURL('https://dashboard.plaid.com/signup')}
+            />
           </View>
         ) : null}
 
