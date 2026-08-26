@@ -12,6 +12,23 @@ import type { Budget, Category } from '@/types/domain'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
 const firedStore = new MMKV({ id: 'ledge-budget-alerts' })
+// Not a fired mark: records the month the store was last pruned, so the sweep below runs once
+// per month instead of on every pass. Excluded from the sweep by name.
+const LAST_PRUNE_KEY = 'lastPrunedMonth'
+
+/**
+ * Fired marks are keyed by month and only ever read for the current one, so every key from a
+ * past month is dead weight — without this the store grows by one key per (budget, threshold)
+ * every month for the life of the install.
+ */
+function pruneStaleFiredMarks(currentMonthKey: string): void {
+  if (firedStore.getString(LAST_PRUNE_KEY) === currentMonthKey) return
+  for (const key of firedStore.getAllKeys()) {
+    if (key === LAST_PRUNE_KEY) continue
+    if (!key.includes(`:${currentMonthKey}:`)) firedStore.delete(key)
+  }
+  firedStore.set(LAST_PRUNE_KEY, currentMonthKey)
+}
 
 /**
  * Compute this month's crossed budget alert lines from a resolved feed and deliver a local
@@ -41,8 +58,11 @@ export async function deliverBudgetAlerts(input: {
   const resolved = resolveBudgetsForMonth(input.budgets, month)
   if (resolved.size === 0) return 0
 
+  const currentMonthKey = monthKey(month)
+  pruneStaleFiredMarks(currentMonthKey)
+
   const { spendByCategory } = aggregateMonth(filterByMonth(input.feed, month))
-  const alerts = findCrossedAlerts(resolved, spendByCategory, monthKey(month), (key) => firedStore.getBoolean(key) ?? false)
+  const alerts = findCrossedAlerts(resolved, spendByCategory, currentMonthKey, (key) => firedStore.getBoolean(key) ?? false)
   if (alerts.length === 0) return 0
 
   if (!(await ensureNotificationPermission({ canPrompt: input.canPrompt }))) return 0
@@ -56,7 +76,6 @@ export async function deliverBudgetAlerts(input: {
     if (firedStore.getBoolean(alert.key)) continue
     // Mark before sending: a duplicate alert is worse than a lost one.
     firedStore.set(alert.key, true)
-    delivered += 1
     const category = categoryById.get(alert.categoryId)
     const name = category?.name ?? 'A category'
     const emoji = categoryIconEmoji(category?.icon)
@@ -72,6 +91,9 @@ export async function deliverBudgetAlerts(input: {
       },
       trigger: null,
     })
+    // Counted after the send, not with the mark: the mark is a promise not to send this again,
+    // the count is a report of what went out.
+    delivered += 1
   }
   return delivered
 }
