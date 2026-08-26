@@ -14,6 +14,8 @@ import { planSyncMerge } from '@/lib/transactions/planSyncMerge'
 import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { deliverBudgetAlerts } from '@/lib/budgets/deliverAlerts'
+import { ensureNotificationPermission } from '@/lib/notifications/permission'
+import { getBudgetAlertsEnabled } from '@/lib/notifications/preference'
 import { resolveBudgetsForMonth } from '@/lib/budgets/budgetMath'
 
 export const BUDGET_ALERT_TASK = 'budget-alert-sync'
@@ -36,6 +38,14 @@ const MAX_BACKGROUND_DRAIN_ROUNDS = 3
 export async function runBudgetAlertCheck(): Promise<'delivered' | 'no-alerts' | 'skipped'> {
   const { data } = await supabaseAuth.auth.getSession()
   if (!data.session) return 'skipped'
+
+  // Both gates that can make the whole wake pointless, checked before the sync rather than at
+  // delivery time inside deliverBudgetAlerts. Background seconds are rationed by the OS, and
+  // syncing to compute a notification we are switched off from sending — or have no permission
+  // to post — spends them on nothing. The cost is that the MMKV cache no longer warms in the
+  // background for a user with alerts off; the next app open syncs as it always has.
+  if (!getBudgetAlertsEnabled()) return 'skipped'
+  if (!(await ensureNotificationPermission({ canPrompt: false }))) return 'skipped'
 
   const client = createHeadlessApiClient()
 
@@ -112,13 +122,14 @@ TaskManager.defineTask(BUDGET_ALERT_TASK, async () => {
 })
 
 /**
- * Idempotent; called once from the root layout. iOS treats the interval as a floor, not a
- * schedule — real cadence is decided by the system (typically a few wakes a day for an app
- * that gets opened regularly).
+ * Idempotent; called once from the root layout. The interval is in minutes, and iOS treats it
+ * as a floor, not a schedule — real cadence is decided by the system (typically a few wakes a
+ * day for an app that gets opened regularly), so asking for an hour buys eligibility for more
+ * frequent wakes rather than an hourly guarantee.
  */
 export async function registerBudgetAlertTask(): Promise<void> {
   try {
-    await BackgroundTask.registerTaskAsync(BUDGET_ALERT_TASK, { minimumInterval: 60 * 3 })
+    await BackgroundTask.registerTaskAsync(BUDGET_ALERT_TASK, { minimumInterval: 60 })
   } catch {
     // Unavailable on this platform/build (e.g. web, or Background App Refresh disabled) —
     // the foreground watcher still covers every app open.

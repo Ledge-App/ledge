@@ -9,22 +9,37 @@ import { Platform } from 'react-native'
 // Apple and Google are the identity providers; the Email provider is disabled in the Supabase
 // dashboard, so there is no password path to fall back to.
 
+// THIS_DEVICE_ONLY keeps the session out of iCloud/iTunes backups — the default WHEN_UNLOCKED
+// class lets a restored backup carry the refresh token onto another device, sidestepping
+// usePurgeSessionOnFreshInstall. AFTER_FIRST_UNLOCK rather than WHEN_UNLOCKED because the
+// budget-alert background task is woken by iOS while the device is idle — usually locked — and
+// under WHEN_UNLOCKED it could not read the session, so it bailed before syncing anything.
+const KEYCHAIN_OPTIONS = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }
+
+// The accessibility class is fixed when an item is written, so the change above does not reach a
+// session already on disk from an older build — it stays invisible to the background task until
+// something rewrites it. Rewriting once per launch, on the first read of each key, costs one
+// keychain write and moves that from "the next token refresh" to "the next app open". It cannot
+// clobber a newer value: supabase serialises session storage access behind its own lock, and the
+// rewrite is awaited inside the getItem call that lock is held for.
+const rewrittenKeys = new Set<string>()
+
 // expo-secure-store has no web implementation (iOS is the only shipped platform
 // per architecture.md) — fall back to localStorage so the app doesn't crash when
 // previewed via `expo start --web`, and no-op under SSR where window is undefined.
 const SecureStoreAdapter = {
-  getItem: (key: string) => {
-    if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.getItem(key) ?? null)
-    return SecureStore.getItemAsync(key)
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') return globalThis.localStorage?.getItem(key) ?? null
+    const value = await SecureStore.getItemAsync(key)
+    if (value !== null && !rewrittenKeys.has(key)) {
+      rewrittenKeys.add(key)
+      await SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS)
+    }
+    return value
   },
   setItem: (key: string, value: string) => {
     if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.setItem(key, value))
-    // THIS_DEVICE_ONLY keeps the session out of iCloud/iTunes backups — the default
-    // WHEN_UNLOCKED class lets a restored backup carry the refresh token onto another
-    // device, sidestepping usePurgeSessionOnFreshInstall.
-    return SecureStore.setItemAsync(key, value, {
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    })
+    return SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS)
   },
   removeItem: (key: string) => {
     if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.removeItem(key))
