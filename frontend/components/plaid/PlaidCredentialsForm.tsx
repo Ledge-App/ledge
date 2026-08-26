@@ -177,7 +177,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
               </View>
               <View className="flex-1 gap-1">
                 <Text className="font-sans text-sm leading-5 text-textSecondary">
-                  Create a free Plaid account — just an email and password, instant.
+                  Create a free Plaid account.
                 </Text>
                 <Text className="font-sans text-xs leading-4 text-textMuted">
                   When it asks what the account is for, choose Personal.
@@ -191,7 +191,7 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
               </View>
               <View className="flex-1 gap-1">
                 <Text className="font-sans text-sm leading-5 text-textSecondary">
-                  Request free Trial access — this unlocks real bank data instead of test data.
+                  Request free Trial access — this unlocks real bank data.
                 </Text>
                 <Text className="font-sans text-xs leading-4 text-textMuted">
                   Plaid will ask for your name and address here. That's Plaid's own requirement
@@ -205,8 +205,8 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
                 <Text className="font-sansSemi text-xs text-primary">3</Text>
               </View>
               <Text className="flex-1 font-sans text-sm leading-5 text-textSecondary">
-                Copy your Client ID and Secret from Developers → Keys, then come back here and
-                paste them in.
+                Copy your Production Client ID and Production Secret from Developers → Keys,
+                then come back here and paste them in.
               </Text>
             </View>
 
