@@ -104,3 +104,53 @@ describe('axiom sink', () => {
     expect(AXIOM_TIMEOUT_MS).toBeLessThanOrEqual(1000)
   })
 })
+
+describe('assertAxiomEnvironment', () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV
+
+  beforeEach(() => {
+    delete process.env.AXIOM_TOKEN
+    delete process.env.AXIOM_DATASET
+    delete process.env.VERCEL
+    // The guard exempts tests, so seeing it fire at all requires posing as a normal local run.
+    process.env.NODE_ENV = 'development'
+  })
+
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV
+    delete process.env.VERCEL
+  })
+
+  it('refuses to start a local server that would write to the production dataset', async () => {
+    configured()
+    const { assertAxiomEnvironment } = await importAxiom()
+
+    expect(() => assertAxiomEnvironment()).toThrow(/AXIOM_TOKEN/)
+  })
+
+  it('allows it on Vercel, which is the only place it belongs', async () => {
+    configured()
+    process.env.VERCEL = '1'
+    const { assertAxiomEnvironment } = await importAxiom()
+
+    expect(() => assertAxiomEnvironment()).not.toThrow()
+  })
+
+  it('allows a local run with no token, which is the expected setup', async () => {
+    const { assertAxiomEnvironment } = await importAxiom()
+    expect(() => assertAxiomEnvironment()).not.toThrow()
+  })
+
+  it('allows a local run with only the dataset set, since that alone is inert', async () => {
+    process.env.AXIOM_DATASET = 'tofi-backend'
+    const { assertAxiomEnvironment } = await importAxiom()
+    expect(() => assertAxiomEnvironment()).not.toThrow()
+  })
+
+  it('exempts tests, which configure a token to exercise the sink', async () => {
+    configured()
+    process.env.NODE_ENV = 'test'
+    const { assertAxiomEnvironment } = await importAxiom()
+    expect(() => assertAxiomEnvironment()).not.toThrow()
+  })
+})

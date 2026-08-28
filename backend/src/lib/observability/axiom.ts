@@ -28,6 +28,25 @@ function config(): { token: string; dataset: string } | null {
   return { token, dataset }
 }
 
+/**
+ * Fails a local start that would write into the production dataset.
+ *
+ * There is one dataset, so a token present outside Vercel means local traffic interleaves with
+ * production traffic in it. The `env` field makes them separable after the fact, but silently
+ * polluting the thing you consult during an incident is not worth a filter — and the mistake is
+ * invisible otherwise, since the ingest succeeds. Called before the server accepts a request.
+ *
+ * Tests are exempt: they configure a token precisely to exercise the sink.
+ */
+export function assertAxiomEnvironment(): void {
+  if (!process.env.AXIOM_TOKEN) return
+  if (process.env.VERCEL || process.env.NODE_ENV === 'test') return
+  throw new Error(
+    'AXIOM_TOKEN is set outside Vercel. Local runs would write into the production dataset — ' +
+      'unset it in .env (AXIOM_DATASET alone is inert) and set it on the Vercel project instead.',
+  )
+}
+
 /** False in local development and in tests unless both variables are set — the sink is opt-in. */
 export function isAxiomConfigured(): boolean {
   return config() !== null

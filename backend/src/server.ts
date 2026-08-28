@@ -6,7 +6,7 @@ import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from '@trpc/server/a
 import { appRouter, type AppRouter } from './trpc/router.js'
 import { createContext } from './trpc/context.js'
 import { logTrpcError, toAxiomEvent } from './trpc/errorLogging.js'
-import { isAxiomConfigured, sendToAxiom } from './lib/observability/axiom.js'
+import { assertAxiomEnvironment, isAxiomConfigured, sendToAxiom } from './lib/observability/axiom.js'
 import { bufferErrorEvent, takeErrorEvents } from './lib/observability/requestErrorBuffer.js'
 import { enqueue, takeAll, takeIfFull } from './lib/observability/eventQueue.js'
 import { toRequestEvent } from './lib/observability/requestEvent.js'
@@ -26,6 +26,10 @@ export function buildServer(options: { logDestination?: NodeJS.WritableStream } 
   //
   // trustProxy: behind Vercel, req.ip is otherwise the proxy's address, which would
   // collapse every caller into one rate-limit bucket.
+  // Before anything is wired up: a misconfigured sink is otherwise invisible, because writing to
+  // the wrong dataset succeeds.
+  assertAxiomEnvironment()
+
   const server = Fastify({
     logger: options.logDestination ? { stream: options.logDestination } : true,
     maxParamLength: 5000,
