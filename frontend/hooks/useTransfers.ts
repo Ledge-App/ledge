@@ -5,7 +5,14 @@ export function useTransfers() {
   const utils = api.useUtils()
   const transfers = api.transfers.list.useQuery()
   const dismissals = useTransferDismissals()
-  const createMutation = api.transfers.create.useMutation({ onSuccess: () => utils.transfers.list.invalidate() })
+  // Patches the row the create already returned straight into the cache instead of
+  // invalidating and re-fetching the whole list — removes a full network round-trip from
+  // every save, since the response already has everything the list needs.
+  const createMutation = api.transfers.create.useMutation({
+    onSuccess: (created) => {
+      utils.transfers.list.setData(undefined, (old) => [...(old ?? []), created])
+    },
+  })
   const createManyMutation = api.transfers.createMany.useMutation({ onSuccess: () => utils.transfers.list.invalidate() })
   const deleteMutation = api.transfers.delete.useMutation({ onSuccess: () => utils.transfers.list.invalidate() })
 
