@@ -12,10 +12,10 @@
 const INGEST_HOST = 'https://api.axiom.co'
 
 /**
- * Bounded because the caller is holding a response open waiting for this (see the onSend hook in
- * server.ts). Every rejection ships, including the expected ones, so this ceiling now applies to
- * responses that are working correctly — a 401 during an ordinary token refresh among them.
- * A typical ingest is well inside it; this only caps the case where Axiom is unwell.
+ * Bounded so a hung sink cannot outlive its usefulness. On Vercel this no longer delays any
+ * response (runAfterResponse hands the send to waitUntil), but it still occupies the invocation,
+ * and on the awaited fallback path it does hold the response open. A typical ingest is well
+ * inside this; the ceiling only caps the case where Axiom is unwell.
  */
 export const AXIOM_TIMEOUT_MS = 1_000
 

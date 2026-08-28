@@ -8,7 +8,7 @@ import { createContext } from './trpc/context.js'
 import { logTrpcError, toAxiomEvent } from './trpc/errorLogging.js'
 import { assertAxiomEnvironment, isAxiomConfigured, sendToAxiom } from './lib/observability/axiom.js'
 import { bufferErrorEvent, takeErrorEvents } from './lib/observability/requestErrorBuffer.js'
-import { enqueue, takeAll, takeIfFull } from './lib/observability/eventQueue.js'
+import { runAfterResponse } from './lib/observability/afterResponse.js'
 import { toRequestEvent } from './lib/observability/requestEvent.js'
 
 /**
@@ -59,23 +59,19 @@ export function buildServer(options: { logDestination?: NodeJS.WritableStream } 
 
   // Ships every request — the completed request itself, plus any errors it raised — to Axiom.
   //
-  // onSend rather than onResponse, deliberately: the Vercel handler emits the request into
-  // Fastify and returns immediately (api/index.ts), so the invocation can be frozen as soon as
-  // the response ends and anything scheduled after that point may simply never run. onSend is
-  // awaited while the response is still open, which is the only place a send is guaranteed.
+  // onSend rather than onResponse: the Vercel handler emits the request into Fastify and returns
+  // immediately (api/index.ts), so a hook running after the response has no guarantee of being
+  // reached at all. This one runs while the response is still open, and hands the send to
+  // runAfterResponse, which keeps the invocation alive past the response instead of delaying it.
   //
-  // That guarantee is also what makes a send expensive: it holds the response open. So requests
-  // accumulate in an instance-local queue (eventQueue) and only one in FLUSH_AT actually pays
-  // for a flush, while any request that raised an error flushes the whole queue immediately —
-  // an incident must not wait on traffic that may never arrive. Request telemetry is therefore
-  // best-effort and errors are not; see the eventQueue header for why nothing can do better
-  // without Vercel's `waitUntil`.
+  // Every request ships on its own, unbatched. An earlier version accumulated events and flushed
+  // one request in ten, because the send was awaited and would otherwise have taxed every
+  // response — but a queue living in one instance's memory loses whatever it holds when that
+  // instance is evicted, which at low traffic is most of it.
   server.addHook('onSend', async (request, reply) => {
     if (!isAxiomConfigured()) return
-    const errors = takeErrorEvents(request)
-    enqueue([...errors, toRequestEvent(request, reply)])
-    const batch = errors.length > 0 ? takeAll() : takeIfFull()
-    if (batch.length > 0) await sendToAxiom(batch)
+    const events = [...takeErrorEvents(request), toRequestEvent(request, reply)]
+    await runAfterResponse(sendToAxiom(events))
   })
 
   server.register(fastifyTRPCPlugin, {

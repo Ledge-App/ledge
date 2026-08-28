@@ -61,9 +61,9 @@ because Vercel's Hobby plan keeps runtime logs for about an hour, live-tail only
 Drains behind Pro.
 
 Every request ships one `info`/`warn` event describing method, path, status and duration, plus an
-`error`/`warn` event per failed tRPC procedure. Requests accumulate in an instance-local queue
-and flush in batches so responses do not each wait on the sink; a request that raised an error
-flushes the queue immediately. Query strings are never shipped — a batched tRPC GET carries its
+`error`/`warn` event per failed tRPC procedure. The send is handed to Vercel's `waitUntil`, so it
+completes after the response without delaying it; off Vercel there is no such primitive and the
+send is awaited instead. Query strings are never shipped — a batched tRPC GET carries its
 procedure input there.
 
 Run the test suite with `npm test`.
