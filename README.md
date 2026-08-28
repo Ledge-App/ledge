@@ -1,5 +1,7 @@
 # ToFi
 
+[Download on the App Store](https://apps.apple.com/us/app/tofi/id6797382662)
+
 A personal budgeting app for iOS that connects to bank, credit card, and investment accounts via Plaid. Users categorize transactions, set budgets, and track reimbursements — built for a small, closed group of friends rather than the general public.
 
 Each user connects Plaid with their **own** Plaid developer credentials (BYOK — bring your own key), entered in-app after signup. This keeps everyone's linked-account usage isolated under their own free Plaid account instead of sharing one app-wide key.
