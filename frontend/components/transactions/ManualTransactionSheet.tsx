@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Keyboard, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
+import type { SheetScroll } from '@/components/ui/BottomSheet'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { TextField } from '@/components/ui/TextField'
@@ -29,7 +29,11 @@ function fromDateKey(dateKey: string): Date {
 }
 
 interface ManualTransactionSheetProps {
+  /** Still meaningful after the single-host change: this sheet stays MOUNTED while hidden (the
+   *  returningFromTransfer ref below depends on it), so `visible` is what tells it it was reopened. */
   visible: boolean
+  /** Owned by the single sheet host, so drag-to-dismiss tracks whichever content is showing. */
+  sheetScroll: SheetScroll
   transaction?: ManualTransaction
   categories: Category[]
   subcategories: Subcategory[]
@@ -61,6 +65,7 @@ export interface ManualTransactionInput {
 
 export function ManualTransactionSheet({
   visible,
+  sheetScroll,
   transaction,
   categories,
   subcategories,
@@ -75,7 +80,6 @@ export function ManualTransactionSheet({
   onClearPendingTransfer,
   onSaveAndUnmarkTransfer,
 }: ManualTransactionSheetProps) {
-  const sheetScroll = useSheetScroll()
   const [type, setType] = useState<'expense' | 'income'>(transaction?.type ?? 'expense')
   const [amountText, setAmountText] = useState(transaction?.amount ?? '')
   const [categoryId, setCategoryId] = useState<string | null>(transaction?.categoryId ?? null)
@@ -175,7 +179,7 @@ export function ManualTransactionSheet({
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
+    <>
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -343,6 +347,6 @@ export function ManualTransactionSheet({
           {onDelete ? <Button label="Delete Transaction" variant="ghost" onPress={onDelete} /> : null}
         </View>
       </ScrollView>
-    </BottomSheet>
+    </>
   )
 }

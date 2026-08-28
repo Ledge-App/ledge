@@ -27,6 +27,7 @@ function item(id: string, date: string): FeedItem {
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
   }
 }

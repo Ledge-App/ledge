@@ -1,10 +1,11 @@
+import { memo } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
-import { countsTowardTotals, isInvestmentSweep } from '@/lib/transactions/totals'
+import { countsTowardTotals, isInvestmentSweep, isUnlinkedInternalTransfer } from '@/lib/transactions/totals'
 import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
 import { linkPillLabel } from '@/lib/transactions/linkSummary'
 import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
@@ -17,10 +18,15 @@ interface TransactionRowProps {
   /** Icon slug; null when the item has no category, which renders the uncategorized fallback. */
   categoryIcon: string | null
   reimbursementCategoryName: string | null
-  onPress?: () => void
+  /**
+   * Takes the row's item rather than closing over it, so the list can hand every row the SAME
+   * callback. A per-row arrow would give each row a fresh prop on every parent render and defeat
+   * the memo below — which is the whole reason opening a sheet used to re-render the month.
+   */
+  onPress?: (item: FeedItem) => void
 }
 
-export function TransactionRow({ item, categoryName, categoryColor, categoryIcon, reimbursementCategoryName, onPress }: TransactionRowProps) {
+function TransactionRowComponent({ item, categoryName, categoryColor, categoryIcon, reimbursementCategoryName, onPress }: TransactionRowProps) {
   // Resolved here rather than passed in, so EVERY surface that renders an entry — the
   // transactions list, account/category detail sheets, anything added later — shows the
   // bank badge without each parent re-wiring it. Rides the shared accounts query cache.
@@ -47,7 +53,13 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       ? { label: reimbursementPill, color: colors.reimbursed }
       : isInvestmentSweep(item)
         ? { label: 'Investment', color: colors.textMuted }
-        : item.pending
+        : isUnlinkedInternalTransfer(item)
+          ? // Money that left for another of the user's own accounts, which is why it stopped
+            // counting — but no Transfer record names the other side yet, so it can't claim the
+            // transfer badge. Muted for the same reason "Investment" is: nothing here was
+            // confirmed by the user.
+            { label: 'Internal', color: colors.textMuted }
+          : item.pending
           ? // The bank hasn't settled this yet, which is also why the account's balance won't
             // reflect it — Plaid's `current` balance moves only when a transaction posts.
             // Labelling the row is what makes that mismatch read as "in progress" rather
@@ -58,7 +70,7 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
   const iconBg = hexToRgba(iconColor, 0.18)
 
   return (
-    <Pressable onPress={onPress} className="flex-row items-center gap-3 py-3">
+    <Pressable onPress={() => onPress?.(item)} className="flex-row items-center gap-3 py-3">
       <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: iconBg }}>
         {transferType ? (
           <Ionicons name={transferType.icon} size={18} color={iconColor} />
@@ -134,3 +146,10 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
     </Pressable>
   )
 }
+
+/**
+ * Memoized because a list renders a whole month of these, and every sheet open/close used to
+ * re-render all of them. Props are the item plus primitives, so the default shallow compare is
+ * exactly right: a row re-renders when its own transaction changes and not otherwise.
+ */
+export const TransactionRow = memo(TransactionRowComponent)

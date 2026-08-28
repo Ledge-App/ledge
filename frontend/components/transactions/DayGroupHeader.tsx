@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Text, View } from 'react-native'
 import { formatAmount } from '@/lib/format/money'
 import { formatDayLabel } from '@/lib/format/date'
@@ -21,7 +22,7 @@ interface DayGroupHeaderProps {
  * A day where nothing counts shows a muted $0.00 rather than nothing at all: the rows are still
  * listed below (greyed, badged), and a blank header left it ambiguous whether they'd been counted.
  */
-export function DayGroupHeader({ date, items, className }: DayGroupHeaderProps) {
+function DayGroupHeaderComponent({ date, items, className }: DayGroupHeaderProps) {
   const { income, expense } = dayTotals(items)
   const hasTotals = income > 0 || expense > 0
 
@@ -36,3 +37,6 @@ export function DayGroupHeader({ date, items, className }: DayGroupHeaderProps) 
     </View>
   )
 }
+
+/** Memoized alongside the rows it heads: `items` is stable while the day's grouping is. */
+export const DayGroupHeader = memo(DayGroupHeaderComponent)

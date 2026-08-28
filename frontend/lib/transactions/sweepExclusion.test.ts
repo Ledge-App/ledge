@@ -27,6 +27,7 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     transferSource: null,
     isBrokerageCashAccount: true,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
     ...overrides,
   }
@@ -163,6 +164,33 @@ describe('applySweepExclusion', () => {
     // Income is untouched: 6.55 + 14.78 + 2033.45
     const incomeTotal = result.filter((i) => i.amount < 0 && countsTowardTotals(i)).reduce((s, i) => s + Math.abs(i.amount), 0)
     expect(incomeTotal).toBeCloseTo(2054.78, 2)
+  })
+
+  // A round trip through a linked bank: money leaves the brokerage cash account, comes back, then
+  // leaves again for a second account, all at the same amount. The returning inflow mirrors the
+  // second outflow on amount and date, but that outflow has its own counterpart sitting in a
+  // linked account — it is a transfer autoMatch should pair, not a sweep.
+  it('leaves an outflow alone when an equal inflow sits on another account', () => {
+    const result = applySweepExclusion([
+      item({ id: 'cma-in', amount: -5000, date: '2026-05-04', pfcDetailed: 'TRANSFER_IN_ACCOUNT_TRANSFER' }),
+      item({ id: 'cma-out', amount: 5000, date: '2026-05-05' }),
+      item({ id: 'bank2-in', amount: -5000, date: '2026-05-05', accountId: 'bank2', isBrokerageCashAccount: false, pfcDetailed: 'TRANSFER_IN_ACCOUNT_TRANSFER' }),
+    ])
+
+    expect(find(result, 'cma-out').isSweptOutflow).toBe(false)
+  })
+
+  // Outflows only. A brokerage-cash INFLOW tagged with an investment code is typically a
+  // redemption out of the core money-market fund — genuinely an investment, and one that routinely
+  // equals an unrelated outflow elsewhere, because the redemption exists to fund a transfer of
+  // exactly that size. Stamping it turns a correct "Investment" label into a wrong "Internal" one.
+  it('does not stamp an inflow, whatever sits on another account', () => {
+    const result = applySweepExclusion([
+      item({ id: 'cma-in', amount: -5000, date: '2026-05-04', pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS' }),
+      item({ id: 'bank-out', amount: 5000, date: '2026-05-04', accountId: 'bank', isBrokerageCashAccount: false }),
+    ])
+
+    expect(find(result, 'cma-in').hasCrossAccountCounterpart).toBe(false)
   })
 
   it('leaves an outflow with no matching inflow counted', () => {

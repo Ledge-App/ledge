@@ -85,7 +85,7 @@ describe('suggestBudgetAmount', () => {
       confidenceLevel: null, pfcDetailed: null, accountId: 'a', pending: false, note: null,
       reimbursedAmount: null, netAmount: null, isReimbursementIncome: false, reimbursementCategoryId: null,
       transferId: null, transferKind: null, transferRole: null, transferSource: null,
-      isBrokerageCashAccount: false, isSweptOutflow: false, links: [],
+      isBrokerageCashAccount: false, isSweptOutflow: false, hasCrossAccountCounterpart: false, links: [],
     } as FeedItem
   }
   const today = new Date(2026, 7, 15) // Aug 15, 2026

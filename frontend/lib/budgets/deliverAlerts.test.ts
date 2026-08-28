@@ -79,6 +79,7 @@ function spend(id: string, categoryId: string, amount: number, date = '2026-08-1
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
   }
 }

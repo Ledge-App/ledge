@@ -125,6 +125,11 @@ export interface FeedItem {
   // Set by applySweepExclusion (runs last): this outflow only mirrors an equal inflow on the same
   // brokerage cash account, i.e. a sweep into holdings rather than spending.
   isSweptOutflow: boolean
+  // Also set by applySweepExclusion: an equal, opposite-signed row exists on a DIFFERENT account
+  // inside autoMatch's window. Money that crossed an account boundary, whatever Plaid's code on it
+  // says — which is what separates a transfer from a sweep into holdings. Only the label reads
+  // this; whether the row counts is unaffected either way.
+  hasCrossAccountCounterpart: boolean
   /** Every link this transaction is part of, either leg. Empty when it isn't linked to anything. */
   links: FeedLink[]
 }
@@ -182,6 +187,7 @@ export function mergeFeed(
       transferSource: null,
       isBrokerageCashAccount: brokerageCashAccountIds.has(txn.account_id),
       isSweptOutflow: false,
+      hasCrossAccountCounterpart: false,
       links: [],
     }
   })
@@ -210,6 +216,7 @@ export function mergeFeed(
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
   }))
 
@@ -256,6 +263,7 @@ export function mergeFeed(
       transferSource: null,
       isBrokerageCashAccount: brokerageCashAccountIds.has(txn.accountId),
       isSweptOutflow: false,
+      hasCrossAccountCounterpart: false,
       links: [],
     }
   })

@@ -1,20 +1,13 @@
 import { useState } from 'react'
 import { Text, View } from 'react-native'
 import { hexToRgba } from '@/constants/theme'
+import { MIN_LABEL_SIZE, TreemapTile } from '@/components/accounts/TreemapTile'
 import { assetClass } from '@/lib/accounts/holdings'
 import { classBreakdown, computeAllocation, squarify } from '@/lib/accounts/treemap'
 import type { Holding } from '@/types/domain'
 
 const MAP_HEIGHT = 200
-/** Below this, a label would clip — the tile stays color-only. */
-const MIN_LABEL_SIZE = 34
 
-// The map has to read as ONE object subdivided, not a scatter of separate cards. Everything
-// below is tuned to that: the gap is wide enough to separate two same-class neighbours and
-// no wider, and the radius is small enough that tiles still feel cut from a shared surface.
-// Push either up and the treemap stops looking like a whole.
-const TILE_GAP = 3
-const TILE_RADIUS = 5
 /**
  * Fill opacity for the largest holding in a class, stepping down for each smaller one.
  * Two same-class neighbours are otherwise the identical colour and read as a single shape
@@ -29,18 +22,6 @@ const TILE_TINT_STEP = 0.05
 const TILE_TINT_MIN = 0.2
 /** Slivers carry no label, so they can take more colour without a contrast cost. */
 const SLIVER_TINT = 0.48
-
-/**
- * Type scale for a tile's label, stepped by how much room it has. A treemap where every
- * label is the same size wastes its own hierarchy — the 58% position should announce
- * itself louder than the 3% one, in type as well as area.
- */
-function labelScale(w: number, h: number) {
-  const min = Math.min(w, h)
-  if (min >= 90) return { symbol: 15, share: 11, pad: 10 }
-  if (min >= 56) return { symbol: 13, share: 10, pad: 8 }
-  return { symbol: 11, share: 9, pad: 6 }
-}
 
 // Portfolio allocation treemap: tile area = share of market value, color = ASSET CLASS.
 // Deliberately not performance-colored — red/green on a treemap reads as "today's
@@ -96,49 +77,19 @@ export function HoldingsHeatMap({ holdings }: { holdings: Holding[] }) {
         {rects.map(({ item, x, y, width: w, height: h }) => {
           const showLabel = w >= MIN_LABEL_SIZE && h >= MIN_LABEL_SIZE
           const cls = assetClass(item.type)
-          // Inset rather than a smaller rect from squarify: the layout math stays pure and
-          // the gap is presentation, so tile areas remain exactly proportional to value.
-          const inset = TILE_GAP / 2
-          const tileW = Math.max(w - TILE_GAP, 1)
-          const tileH = Math.max(h - TILE_GAP, 1)
-          const type = labelScale(tileW, tileH)
           return (
-            <View
+            <TreemapTile
               key={item.securityId}
-              style={{
-                position: 'absolute',
-                left: x + inset,
-                top: y + inset,
-                width: tileW,
-                height: tileH,
-                padding: type.pad,
-                backgroundColor: hexToRgba(cls.color, showLabel ? tintFor(item.securityId) : SLIVER_TINT),
-                // Radius tracks the tile so a 6px sliver isn't rendered as a lozenge.
-                borderRadius: Math.min(TILE_RADIUS, tileW / 3, tileH / 3),
-                overflow: 'hidden',
-              }}
-            >
-              {showLabel ? (
-                <>
-                  <Text
-                    className="font-sansSemi"
-                    style={{ color: cls.textColor, fontSize: type.symbol }}
-                    numberOfLines={1}
-                  >
-                    {item.label}
-                  </Text>
-                  {/* The share is supporting detail, so it drops in weight and opacity rather
-                      than switching to a grey — grey on a tinted fill reads as washed out. */}
-                  <Text
-                    className="font-mono"
-                    style={{ color: cls.textColor, opacity: 0.7, fontSize: type.share, marginTop: 2 }}
-                    numberOfLines={1}
-                  >
-                    {(item.weight * 100).toFixed(item.weight >= 0.1 ? 0 : 1)}%
-                  </Text>
-                </>
-              ) : null}
-            </View>
+              x={x}
+              y={y}
+              width={w}
+              height={h}
+              color={cls.color}
+              textColor={cls.textColor}
+              tint={showLabel ? tintFor(item.securityId) : SLIVER_TINT}
+              title={item.label}
+              share={`${(item.weight * 100).toFixed(item.weight >= 0.1 ? 0 : 1)}%`}
+            />
           )
         })}
       </View>

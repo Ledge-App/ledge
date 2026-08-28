@@ -68,3 +68,14 @@ export function formatRelativeIsoTime(isoDate: string | null, now: number): stri
   if (Number.isNaN(timestamp)) return null
   return formatRelativeTime(timestamp, now)
 }
+
+/**
+ * A Date written as "Aug 28, 2026", for an "as of" stamp.
+ *
+ * Reads the LOCAL calendar fields, unlike formatFullDate — this describes an instant the user
+ * is living through ("right now"), not a stored calendar key, so their own date is the correct
+ * one to show.
+ */
+export function formatAsOfDate(date: Date): string {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
+}

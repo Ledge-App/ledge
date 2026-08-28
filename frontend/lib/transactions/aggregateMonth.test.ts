@@ -27,6 +27,7 @@ function item(overrides: Partial<FeedItem> & { id: string }): FeedItem {
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
     ...overrides,
   }
@@ -164,6 +165,7 @@ describe('aggregateMonth', () => {
         pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER',
         isBrokerageCashAccount: true,
         isSweptOutflow: true,
+        hasCrossAccountCounterpart: false,
       }),
     ])
 
