@@ -5,7 +5,11 @@ import rateLimit from '@fastify/rate-limit'
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import { appRouter, type AppRouter } from './trpc/router.js'
 import { createContext } from './trpc/context.js'
-import { logTrpcError } from './trpc/errorLogging.js'
+import { logTrpcError, toAxiomEvent } from './trpc/errorLogging.js'
+import { assertAxiomEnvironment, isAxiomConfigured, sendToAxiom } from './lib/observability/axiom.js'
+import { bufferErrorEvent, takeErrorEvents } from './lib/observability/requestErrorBuffer.js'
+import { enqueue, takeAll, takeIfFull } from './lib/observability/eventQueue.js'
+import { toRequestEvent } from './lib/observability/requestEvent.js'
 
 /**
  * `logDestination` exists so tests can read what the server logs. pino writes straight to file
@@ -22,6 +26,10 @@ export function buildServer(options: { logDestination?: NodeJS.WritableStream } 
   //
   // trustProxy: behind Vercel, req.ip is otherwise the proxy's address, which would
   // collapse every caller into one rate-limit bucket.
+  // Before anything is wired up: a misconfigured sink is otherwise invisible, because writing to
+  // the wrong dataset succeeds.
+  assertAxiomEnvironment()
+
   const server = Fastify({
     logger: options.logDestination ? { stream: options.logDestination } : true,
     maxParamLength: 5000,
@@ -49,6 +57,27 @@ export function buildServer(options: { logDestination?: NodeJS.WritableStream } 
 
   server.get('/health', async () => ({ status: 'ok' }))
 
+  // Ships every request — the completed request itself, plus any errors it raised — to Axiom.
+  //
+  // onSend rather than onResponse, deliberately: the Vercel handler emits the request into
+  // Fastify and returns immediately (api/index.ts), so the invocation can be frozen as soon as
+  // the response ends and anything scheduled after that point may simply never run. onSend is
+  // awaited while the response is still open, which is the only place a send is guaranteed.
+  //
+  // That guarantee is also what makes a send expensive: it holds the response open. So requests
+  // accumulate in an instance-local queue (eventQueue) and only one in FLUSH_AT actually pays
+  // for a flush, while any request that raised an error flushes the whole queue immediately —
+  // an incident must not wait on traffic that may never arrive. Request telemetry is therefore
+  // best-effort and errors are not; see the eventQueue header for why nothing can do better
+  // without Vercel's `waitUntil`.
+  server.addHook('onSend', async (request, reply) => {
+    if (!isAxiomConfigured()) return
+    const errors = takeErrorEvents(request)
+    enqueue([...errors, toRequestEvent(request, reply)])
+    const batch = errors.length > 0 ? takeAll() : takeIfFull()
+    if (batch.length > 0) await sendToAxiom(batch)
+  })
+
   server.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
@@ -59,8 +88,13 @@ export function buildServer(options: { logDestination?: NodeJS.WritableStream } 
       // batched request (which is every request the app makes) that status is 207, indisting-
       // uishable from success. req.log is the child logger, so lines carry the same reqId as the
       // surrounding request pair.
-      onError: ({ error, path, type, req, ctx }) =>
-        logTrpcError(req.log, { error, path, type, userId: ctx?.userId ?? null }),
+      onError: ({ error, path, type, req, ctx }) => {
+        const event = { error, path, type, userId: ctx?.userId ?? null }
+        logTrpcError(req.log, event)
+        // Buffered rather than sent: this callback is fire-and-forget, so an await here would
+        // not hold the invocation open. The onSend hook above does the sending.
+        if (isAxiomConfigured()) bufferErrorEvent(req, toAxiomEvent(event, { requestId: String(req.id) }))
+      },
     },
     // Annotated so the onError callback's parameters are contextually typed rather than implicit
     // any — the plugin cannot infer the router from a bare object literal.

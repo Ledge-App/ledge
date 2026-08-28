@@ -448,6 +448,8 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=                   # used to build per-request scoped clients
 SUPABASE_JWT_SECRET=                 # to verify incoming JWTs
 ACCESS_TOKEN_ENCRYPTION_KEY=         # 32-byte hex AES-256 key — encrypts both plaid_items.encrypted_access_token and plaid_credentials.encrypted_secret
+AXIOM_TOKEN=                         # optional, with AXIOM_DATASET — durable request + error log sink; unset = stdout only
+AXIOM_DATASET=                       # tofi-backend — matches the `service` field on every event
 
 # Mobile (.env — safe to bundle)
 EXPO_PUBLIC_SUPABASE_URL=
