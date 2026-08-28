@@ -12,7 +12,9 @@ interface RequestLike {
 
 interface ReplyLike {
   statusCode: number
-  getResponseTime(): number
+  /** Not getResponseTime(): that method is deprecated in Fastify 4 — it warns on every cold
+   *  start — and is removed in Fastify 5. */
+  elapsedTime: number
 }
 
 export function toRequestEvent(request: RequestLike, reply: ReplyLike): object {
@@ -33,7 +35,7 @@ export function toRequestEvent(request: RequestLike, reply: ReplyLike): object {
       method: request.method,
       path,
       statusCode: reply.statusCode,
-      durationMs: Math.round(reply.getResponseTime() * 100) / 100,
+      durationMs: Math.round(reply.elapsedTime * 100) / 100,
     },
   }
 }

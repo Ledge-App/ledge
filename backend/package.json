@@ -17,6 +17,7 @@
     "@fastify/rate-limit": "^9.1.0",
     "@supabase/supabase-js": "^2.45.4",
     "@trpc/server": "^10.45.2",
+    "@vercel/functions": "^3.9.5",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.4",
     "fastify": "^4.28.1",

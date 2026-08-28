@@ -1,8 +1,7 @@
 import { Writable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildServer } from './server.js'
-import { bufferErrorEvent } from './lib/observability/requestErrorBuffer.js'
-import { FLUSH_AT, resetQueue } from './lib/observability/eventQueue.js'
+import { resetSchedulerForTests } from './lib/observability/afterResponse.js'
 
 /** Collects everything the server logs during one request. */
 function logCollector() {
@@ -67,13 +66,13 @@ describe('server', () => {
 
   describe('axiom shipping', () => {
     beforeEach(() => {
-      resetQueue()
+      resetSchedulerForTests()
       process.env.AXIOM_TOKEN = 'xaat-test-token'
       process.env.AXIOM_DATASET = 'tofi-backend'
     })
 
     afterEach(() => {
-      resetQueue()
+      resetSchedulerForTests()
       delete process.env.AXIOM_TOKEN
       delete process.env.AXIOM_DATASET
       vi.unstubAllGlobals()
@@ -85,51 +84,54 @@ describe('server', () => {
       return fetchMock
     }
 
-    it('batches successful requests instead of sending on each one', async () => {
+    it('ships every request on its own, with no batching to wait for', async () => {
       const fetchMock = okFetch()
       const server = buildServer({ logDestination: logCollector().stream })
 
-      for (let i = 0; i < FLUSH_AT - 1; i++) {
-        await server.inject({ method: 'GET', url: '/health' })
-      }
-      // The flush is awaited while the response is open, so a send on every request would put
-      // the sink's round trip on every response the app makes.
-      expect(fetchMock).not.toHaveBeenCalled()
-
+      await server.inject({ method: 'GET', url: '/health' })
       await server.inject({ method: 'GET', url: '/health' })
       await server.close()
 
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      const batch = JSON.parse(fetchMock.mock.calls[0][1].body)
-      expect(batch).toHaveLength(FLUSH_AT)
-      expect(batch[0].level).toBe('info')
-      expect(batch[0].http).toMatchObject({ method: 'GET', path: '/health', statusCode: 200 })
-      expect(batch[0].http.durationMs).toEqual(expect.any(Number))
+      // The queue this replaced flushed one request in ten, and dropped the remainder whenever
+      // the instance holding them was evicted.
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const [event] = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(event.level).toBe('info')
+      expect(event.http).toMatchObject({ method: 'GET', path: '/health', statusCode: 200 })
+      expect(event.http.durationMs).toEqual(expect.any(Number))
     })
 
-    it('flushes immediately when a request raised an error, taking the queue with it', async () => {
+    it('ships a failed procedure alongside the request that raised it', async () => {
       process.env.SUPABASE_JWT_SECRET = 'test-secret'
       const fetchMock = okFetch()
       const server = buildServer({ logDestination: logCollector().stream })
-
-      // Two healthy requests accumulate, then a rejection forces everything out — an incident
-      // must not sit in a half-full batch waiting for traffic that may never come.
-      await server.inject({ method: 'GET', url: '/health' })
-      await server.inject({ method: 'GET', url: '/health' })
-      expect(fetchMock).not.toHaveBeenCalled()
 
       const response = await server.inject({ method: 'GET', url: '/trpc/categories.list' })
       await server.close()
 
       expect(response.statusCode).toBe(401)
       expect(fetchMock).toHaveBeenCalledTimes(1)
-      const batch = JSON.parse(fetchMock.mock.calls[0][1].body)
-      // Two health requests, the tRPC error, and the tRPC request itself.
-      expect(batch).toHaveLength(4)
-      const error = batch.find((e: { trpc?: object }) => e.trpc)
+      const events = JSON.parse(fetchMock.mock.calls[0][1].body)
+      // One event for the rejected procedure, one for the request as a whole.
+      expect(events).toHaveLength(2)
+      const error = events.find((e: { trpc?: object }) => e.trpc)
       expect(error.level).toBe('warn')
       expect(error.trpc).toEqual({ path: 'categories.list', type: 'query', code: 'UNAUTHORIZED' })
       expect(error.err.message).toBe('UNAUTHORIZED')
+    })
+
+    it('ships every failing procedure of a batch in one request', async () => {
+      process.env.SUPABASE_JWT_SECRET = 'test-secret'
+      const fetchMock = okFetch()
+      const server = buildServer({ logDestination: logCollector().stream })
+
+      await server.inject({ method: 'GET', url: '/trpc/categories.list,budgets.list?batch=1&input=%7B%7D' })
+      await server.close()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const events = JSON.parse(fetchMock.mock.calls[0][1].body)
+      const paths = events.filter((e: { trpc?: { path: string } }) => e.trpc).map((e: { trpc: { path: string } }) => e.trpc.path)
+      expect(paths).toEqual(['categories.list', 'budgets.list'])
     })
 
     it('sends inside the invocation, not after the response', async () => {
@@ -141,24 +143,13 @@ describe('server', () => {
       vi.stubGlobal('fetch', fetchMock)
 
       const server = buildServer({ logDestination: logCollector().stream })
-      // A probe route rather than a failing procedure: every procedure that fails without a
-      // database is a rejection, and one is exercised above. This isolates the hook itself.
-      server.get('/probe-buffered-error', async (request) => {
-        bufferErrorEvent(request, { probe: true })
-        return { ok: true }
-      })
-
-      const response = await server.inject({ method: 'GET', url: '/probe-buffered-error' })
+      const response = await server.inject({ method: 'GET', url: '/health' })
       await server.close()
 
-      // inject resolves once the response is complete, so the send having already happened is
-      // what proves the flush runs inside the invocation rather than after it — the distinction
-      // that decides whether it survives on a serverless platform at all.
+      // Off Vercel there is no waitUntil, so runAfterResponse awaits — and inject resolves only
+      // once the response is complete. The send having happened proves the fallback path works.
       expect(sentBeforeResponse).toBe(true)
       expect(response.statusCode).toBe(200)
-      const batch = JSON.parse(fetchMock.mock.calls[0][1].body)
-      expect(batch[0]).toEqual({ probe: true })
-      expect(batch[1].http.path).toBe('/probe-buffered-error')
     })
 
     it('never ships the query string, where a batched query carries its input', async () => {
