@@ -49,7 +49,7 @@ export function VisualizationPager({
   const dailyPoints = useMemo(() => computeDailyPoints(monthFeed, month, mode), [monthFeed, month, mode])
   const topMerchants = useMemo(() => computeTopMerchants(monthFeed, mode), [monthFeed, mode])
 
-  const lineColor = mode === 'expense' ? colors.primary : colors.income
+  const lineColor = mode === 'expense' ? colors.expense : colors.income
   // Keyed on the segments rather than the total: a month whose every transaction is excluded has a
   // total of zero but still has rows the user should be able to reach, and those segments carry
   // them. Genuinely empty months have no segments either, so the label still shows when it should.
@@ -116,7 +116,7 @@ export function VisualizationPager({
                 className="rounded-lg bg-surface"
                 style={{ padding: 12, marginTop: 8, shadowColor: '#0F766E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 3 }}
               >
-                <SpendingTrend points={dailyPoints} lineColor={lineColor} />
+                <SpendingTrend points={dailyPoints} lineColor={lineColor} month={month} />
               </View>
 
               <View style={{ marginTop: 20 }}>

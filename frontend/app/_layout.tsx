@@ -18,6 +18,7 @@ import { StatusBar } from 'expo-status-bar'
 import { Stack } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { usePurgeSessionOnFreshInstall } from '@/hooks/usePurgeSessionOnFreshInstall'
 import { useResetCacheOnUserChange } from '@/hooks/useResetCacheOnUserChange'
@@ -90,7 +91,12 @@ export default function RootLayout() {
   // The providers mount unconditionally so the cache restore runs in parallel with font
   // loading and the fresh-install purge, rather than starting only after they finish.
   return (
-    <SafeAreaProvider>
+    // The one root-level gesture handler: individual screens (e.g. SpendingTrend's scrub
+    // gesture) need a GestureHandlerRootView ancestor to work at all. BottomSheet carries its
+    // own separate one because Modal content mounts in a detached native hierarchy that this
+    // root never reaches — the two are solving different problems, not duplicating each other.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1000 }}
@@ -113,6 +119,7 @@ export default function RootLayout() {
           )}
         </api.Provider>
       </PersistQueryClientProvider>
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   )
 }
