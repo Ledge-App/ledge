@@ -16,7 +16,7 @@ correct across the lag between the two legs, and self-correcting when an account
 
 ## Why this is tractable: totals are derived
 
-Ledge stores no transactions and no precomputed totals. Every number is derived on the client from
+ToFi stores no transactions and no precomputed totals. Every number is derived on the client from
 `feed + transfers` at render time (`aggregateMonth.ts:33` skips anything `isTransfer()`), and the
 persisted `transfers` table is the only state involved.
 

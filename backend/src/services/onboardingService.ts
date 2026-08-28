@@ -11,26 +11,26 @@ interface PlaidTransactionLike {
 }
 
 export const onboardingService = {
-  async seedCategories(jwt: string, userId: string): Promise<{ categoryIdsByLedgeName: Record<string, string> }> {
+  async seedCategories(jwt: string, userId: string): Promise<{ categoryIdsByTofiName: Record<string, string> }> {
     const existing = await categoryRepository.list(jwt)
     if (existing.length > 0) {
-      const categoryIdsByLedgeName: Record<string, string> = {}
+      const categoryIdsByTofiName: Record<string, string> = {}
       for (const cat of existing) {
-        categoryIdsByLedgeName[cat.name] = cat.id
+        categoryIdsByTofiName[cat.name] = cat.id
       }
-      return { categoryIdsByLedgeName }
+      return { categoryIdsByTofiName }
     }
 
-    const categoryIdsByLedgeName: Record<string, string> = {}
+    const categoryIdsByTofiName: Record<string, string> = {}
 
     for (const entry of DEFAULT_PFC_MAPPING) {
       const category = await categoryRepository.create(jwt, userId, {
-        name: entry.ledgeCategory,
+        name: entry.tofiCategory,
         color: entry.color,
         icon: entry.icon,
         isDefault: true,
       })
-      categoryIdsByLedgeName[entry.ledgeCategory] = category.id
+      categoryIdsByTofiName[entry.tofiCategory] = category.id
 
       for (const subcategoryName of entry.subcategories) {
         await subcategoryRepository.create(jwt, userId, { categoryId: category.id, name: subcategoryName })
@@ -45,7 +45,7 @@ export const onboardingService = {
       }
     }
 
-    return { categoryIdsByLedgeName }
+    return { categoryIdsByTofiName }
   },
 
   async generateVendorMappings(

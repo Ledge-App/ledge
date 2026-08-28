@@ -10,14 +10,14 @@ describe('onboarding router', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('seedCategories delegates to onboardingService with caller jwt/userId', async () => {
-    onboardingServiceMock.seedCategories.mockResolvedValue({ categoryIdsByLedgeName: { 'Food & Drink': 'cat-1' } })
+    onboardingServiceMock.seedCategories.mockResolvedValue({ categoryIdsByTofiName: { 'Food & Drink': 'cat-1' } })
     const { onboardingRouter } = await import('./onboarding.js')
     const caller = onboardingRouter.createCaller({ userId: 'user-1', email: null, jwt: 'jwt-1' })
 
     const result = await caller.seedCategories()
 
     expect(onboardingServiceMock.seedCategories).toHaveBeenCalledWith('jwt-1', 'user-1')
-    expect(result).toEqual({ categoryIdsByLedgeName: { 'Food & Drink': 'cat-1' } })
+    expect(result).toEqual({ categoryIdsByTofiName: { 'Food & Drink': 'cat-1' } })
   })
 
   it('generateVendorMappings delegates to onboardingService with input transactions', async () => {

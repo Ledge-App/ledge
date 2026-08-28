@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { ALL_PFC_DETAILED_CODES, DEFAULT_PFC_MAPPING } from './pfc.js'
 
 describe('pfc taxonomy', () => {
-  it('assigns every detailed code to exactly one default Ledge category', () => {
+  it('assigns every detailed code to exactly one default ToFi category', () => {
     const seen = new Map<string, string>()
     for (const entry of DEFAULT_PFC_MAPPING) {
       for (const code of entry.detailedCodes) {
         expect(seen.has(code)).toBe(false)
-        seen.set(code, entry.ledgeCategory)
+        seen.set(code, entry.tofiCategory)
       }
     }
     expect(seen.size).toBe(ALL_PFC_DETAILED_CODES.length)
@@ -33,7 +33,7 @@ describe('pfc taxonomy', () => {
         .map((f) => f.replace(/\.svg$/, '')),
     )
     for (const entry of DEFAULT_PFC_MAPPING) {
-      expect(assetSlugs, `${entry.ledgeCategory} -> ${entry.icon}`).toContain(entry.icon)
+      expect(assetSlugs, `${entry.tofiCategory} -> ${entry.icon}`).toContain(entry.icon)
     }
   })
 
@@ -63,7 +63,7 @@ describe('pfc taxonomy', () => {
   it('maps both the v1 and v2 spelling of every renamed code', () => {
     const byCode = new Map<string, string>()
     for (const entry of DEFAULT_PFC_MAPPING) {
-      for (const code of entry.detailedCodes) byCode.set(code, entry.ledgeCategory)
+      for (const code of entry.detailedCodes) byCode.set(code, entry.tofiCategory)
     }
 
     const renames: Array<[v1: string, v2: string]> = [
@@ -75,13 +75,13 @@ describe('pfc taxonomy', () => {
     for (const [v1, v2] of renames) {
       expect(byCode.has(v1), `${v1} unmapped`).toBe(true)
       expect(byCode.has(v2), `${v2} unmapped`).toBe(true)
-      // Same real-world event, so the same Ledge category regardless of which version named it.
+      // Same real-world event, so the same ToFi category regardless of which version named it.
       expect(byCode.get(v1)).toBe(byCode.get(v2))
     }
   })
 
   it('includes the Food & Drink category with its documented codes', () => {
-    const foodAndDrink = DEFAULT_PFC_MAPPING.find((e) => e.ledgeCategory === 'Food & Drink')
+    const foodAndDrink = DEFAULT_PFC_MAPPING.find((e) => e.tofiCategory === 'Food & Drink')
     expect(foodAndDrink?.detailedCodes).toEqual(
       expect.arrayContaining([
         'FOOD_AND_DRINK_RESTAURANTS',

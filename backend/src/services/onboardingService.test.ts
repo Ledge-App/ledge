@@ -37,7 +37,7 @@ describe('onboardingService.seedCategories', () => {
       plaidPfcDetailed: 'FOOD_AND_DRINK_RESTAURANTS',
       categoryId: 'cat-1',
     })
-    expect(result.categoryIdsByLedgeName['Food & Drink']).toBe('cat-1')
+    expect(result.categoryIdsByTofiName['Food & Drink']).toBe('cat-1')
   })
 
   // Seeding is re-entered whenever the onboarding gate sees no categories for the user, so
@@ -54,7 +54,7 @@ describe('onboardingService.seedCategories', () => {
     expect(categoryRepoMock.create).not.toHaveBeenCalled()
     expect(subcategoryRepoMock.create).not.toHaveBeenCalled()
     expect(pfcMappingRepoMock.create).not.toHaveBeenCalled()
-    expect(result.categoryIdsByLedgeName).toEqual({
+    expect(result.categoryIdsByTofiName).toEqual({
       'Food & Drink': 'cat-existing-1',
       Transport: 'cat-existing-2',
     })

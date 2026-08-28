@@ -1,11 +1,11 @@
-# Ledge — Product Spec
+# ToFi — Product Spec
 > Agent context document. Read this before writing any code. Pairs with `architecture.md` (backend/data layer) and `design.md` (UI/visual system).
 
 ---
 
 ## Overview
 
-Ledge is a personal budgeting app for iOS (React Native / Expo) that connects to bank, credit card, and investment accounts via Plaid. Users categorize transactions, set budgets, and track reimbursements. Initial target: small closed group of friends.
+ToFi is a personal budgeting app for iOS (React Native / Expo) that connects to bank, credit card, and investment accounts via Plaid. Users categorize transactions, set budgets, and track reimbursements. Initial target: small closed group of friends.
 
 Each user connects Plaid using their **own** Plaid developer credentials (client ID + secret), obtained free from their own Plaid dashboard account. This keeps every user's linked-Item usage isolated under their own account rather than sharing one app-wide Plaid key — see `architecture.md` for why, and the BYOK Plaid Setup section below for the user-facing flow.
 
@@ -63,11 +63,11 @@ This happens once, immediately after the user links their first Plaid account (w
 
 **Step 1 — Seed categories from Plaid's taxonomy**
 
-On first launch, seed the user's `categories`, `subcategories`, and `plaid_category_mappings` from a hardcoded default mapping in `lib/plaid/pfc.ts` (backend). The default mapping assigns Plaid's detailed PFC codes (not just primaries) to Ledge categories, so categorization is as precise as possible out of the box.
+On first launch, seed the user's `categories`, `subcategories`, and `plaid_category_mappings` from a hardcoded default mapping in `lib/plaid/pfc.ts` (backend). The default mapping assigns Plaid's detailed PFC codes (not just primaries) to ToFi categories, so categorization is as precise as possible out of the box.
 
 Default mapping (abbreviated — full list in `lib/plaid/pfc.ts`):
 
-| Ledge Default Category | Plaid PFC Detailed Codes Assigned | Default Subcategories |
+| ToFi Default Category | Plaid PFC Detailed Codes Assigned | Default Subcategories |
 |---|---|---|
 | Food & Drink | `FOOD_AND_DRINK_RESTAURANTS`, `FOOD_AND_DRINK_FAST_FOOD`, `FOOD_AND_DRINK_GROCERIES`, `FOOD_AND_DRINK_COFFEE`, `FOOD_AND_DRINK_ALCOHOL_AND_BARS`, `FOOD_AND_DRINK_FOOD_DELIVERY_SERVICES` | Restaurants, Groceries, Coffee, Bars |
 | Transport | `TRANSPORTATION_TAXIS_AND_RIDE_SHARING`, `TRANSPORTATION_GAS_AND_CONVENIENCE_STORES`, `TRANSPORTATION_PUBLIC_TRANSIT`, `TRANSPORTATION_PARKING`, `TRANSPORTATION_AUTOMOTIVE` | Rideshare, Gas, Transit, Parking |
@@ -87,7 +87,7 @@ Default mapping (abbreviated — full list in `lib/plaid/pfc.ts`):
 | Fees | `BANK_FEES_ATM_FEES`, `BANK_FEES_OVERDRAFT_FEES`, `BANK_FEES_FOREIGN_TRANSACTION_FEES` | — |
 | Other | `GOVERNMENT_AND_NON_PROFIT_GOVERNMENT_DEPARTMENTS_AND_AGENCIES`, `GOVERNMENT_AND_NON_PROFIT_NON_PROFIT` | — |
 
-Every PFC detailed code in Plaid's taxonomy must be assigned to exactly one default Ledge category in `lib/plaid/pfc.ts`. No PFC code should be left unassigned in the defaults.
+Every PFC detailed code in Plaid's taxonomy must be assigned to exactly one default ToFi category in `lib/plaid/pfc.ts`. No PFC code should be left unassigned in the defaults.
 
 The taxonomy version is pinned to **v2** in `transactionRepository.sync` via `options.personal_finance_category_version`. This is required, not cosmetic: unpinned, Plaid serves v1 to accounts granted Transactions access before 2025-12-03 and v2 after, so under BYOK two users on the same build would receive different taxonomies while `DEFAULT_PFC_MAPPING` stays a single hardcoded table. v2 is a superset of v1, so pinning up is the version that can be mapped exhaustively. Note that `pfc.test.ts`'s coverage check is self-referential and cannot detect drift from Plaid's real taxonomy — diff `pfc.ts` against https://plaid.com/documents/pfc-taxonomy-all.csv by hand when revising.
 
@@ -96,7 +96,7 @@ These are written to the backend database as the user's starting categories. The
 **Step 2 — Auto-generate vendor_mappings from first transaction sync**
 
 After seeding categories and fetching the initial transaction history:
-- For every transaction, resolve its Ledge category using this lookup order:
+- For every transaction, resolve its ToFi category using this lookup order:
   1. Match `personal_finance_category.detailed` → `plaid_category_mappings` (preferred, more precise)
   2. Fall back to `personal_finance_category.primary` → `plaid_category_mappings` (primary-only row where `plaid_pfc_detailed` IS NULL)
 - Write a `vendor_mapping` record: `merchant_name` → resolved `category_id`, with `source='plaid_auto'`
@@ -229,6 +229,6 @@ Tab Bar
 - Shared/joint budgets
 - CSV export
 - Receipt scanning
-- Bill splitting calculations (Ledge tracks reimbursements but doesn't split bills)
+- Bill splitting calculations (ToFi tracks reimbursements but doesn't split bills)
 - Investment performance tracking (accounts linkable for net worth view only)
 - Managing Plaid credentials on behalf of the user (no fallback shared key — every user must bring their own)

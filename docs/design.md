@@ -1,7 +1,7 @@
-# Ledge — Design System & UI Spec
+# ToFi — Design System & UI Spec
 > Agent context document. Read before writing any component code. Pairs with `product.md` (features) and `architecture.md` (backend/data layer).
 
-Reference app: 记账本 (Chinese budgeting app). Ledge takes the same structural ideas — pastel category cards, teal brand hero, calendar transaction view — and adapts them to a **light-mode-first, premium fintech aesthetic** for a young urban audience.
+Reference app: 记账本 (Chinese budgeting app). ToFi takes the same structural ideas — pastel category cards, teal brand hero, calendar transaction view — and adapts them to a **light-mode-first, premium fintech aesthetic** for a young urban audience.
 
 > **2026-08 update:** pivoted from an earlier dark-mode-first draft of this spec to light-mode-first, moving closer to 记账本's actual light aesthetic per direct reference screenshots — warm near-white surfaces, fully-saturated pastel category cards (not a subtle dark-card tint), and AA-contrast-safe deep shades for semantic text colors. Structure, typography, and layout are unchanged; this was a color-token-level pivot. See `.impeccable.md` for the full design-context note.
 
@@ -602,7 +602,7 @@ New screen. Reached from Settings, and auto-routed to from any "Link your bank" 
 │  ‹ Settings                              │
 │                                         │
 │  Plaid Developer Account                │
-│  Ledge uses your own free Plaid         │  ← sans, textSecondary, sm
+│  ToFi uses your own free Plaid         │  ← sans, textSecondary, sm
 │  developer account so your linked       │
 │  banks stay under your own usage.       │
 │                                         │
