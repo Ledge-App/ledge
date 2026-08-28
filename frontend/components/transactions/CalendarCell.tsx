@@ -1,23 +1,26 @@
+import { memo } from 'react'
 import { Pressable, Text } from 'react-native'
 import { colors } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
 
 interface CalendarCellProps {
+  /** Passed back to onPress so the grid can share one callback across all 42 cells. */
+  dateKey: string
   day: number
   netAmount: number | null
   hasReimbursement: boolean
   isToday: boolean
   isSelected: boolean
-  onPress: () => void
+  onPress: (dateKey: string) => void
 }
 
-export function CalendarCell({ day, netAmount, isToday, isSelected, onPress }: CalendarCellProps) {
+function CalendarCellComponent({ dateKey, day, netAmount, isToday, isSelected, onPress }: CalendarCellProps) {
   const amountColor = netAmount == null ? colors.textMuted : netAmount < 0 ? colors.income : colors.expense
   const dateColor = isToday ? colors.textInverse : colors.textPrimary
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(dateKey)}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
       className="items-center justify-center py-2"
@@ -48,3 +51,6 @@ export function CalendarCell({ day, netAmount, isToday, isSelected, onPress }: C
     </Pressable>
   )
 }
+
+/** Memoized: 42 of these re-rendered on every sheet open before this. */
+export const CalendarCell = memo(CalendarCellComponent)

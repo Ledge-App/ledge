@@ -200,12 +200,13 @@ interface ReorderableRowProps {
 }
 
 function ReorderableRow({ isLifted, shift, dragY, liftedHeight, onMeasure, children }: ReorderableRowProps) {
-  const gap = useSharedValue(0)
-  gap.value = liftedHeight
-
+  // liftedHeight is read straight from props rather than mirrored into a shared value. The mirror
+  // was assigned during render, which is a side effect on a value the UI thread also reads — the
+  // case Reanimated's strict mode warns about. It also bought nothing: this worklet already closes
+  // over isLifted and shift, so it is rebuilt whenever any of the three changes.
   const style = useAnimatedStyle(() => ({
     transform: [
-      { translateY: isLifted ? dragY.value : withTiming(shift * gap.value, { duration: SHIFT_DURATION_MS }) },
+      { translateY: isLifted ? dragY.value : withTiming(shift * liftedHeight, { duration: SHIFT_DURATION_MS }) },
       { scale: withTiming(isLifted ? 1.02 : 1, { duration: SHIFT_DURATION_MS }) },
     ],
   }))

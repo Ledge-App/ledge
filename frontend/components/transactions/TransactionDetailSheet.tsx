@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
+import type { SheetScroll } from '@/components/ui/BottomSheet'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { CategoryPicker } from '@/components/categories/CategoryPicker'
 import { LinkedTransactions } from '@/components/transactions/LinkedTransactions'
@@ -18,7 +18,8 @@ import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Category, Subcategory, TransferKind } from '@/types/domain'
 
 interface TransactionDetailSheetProps {
-  visible: boolean
+  /** Owned by the single sheet host, so drag-to-dismiss tracks whichever content is showing. */
+  sheetScroll: SheetScroll
   item: FeedItem | null
   categories: Category[]
   subcategories: Subcategory[]
@@ -33,8 +34,7 @@ interface TransactionDetailSheetProps {
   onUnlink: (link: FeedLink) => Promise<void>
 }
 
-export function TransactionDetailSheet({ visible, item, categories, subcategories, pendingTransfer, isSaving, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
-  const sheetScroll = useSheetScroll()
+export function TransactionDetailSheet({ sheetScroll, item, categories, subcategories, pendingTransfer, isSaving, onClose, onSave, onOpenTransfer, onClearPendingTransfer, onUnmarkTransfer, onUnlink }: TransactionDetailSheetProps) {
   const [categoryId, setCategoryId] = useState<string | null>(item?.categoryId ?? null)
   const [subcategoryId, setSubcategoryId] = useState<string | null>(item?.subcategoryId ?? null)
   const [applyToVendor, setApplyToVendor] = useState(true)
@@ -90,7 +90,7 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
   const transferType = pendingTransfer ? TRANSFER_TYPES[pendingTransfer.kind] : null
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
+    <>
       <View className="flex-row items-center gap-3 px-5 py-3">
         <Pressable onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -283,6 +283,6 @@ export function TransactionDetailSheet({ visible, item, categories, subcategorie
 
         <Button label="Save Changes" onPress={handleSave} loading={isSaving} />
       </ScrollView>
-    </BottomSheet>
+    </>
   )
 }

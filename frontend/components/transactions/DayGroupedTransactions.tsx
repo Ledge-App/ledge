@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { View } from 'react-native'
 import { DayGroupHeader } from './DayGroupHeader'
 import { TransactionRow } from './TransactionRow'
@@ -42,7 +43,7 @@ interface DayGroupedTransactionsProps {
  * Plain Views rather than a SectionList because both callers already sit inside a ScrollView, and
  * nesting a virtualized list in one breaks its windowing.
  */
-export function DayGroupedTransactions({
+function DayGroupedTransactionsComponent({
   items,
   categoryFor,
   reimbursementCategoryNameFor,
@@ -76,7 +77,7 @@ export function DayGroupedTransactions({
                   categoryColor={category.color}
                   categoryIcon={category.icon}
                   reimbursementCategoryName={reimbursementCategoryNameFor?.(item) ?? null}
-                  onPress={() => onItemPress(item)}
+                  onPress={onItemPress}
                 />
               </View>
             )
@@ -86,3 +87,11 @@ export function DayGroupedTransactions({
     </>
   )
 }
+
+/**
+ * Memoized, and the reason every callback prop above must be stable at the call site: this subtree
+ * is a whole month of rows, and it sits as a sibling of the edit sheets. Without the memo, each of
+ * the ten state changes a detail -> transfer -> detail round trip produces re-ran groupByDay and
+ * rebuilt every row, on the JS thread, in the frame the sheet animation was trying to start.
+ */
+export const DayGroupedTransactions = memo(DayGroupedTransactionsComponent)

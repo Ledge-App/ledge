@@ -13,11 +13,11 @@ import type { PendingTransfer } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Account, Category, ManualTransaction, Subcategory, TransferKind } from '@/types/domain'
 
-// The detail sheet and the transfer sheet are both bottom sheets. Reopening one the instant the
-// other closes fights the dismiss animation, so the handoff waits for it to finish.
-const SHEET_HANDOFF_MS = 350
-// Marking a manual transaction as a transfer saves first, so its sheet has further to travel.
-const MANUAL_HANDOFF_MS = 400
+// Handoffs between the sheets are synchronous. They used to be deferred behind a setTimeout
+// because each sheet was its own native modal and iOS will not present one while another is
+// dismissing — TransactionEditSheets now renders a single host whose content swaps in place, so
+// there is no dismiss to wait out. Deleting the wait also deleted the bug it created: a timer that
+// fired after the user had dismissed the sheet reopened it.
 
 export interface ManualInput {
   amount: string
@@ -237,8 +237,9 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       if (!activeSheetItem) return
       const item = activeSheetItem
       setTransferForcedKind(forcedKind)
+      // Batched into one render, so the host never sees both set and never flickers between them.
       setActiveSheetItem(null)
-      setTimeout(() => setTransferItem(item), SHEET_HANDOFF_MS)
+      setTransferItem(item)
     },
     [activeSheetItem],
   )
@@ -259,8 +260,8 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       setPendingTransfer({ kind, counterpartIds })
       setTransferItem(null)
       if (!item) return
-      const returnsToManual = cameFromManualSheet(item)
-      setTimeout(() => (returnsToManual ? setManualSheetOpen(true) : setActiveSheetItem(item)), SHEET_HANDOFF_MS)
+      if (cameFromManualSheet(item)) setManualSheetOpen(true)
+      else setActiveSheetItem(item)
     },
     [transferItem, cameFromManualSheet],
   )
@@ -269,8 +270,8 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
     const item = transferItem
     setTransferItem(null)
     if (!item) return
-    const returnsToManual = cameFromManualSheet(item)
-    setTimeout(() => (returnsToManual ? setManualSheetOpen(true) : setActiveSheetItem(item)), SHEET_HANDOFF_MS)
+    if (cameFromManualSheet(item)) setManualSheetOpen(true)
+    else setActiveSheetItem(item)
   }, [transferItem, cameFromManualSheet])
 
   // Removes one link. unmark rather than delete, so the dismissal it writes stops the next
@@ -318,7 +319,7 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       // flow would otherwise lock a plain transfer marking to the wrong kind.
       setTransferForcedKind(forcedKind)
       setManualSheetOpen(false)
-      setTimeout(() => setTransferItem(item), MANUAL_HANDOFF_MS)
+      setTransferItem(item)
     },
     [editedManualAsFeedItem],
   )
