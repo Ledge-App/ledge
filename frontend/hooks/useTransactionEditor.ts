@@ -145,23 +145,34 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
         // One override row carries both edits, so a note is written whenever it changed even
         // if no category is picked — and a category-only save must not erase a saved note.
         const noteChanged = (input.note ?? null) !== (activeSheetItem.note ?? null)
+
+        // None of these writes depend on another's result — the vendor mapping only needs the
+        // input the user already typed, and every transfer leg references activeSheetItem/the
+        // chosen counterparts, not anything overrides.upsert or vendorMappings.upsert return.
+        // Each one's onSuccess invalidates its own query, and the feed's useMemo depends on all
+        // three (overrides, vendor mappings, transfers), so running them in stages meant paying
+        // that full-history recompute once per stage instead of once per save.
+        const tasks: Promise<unknown>[] = []
         if (input.categoryId || noteChanged) {
-          await overrides.upsert({
-            plaidTransactionId: activeSheetItem.id,
-            categoryId: input.categoryId,
-            subcategoryId: input.subcategoryId,
-            note: input.note,
-          })
+          tasks.push(
+            overrides.upsert({
+              plaidTransactionId: activeSheetItem.id,
+              categoryId: input.categoryId,
+              subcategoryId: input.subcategoryId,
+              note: input.note,
+            }),
+          )
           if (input.categoryId && input.applyToVendor) {
-            await vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId })
+            tasks.push(
+              vendorMappings.upsert({ vendorName: activeSheetItem.merchantName, categoryId: input.categoryId, subcategoryId: input.subcategoryId }),
+            )
           }
         }
         if (pendingTransfer) {
-          for (const transferInput of buildTransferInputs(activeSheetItem, pendingTransfer, feed)) {
-            await transfers.create(transferInput)
-          }
-          setPendingTransfer(null)
+          tasks.push(...buildTransferInputs(activeSheetItem, pendingTransfer, feed).map((input) => transfers.create(input)))
         }
+        await Promise.all(tasks)
+        if (pendingTransfer) setPendingTransfer(null)
         setActiveSheetItem(null)
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'Could not save this change. Try again.')
@@ -195,22 +206,21 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const saveManualSequence = useCallback(
     async (input: ManualInput) => {
       try {
-        if (editingManual) {
-          await manualTransactions.update({ id: editingManual.id, ...input })
-        } else {
-          await manualTransactions.create(input)
-        }
         // Same contract as saveCategory: the counterpart picked in the transfer sheet is only
-        // written when the edit itself is saved, so abandoning the edit abandons the link.
+        // written when the edit itself is saved, so abandoning the edit abandons the link. The
+        // transfer legs reference editingManual.id (already known) rather than anything the
+        // update call returns, so the two writes have no data dependency and can run together.
+        const tasks: Promise<unknown>[] = [
+          editingManual ? manualTransactions.update({ id: editingManual.id, ...input }) : manualTransactions.create(input),
+        ]
         if (pendingTransfer && editingManual) {
           const standIn = editedManualAsFeedItem(input)
           if (standIn) {
-            for (const transferInput of buildTransferInputs(standIn, pendingTransfer, feed)) {
-              await transfers.create(transferInput)
-            }
+            tasks.push(...buildTransferInputs(standIn, pendingTransfer, feed).map((transferInput) => transfers.create(transferInput)))
           }
-          setPendingTransfer(null)
         }
+        await Promise.all(tasks)
+        if (pendingTransfer && editingManual) setPendingTransfer(null)
         setManualSheetOpen(false)
         setEditingManual(null)
       } catch (err) {
