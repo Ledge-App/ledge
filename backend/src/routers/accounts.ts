@@ -3,12 +3,14 @@ import { protectedProcedure, router } from '../trpc/trpc.js'
 import { plaidCredentialRepository } from '../repositories/plaidCredentialRepository.js'
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
+import { plaidItemErrorDetail } from '../lib/plaid/errors.js'
 import { accountRepository } from '../repositories/accountRepository.js'
+import { preconditionError } from '../trpc/errors.js'
 
 export const accountsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const creds = await plaidCredentialRepository.getDecrypted(ctx.userId)
-    if (!creds) throw new Error('No Plaid credentials saved for this user.')
+    if (!creds) throw preconditionError('No Plaid credentials saved for this user.')
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const items = await plaidItemRepository.listDecryptedTokens(ctx.userId)
 
@@ -55,7 +57,7 @@ export const accountsRouter = router({
             itemError: {
               itemId: item.itemId,
               institutionName: item.institutionName,
-              message: err instanceof Error ? err.message : 'Could not load accounts for this institution.',
+              ...plaidItemErrorDetail(err, 'Could not load accounts for this institution.'),
             },
           }
         }

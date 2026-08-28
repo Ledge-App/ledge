@@ -6,6 +6,7 @@ export interface SyncResultShape {
   removed: { transaction_id: string }[]
   cursors: Record<string, string>
   hasMore?: Record<string, boolean>
+  rateLimited?: Record<string, true>
 }
 
 export interface SyncMergePlan {
@@ -17,6 +18,11 @@ export interface SyncMergePlan {
   removedIds: string[]
   /** True when any item has more pages to drain. */
   hasMore: boolean
+  /**
+   * Items Plaid throttled us on. These also count towards `hasMore`, so the flag is not about
+   * whether to keep draining but about how long to wait first — see syncDriver's backoff.
+   */
+  rateLimitedItemIds: string[]
 }
 
 /**
@@ -62,5 +68,6 @@ export function planSyncMerge(
     cursors: result.cursors,
     removedIds: result.removed.map((r) => r.transaction_id),
     hasMore: Object.values(result.hasMore ?? {}).some(Boolean),
+    rateLimitedItemIds: Object.keys(result.rateLimited ?? {}),
   }
 }

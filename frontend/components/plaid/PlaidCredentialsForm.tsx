@@ -8,6 +8,7 @@ import { SecretInput } from '@/components/ui/SecretInput'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import { colors } from '@/constants/theme'
+import { reportError } from '@/lib/observability/log'
 
 interface PlaidCredentialsFormProps {
   onSaved?: () => void
@@ -47,7 +48,9 @@ export function PlaidCredentialsForm({ onSaved }: PlaidCredentialsFormProps) {
       } else {
         setTestResult({ status: 'error', message: result.message })
       }
-    } catch {
+    } catch (err) {
+      // The user gets a generic message on purpose; the cause is only useful to us.
+      reportError('plaid-credentials-test', err)
       setTestResult({ status: 'error', message: 'Something went wrong reaching Plaid. Try again.' })
     }
   }

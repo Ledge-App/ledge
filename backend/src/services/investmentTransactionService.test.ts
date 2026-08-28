@@ -62,14 +62,32 @@ describe('investmentTransactionService.fetch', () => {
       { itemId: 'item-b', accessToken: 'tok-b' },
     ] as never)
     vi.mocked(investmentRepository.getTransactions)
-      .mockRejectedValueOnce(new Error('ADDITIONAL_CONSENT_REQUIRED'))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Request failed with status code 400'), {
+          response: {
+            data: {
+              error_type: 'INVALID_INPUT',
+              error_code: 'ADDITIONAL_CONSENT_REQUIRED',
+              error_message: 'this item requires additional consent',
+            },
+          },
+        }),
+      )
       .mockResolvedValueOnce([row('itx-b')])
 
     const result = await investmentTransactionService.fetch('user-1', '2024-08-08', '2026-08-08')
 
     expect(result.byItem['item-a']).toBeUndefined()
     expect(result.byItem['item-b'].map((t) => t.investmentTransactionId)).toEqual(['itx-b'])
-    expect(result.itemErrors).toEqual([{ itemId: 'item-a', message: 'ADDITIONAL_CONSENT_REQUIRED' }])
+    // The code is what lets the client tell an unsupported product from missing consent; the
+    // message alone was the same axios status string for both.
+    expect(result.itemErrors).toEqual([
+      {
+        itemId: 'item-a',
+        message: 'this item requires additional consent',
+        errorCode: 'ADDITIONAL_CONSENT_REQUIRED',
+      },
+    ])
   })
 
   it('throws when the user has no Plaid credentials', async () => {

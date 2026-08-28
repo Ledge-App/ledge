@@ -2,11 +2,12 @@ import { plaidCredentialRepository } from '../repositories/plaidCredentialReposi
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
 import type { PlaidApi } from 'plaid'
+import { notFoundError, preconditionError } from '../trpc/errors.js'
 
 async function requireCredentials(userId: string) {
   const creds = await plaidCredentialRepository.getDecrypted(userId)
   if (!creds) {
-    throw new Error('No Plaid credentials saved for this user — connect a Plaid developer account first.')
+    throw preconditionError('No Plaid credentials saved for this user — connect a Plaid developer account first.')
   }
   return creds
 }
@@ -80,7 +81,7 @@ export const plaidLinkService = {
     // Disconnected items are reachable here on purpose: reconnecting one opens update mode.
     const item = await plaidItemRepository.getDecryptedToken(userId, itemId)
     if (!item) {
-      throw new Error('No connection found for this institution.')
+      throw notFoundError('No connection found for this institution.')
     }
 
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)

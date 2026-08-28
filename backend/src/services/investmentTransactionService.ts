@@ -1,11 +1,16 @@
 import { plaidCredentialRepository } from '../repositories/plaidCredentialRepository.js'
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
+import { plaidItemErrorDetail } from '../lib/plaid/errors.js'
 import { investmentRepository, type InvestmentTransaction } from '../repositories/investmentRepository.js'
+import { preconditionError } from '../trpc/errors.js'
 
 export interface InvestmentTransactionItemError {
   itemId: string
   message: string
+  /** Plaid's error_code. PRODUCTS_NOT_SUPPORTED and ADDITIONAL_CONSENT_REQUIRED both land here
+   *  and only one of them is worth ever telling the user about. */
+  errorCode?: string
 }
 
 export interface InvestmentTransactionResult {
@@ -17,7 +22,7 @@ export interface InvestmentTransactionResult {
 export const investmentTransactionService = {
   async fetch(userId: string, startDate: string, endDate: string): Promise<InvestmentTransactionResult> {
     const creds = await plaidCredentialRepository.getDecrypted(userId)
-    if (!creds) throw new Error('No Plaid credentials saved for this user.')
+    if (!creds) throw preconditionError('No Plaid credentials saved for this user.')
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const items = await plaidItemRepository.listDecryptedTokens(userId)
 
@@ -39,7 +44,7 @@ export const investmentTransactionService = {
         // side simply stays counted, which is the safe direction.
         itemErrors.push({
           itemId: item.itemId,
-          message: err instanceof Error ? err.message : 'Could not load investment activity.',
+          ...plaidItemErrorDetail(err, 'Could not load investment activity.'),
         })
       }
     }

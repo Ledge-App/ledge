@@ -5,6 +5,7 @@ import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
 import { investmentRepository } from '../repositories/investmentRepository.js'
 import { investmentTransactionService } from '../services/investmentTransactionService.js'
+import { notFoundError, preconditionError } from '../trpc/errors.js'
 
 /** YYYY-MM-DD, the only date format Plaid's investments endpoints accept. */
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
@@ -17,12 +18,12 @@ export const investmentsRouter = router({
     .input(z.object({ itemId: z.string().min(1), accountId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const creds = await plaidCredentialRepository.getDecrypted(ctx.userId)
-      if (!creds) throw new Error('No Plaid credentials saved for this user.')
+      if (!creds) throw preconditionError('No Plaid credentials saved for this user.')
       const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
 
       const items = await plaidItemRepository.listDecryptedTokens(ctx.userId)
       const item = items.find((i) => i.itemId === input.itemId)
-      if (!item) throw new Error('This account is not linked to your profile.')
+      if (!item) throw notFoundError('This account is not linked to your profile.')
 
       return investmentRepository.getHoldings(client, item.accessToken, input.accountId)
     }),

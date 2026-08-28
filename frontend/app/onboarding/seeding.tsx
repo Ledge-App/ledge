@@ -30,7 +30,7 @@ export default function SeedingScreen() {
       await seedCategories()
       setCompleted((prev) => new Set(prev).add('categories'))
 
-      const synced = await syncTransactions({})
+      const synced = await syncTransactions()
       setCompleted((prev) => new Set(prev).add('transactions'))
 
       await generateVendorMappings({

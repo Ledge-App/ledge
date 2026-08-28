@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Redirect, Tabs } from 'expo-router'
 import { useSession } from '@/lib/supabase/auth'
 import { useBudgetAlerts } from '@/hooks/useBudgetAlerts'
+import { TransactionFeedProvider } from '@/components/transactions/TransactionFeedProvider'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/constants/theme'
 
@@ -17,8 +18,10 @@ export default function TabsLayout() {
   if (isLoading) return <LoadingScreen />
   if (!session) return <Redirect href="/(auth)/login" />
 
+  // The provider wraps the watcher as well as the screens: it is a feed consumer too, and one
+  // of the six independent copies of the feed this replaced.
   return (
-    <>
+    <TransactionFeedProvider>
       <BudgetAlertWatcher />
       <Tabs
       screenOptions={{
@@ -64,6 +67,6 @@ export default function TabsLayout() {
         }}
       />
       </Tabs>
-    </>
+    </TransactionFeedProvider>
   )
 }
