@@ -24,6 +24,7 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
     ...overrides,
   }
@@ -94,6 +95,7 @@ describe('computeDonutSegments', () => {
         categoryId: 'rent',
         isBrokerageCashAccount: true,
         isSweptOutflow: true,
+        hasCrossAccountCounterpart: false,
       }),
     ]
     const segments = computeDonutSegments(feed, new Map([['food', 100]]), categories, 100, 'expense')
@@ -117,6 +119,7 @@ describe('computeDonutSegments', () => {
         categoryId: 'rent',
         isBrokerageCashAccount: true,
         isSweptOutflow: true,
+        hasCrossAccountCounterpart: false,
       }),
     ]
     const segments = computeDonutSegments(feed, new Map(), categories, 0, 'expense')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countsTowardTotals, isInternalMovement, isInvestmentSweep, isTransfer } from './totals'
+import { countsTowardTotals, isInternalMovement, isInvestmentSweep, isTransfer, isUnlinkedInternalTransfer } from './totals'
 import type { FeedItem } from './resolveFeed'
 
 function item(overrides: Partial<FeedItem>): FeedItem {
@@ -27,6 +27,7 @@ function item(overrides: Partial<FeedItem>): FeedItem {
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
     ...overrides,
   }
@@ -137,6 +138,50 @@ describe('isInternalMovement', () => {
   })
 })
 
+// The other half of isInvestmentSweep's job: a row it stopped claiming still greys out, and a
+// greyed row with no badge is the exact confusion the "Investment" pill was added to prevent.
+describe('isUnlinkedInternalTransfer', () => {
+  it('is true for an excluded brokerage-cash row with a counterpart on another account', () => {
+    const row = sweepItem({
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+      hasCrossAccountCounterpart: true,
+    })
+    expect(isUnlinkedInternalTransfer(row)).toBe(true)
+    expect(isInvestmentSweep(row)).toBe(false)
+  })
+
+  it('is false once the pair is a real transfer, which carries its own badge', () => {
+    const row = sweepItem({
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+      hasCrossAccountCounterpart: true,
+      transferKind: 'account_transfer',
+      transferRole: 'expense',
+    })
+    expect(isUnlinkedInternalTransfer(row)).toBe(false)
+  })
+
+  // A cross-account counterpart is not on its own a reason to grey anything out — autoMatch is
+  // what decides that, and until it does the money stays counted and unbadged.
+  it('is false for a row that still counts toward totals', () => {
+    const row = sweepItem({ pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER', hasCrossAccountCounterpart: true })
+    expect(countsTowardTotals(row)).toBe(true)
+    expect(isUnlinkedInternalTransfer(row)).toBe(false)
+  })
+
+  // A pending row is already excluded — by not having settled, not by being internal. Claiming it
+  // as internal movement steals the "Pending" label, which is the one that actually explains the
+  // greying, and asserts a classification the bank hasn't confirmed yet.
+  it('is false for a pending row, whose own label explains the greying', () => {
+    const row = sweepItem({ pending: true, hasCrossAccountCounterpart: true })
+    expect(countsTowardTotals(row)).toBe(false)
+    expect(isUnlinkedInternalTransfer(row)).toBe(false)
+  })
+
+  it('is false for a genuine sweep, which the Investment pill already explains', () => {
+    expect(isUnlinkedInternalTransfer(sweepItem({ isSweptOutflow: true }))).toBe(false)
+  })
+})
+
 // Drives the "Investment" pill. Scoped to rows that are greyed out with nothing else on them to
 // explain why — transfer legs already carry a badge, reimbursement legs an icon and a title.
 describe('isInvestmentSweep', () => {
@@ -146,6 +191,20 @@ describe('isInvestmentSweep', () => {
 
   it('is true for a brokerage-cash row excluded on its PFC code alone', () => {
     expect(isInvestmentSweep(sweepItem({ pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }))).toBe(true)
+  })
+
+  // An outflow from a brokerage cash account to a linked bank carries the brokerage's own
+  // investment code, so the PFC branch excludes it — correctly, it is internal movement. Calling it
+  // an investment is the lie: the money went to a bank, and the leg proving it is sitting in the
+  // feed waiting to be paired.
+  it('is false for an excluded row whose counterpart sits on another account', () => {
+    const row = sweepItem({
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+      hasCrossAccountCounterpart: true,
+    })
+    expect(isInvestmentSweep(row)).toBe(false)
+    // Still not spending — it moved between the user's own accounts.
+    expect(countsTowardTotals(row)).toBe(false)
   })
 
   it('is false for a transfer leg, which already has its own badge', () => {

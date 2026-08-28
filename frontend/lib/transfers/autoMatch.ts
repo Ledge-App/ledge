@@ -9,7 +9,8 @@
 // hiding it* (dangerous). Every gate below exists for that asymmetry.
 
 import { daysBetween } from './registry'
-import { isInvestmentAccount, isLiabilityAccount } from '@/lib/accounts/accountType'
+import { isBrokerageCashAccount, isLiabilityAccount } from '@/lib/accounts/accountType'
+import { isInternalMovement } from '@/lib/transactions/totals'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account, TransferKind } from '@/types/domain'
 
@@ -140,6 +141,11 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     // A liability-account *outflow* is a purchase or a loan disbursement, never the
     // paying side of an internal transfer we detect.
     if (item.amount > 0 && isLiabilityAccount(account)) return false
+    // A brokerage-cash row whose PFC already marks it internal movement is settled: it is the fund
+    // side of a sweep or a core-account redemption, and its counterpart is the holdings, not
+    // another account. Pairing it can only mislabel it — and worse, because a redemption is sized
+    // to the transfer it funds, it collides on amount with that transfer and competes for its leg.
+    if (isInternalMovement(item)) return false
     return true
   }
 
@@ -269,16 +275,25 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
   ): FeedItem[] {
     const opposite = item.amount > 0 ? inflowsByAmount : outflowsByAmount
     const bucket = opposite.get(centsKey(item)) ?? []
-    // Only an investment OUTFLOW looks here: the income tag only ever sits on an inflow, and only
-    // a brokerage withdrawal has the standing to overrule it.
-    const withIncomeTagged =
-      item.source === 'investment' && item.amount > 0
-        ? [...bucket, ...(incomeTaggedInflowsByAmount.get(centsKey(item)) ?? [])]
-        : bucket
+    // Only a brokerage OUTFLOW looks here: the income tag only ever sits on an inflow, and only
+    // money demonstrably leaving a brokerage has the standing to overrule it.
+    //
+    // isBrokerageCashAccount as well as source 'investment', because the /investments product is
+    // not where this actually shows up. A cash management account reports through
+    // /transactions/sync as an ordinary depository account, so its outflows are plain 'plaid' rows
+    // — and those are exactly the ones whose counterparts arrive at the bank tagged INCOME_*.
+    const canOverruleIncomeTag = item.amount > 0 && (item.source === 'investment' || item.isBrokerageCashAccount)
+    const withIncomeTagged = canOverruleIncomeTag
+      ? [...bucket, ...(incomeTaggedInflowsByAmount.get(centsKey(item)) ?? [])]
+      : bucket
     return withIncomeTagged.filter((candidate) => {
       if (requireInvestmentCounterpart) {
+        // isBrokerageCashAccount, not isInvestmentAccount: a cash management account is Plaid
+        // `depository` / `cash management`, and it is where a bank transfer tagged
+        // *_INVESTMENT_AND_RETIREMENT_FUNDS most often lands. Requiring `investment` there rejected
+        // the single most likely counterpart the code can have.
         const candidateAccount = candidate.accountId ? accountById.get(candidate.accountId) : undefined
-        if (!candidateAccount || !isInvestmentAccount(candidateAccount)) return false
+        if (!candidateAccount || !isBrokerageCashAccount(candidateAccount)) return false
       }
       const outflow = item.amount > 0 ? item : candidate
       const inflow = item.amount > 0 ? candidate : item
@@ -307,11 +322,24 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     suggestionDrafts.push(draft)
   }
 
-  /** Nearest date first (then id, for determinism) — the default the user most likely means. */
-  function nearest(item: FeedItem, candidates: FeedItem[]): FeedItem {
-    return [...candidates].sort(
-      (a, b) => daysBetween(item.date, a.date) - daysBetween(item.date, b.date) || a.id.localeCompare(b.id),
-    )[0]
+  /**
+   * Nearest date first (then id, for determinism) — the default the user most likely means.
+   *
+   * Candidates already claimed by another suggestion are skipped rather than picked and then
+   * rejected by suggest(). Two equal outflows out of one account rank the same inflow first, and
+   * stopping at that one meant the second outflow surfaced nothing at all, even with a perfectly
+   * good counterpart still free. Undefined only when every candidate is spoken for.
+   */
+  function nearestUnclaimed(item: FeedItem, candidates: FeedItem[]): FeedItem | undefined {
+    return [...candidates]
+      .filter((candidate) => !suggestedItemIds.has(candidate.id))
+      .sort((a, b) => daysBetween(item.date, a.date) - daysBetween(item.date, b.date) || a.id.localeCompare(b.id))[0]
+  }
+
+  /** nearestUnclaimed + suggest, the pairing every caller below wants. */
+  function suggestNearest(driver: FeedItem, candidates: FeedItem[]): void {
+    const candidate = nearestUnclaimed(driver, candidates)
+    if (candidate) suggest(toDraft(driver, candidate))
   }
 
   // Pass 1 — exact drivers, the only ones allowed to auto-apply. Auto-apply requires
@@ -332,7 +360,7 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
         // Passing driver.restrict here would newly reject a mistagged credit-card counterpart,
         // narrowing a suggestion the old code path used to surface.
         const unrestricted = candidatesFor(driver.item, null, false)
-        if (unrestricted.length > 0) suggest(toDraft(driver.item, nearest(driver.item, unrestricted)))
+        if (unrestricted.length > 0) suggestNearest(driver.item, unrestricted)
       }
       continue // no counterpart yet — stays counted, re-checked next sync
     }
@@ -343,7 +371,11 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
       // investment side. Widening it can only ADD candidates, which fails the ===1 test below and
       // downgrades to a suggestion — the safe direction.
       const reverse = candidatesFor(candidate, driver.restrict, false)
-      if (reverse.length === 1 && reverse[0].id === driver.item.id) {
+      // An income-tagged candidate is only visible at all because the driver sits on a brokerage,
+      // and that inference is not strong enough to hide money on. Plaid may simply be right that
+      // this is a paycheck. Downgrade to a suggestion; one tap settles it, and until then the
+      // money stays counted.
+      if (reverse.length === 1 && reverse[0].id === driver.item.id && !isIncomeTagged(candidate)) {
         const draft = toDraft(driver.item, candidate)
         autoApply.push(draft)
         consumed.add(draft.expense.id)
@@ -351,7 +383,7 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
         continue
       }
     }
-    suggest(toDraft(driver.item, nearest(driver.item, candidates)))
+    suggestNearest(driver.item, candidates)
   }
 
   // Pass 2 — weak drivers: suggestions only, and only from what auto-apply left behind.
@@ -360,7 +392,7 @@ export function detectTransfers(input: AutoMatchInput): AutoMatchResult {
     if (consumed.has(driver.item.id)) continue
     const candidates = candidatesFor(driver.item, driver.restrict, driver.requireInvestmentCounterpart)
     if (candidates.length === 0) continue
-    suggest(toDraft(driver.item, nearest(driver.item, candidates)))
+    suggestNearest(driver.item, candidates)
   }
 
   // A suggestion whose leg was later claimed by an auto-apply is stale — drop it.

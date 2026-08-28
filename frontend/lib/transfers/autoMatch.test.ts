@@ -33,6 +33,7 @@ function item(overrides: Partial<FeedItem> & Pick<FeedItem, 'id' | 'amount' | 'd
     transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
     ...overrides,
   }
@@ -347,6 +348,167 @@ describe('brokerage contributions', () => {
     expect(result.suggestions).toHaveLength(1)
   })
 
+  // Two equal outflows leaving the same brokerage cash account for two different banks on the
+  // same day. Both drivers rank the same inflow first, and the second one used to be dropped
+  // entirely rather than falling through to the counterpart still available — so one of the two
+  // transfers was simply never offered.
+  it('offers a second suggestion from the candidates the first one left', () => {
+    const multiAccounts = [
+      { account_id: 'acc-cma', type: 'depository', subtype: 'cash management' },
+      { account_id: 'acc-bank', type: 'depository', subtype: 'checking' },
+      { account_id: 'acc-bank2', type: 'depository', subtype: 'checking' },
+    ] as unknown as Account[]
+    const outflow = (id: string) =>
+      item({
+        id, accountId: 'acc-cma', amount: 5000, date: '2026-05-04',
+        pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER', isBrokerageCashAccount: true,
+      })
+    const feed = [
+      outflow('cma-out-1'),
+      outflow('cma-out-2'),
+      item({ id: 'bank-in', accountId: 'acc-bank', amount: -5000, date: '2026-05-04', pfcDetailed: 'INCOME_CONTRACTOR' }),
+      item({ id: 'bank2-in', accountId: 'acc-bank2', amount: -5000, date: '2026-05-04', pfcDetailed: 'INCOME_CONTRACTOR' }),
+    ]
+
+    const result = detectTransfers({ feed, accounts: multiAccounts })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(2)
+    expect(result.suggestions.map((d) => d.expense.id).sort()).toEqual(['cma-out-1', 'cma-out-2'])
+    expect(result.suggestions.map((d) => d.income.id).sort()).toEqual(['bank-in', 'bank2-in'])
+  })
+
+  // A redemption out of the core money-market fund, tagged TRANSFER_IN_INVESTMENT_AND_RETIREMENT_
+  // FUNDS on the cash management account, is the fund paying cash into the account to cover an
+  // outgoing transfer. Its counterpart is the fund, not another account — and because it is sized
+  // to that transfer, it collides on amount with the very movement it funds. Left pairable, it
+  // drives first and steals the bank leg from the real inbound transfer.
+  it('does not let a PFC-internal brokerage row compete for another account\'s transfer', () => {
+    const cmaAccounts = [
+      { account_id: 'acc-cma', type: 'depository', subtype: 'cash management' },
+      { account_id: 'acc-bank', type: 'depository', subtype: 'checking' },
+    ] as unknown as Account[]
+    const bankOutflow = item({
+      id: 'bank-out', accountId: 'acc-bank', amount: 5000, date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const realInbound = item({
+      id: 'cma-in', accountId: 'acc-cma', amount: -5000, date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_IN_OTHER_TRANSFER_IN', isBrokerageCashAccount: true,
+    })
+    const redemption = item({
+      id: 'cma-redemption', accountId: 'acc-cma', amount: -5000, date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS', isBrokerageCashAccount: true,
+    })
+
+    const result = detectTransfers({ feed: [bankOutflow, realInbound, redemption], accounts: cmaAccounts })
+
+    // The redemption is out of the running, which leaves exactly one candidate — so the real pair
+    // is unambiguous and auto-applies.
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0].expense.id).toBe('bank-out')
+    expect(result.autoApply[0].income.id).toBe('cma-in')
+    expect(result.suggestions).toEqual([])
+  })
+
+  // Money sent out of a brokerage cash account arrives at the receiving bank tagged INCOME_*: from
+  // that bank's side an inbound ACH from a brokerage looks like being paid. isEligible drops
+  // income-tagged inflows from the index, so such an outflow has no candidates at all — not an
+  // ambiguous match, not a suggestion, nothing. It just counts as spending forever.
+  it('lets a brokerage-cash outflow reach an income-tagged inflow, as a suggestion only', () => {
+    const cmaAccounts = [
+      { account_id: 'acc-cma', type: 'depository', subtype: 'cash management' },
+      { account_id: 'acc-bank', type: 'depository', subtype: 'checking' },
+    ] as unknown as Account[]
+    const cmaOutflow = item({
+      id: 'cma-out',
+      accountId: 'acc-cma',
+      amount: 5000,
+      date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER',
+      isBrokerageCashAccount: true,
+    })
+    const bankInflow = item({
+      id: 'bank-in',
+      accountId: 'acc-bank',
+      amount: -5000,
+      date: '2026-05-04',
+      pfcDetailed: 'INCOME_CONTRACTOR',
+    })
+
+    const result = detectTransfers({ feed: [cmaOutflow, bankInflow], accounts: cmaAccounts })
+
+    // Never auto-applied: an INCOME_ tag might be telling the truth, and silently hiding a real
+    // paycheck is the one failure this detector must not have.
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toHaveLength(1)
+    expect(result.suggestions[0].expense.id).toBe('cma-out')
+    expect(result.suggestions[0].income.id).toBe('bank-in')
+  })
+
+  // An ordinary checking outflow gets no such licence: without a brokerage on either side, an
+  // equal INCOME_ inflow is a paycheck that happens to match, and pairing it would erase income.
+  it('does not let an ordinary checking outflow reach an income-tagged inflow', () => {
+    const plainAccounts = [
+      { account_id: 'acc-checking', type: 'depository', subtype: 'checking' },
+      { account_id: 'acc-bank', type: 'depository', subtype: 'checking' },
+    ] as unknown as Account[]
+    const outflow = item({
+      id: 'rent',
+      accountId: 'acc-checking',
+      amount: 5000,
+      date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_OUT_ACCOUNT_TRANSFER',
+    })
+    const paycheck = item({
+      id: 'paycheck',
+      accountId: 'acc-bank',
+      amount: -5000,
+      date: '2026-05-04',
+      pfcDetailed: 'INCOME_WAGES',
+    })
+
+    const result = detectTransfers({ feed: [outflow, paycheck], accounts: plainAccounts })
+
+    expect(result.autoApply).toEqual([])
+    expect(result.suggestions).toEqual([])
+  })
+
+  // A bank stamps its outgoing wire to a brokerage TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS,
+  // and it lands in a cash management account — which Plaid types `depository` / `cash management`,
+  // so isInvestmentAccount rejects it and the code's corroboration can never be met. A cash
+  // management account is the single most likely destination for this code; it has to count.
+  it('auto-applies against a cash management counterpart, not just an investment account', () => {
+    const cmaAccounts = [
+      { account_id: 'acc-cma', type: 'depository', subtype: 'cash management' },
+      { account_id: 'acc-bank', type: 'depository', subtype: 'checking' },
+    ] as unknown as Account[]
+    const bankOutflow = item({
+      id: 'bank-out',
+      accountId: 'acc-bank',
+      amount: 5000,
+      date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS',
+    })
+    const cmaInflow = item({
+      id: 'cma-in',
+      accountId: 'acc-cma',
+      amount: -5000,
+      date: '2026-05-04',
+      pfcDetailed: 'TRANSFER_IN_OTHER_TRANSFER_IN',
+      isBrokerageCashAccount: true,
+    })
+
+    const result = detectTransfers({ feed: [bankOutflow, cmaInflow], accounts: cmaAccounts })
+
+    expect(result.autoApply).toHaveLength(1)
+    expect(result.autoApply[0].expense.id).toBe('bank-out')
+    expect(result.autoApply[0].income.id).toBe('cma-in')
+  })
+
+  // No brokerage-side driving test for the *_INVESTMENT_AND_RETIREMENT_FUNDS codes: on a brokerage
+  // cash account those codes ARE the internal-movement marker, so isEligible rules the row out of
+  // pairing entirely (see the redemption case above). Only the bank side drives them.
   it('suggests rather than auto-applies when two contributions compete for one outflow', () => {
     // Mutual uniqueness: silently picking one would depend on iteration order.
     const result = detectTransfers({
@@ -657,7 +819,7 @@ describe('detectPendingPreviews', () => {
   })
 
   it('classifies a pending credit-account inflow as a credit card payment', () => {
-    const cardIn = item({ id: 'card-in', amount: -600, date: '2026-08-12', accountId: 'visa', pending: true })
+    const cardIn = item({ id: 'card-in', amount: -600, date: '2026-08-10', accountId: 'visa', pending: true })
     const out = item({ id: 'chk-out', amount: 600, date: '2026-08-11', accountId: 'checking' })
     const previews = detectPendingPreviews({ feed: [out, cardIn], accounts })
     expect(previews).toHaveLength(1)

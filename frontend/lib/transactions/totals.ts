@@ -67,8 +67,31 @@ export function isInternalMovement(item: FeedItem): boolean {
  */
 export function isInvestmentSweep(item: FeedItem): boolean {
   if (isTransfer(item) || item.isReimbursementIncome) return false
+  // An equal counterpart on another account means the money crossed an account boundary, which a
+  // sweep into holdings never does. The row is still excluded — it IS internal movement — but a
+  // brokerage's own TRANSFER_OUT_INVESTMENT code on an ACH to the user's bank does not make it an
+  // investment, and saying so sends them looking for a trade that never happened.
+  if (item.hasCrossAccountCounterpart) return false
   if (item.isSweptOutflow) return true
   return isInternalMovement(item)
+}
+
+/**
+ * Excluded, brokerage-flavoured, and yet demonstrably a move between two of the user's accounts —
+ * the counterpart is in the feed, it just has no Transfer record yet because autoMatch could only
+ * suggest the pair rather than auto-apply it.
+ *
+ * Exists so the row can say so. isInvestmentSweep stops claiming these, and without a second label
+ * they would grey out with nothing on them explaining why, which is the confusion that pill was
+ * added to prevent in the first place.
+ */
+export function isUnlinkedInternalTransfer(item: FeedItem): boolean {
+  if (isTransfer(item) || item.isReimbursementIncome) return false
+  // Pending is why a pending row is greyed — not this. It also has no business being classified
+  // at all until the bank settles it, since the amount can still move.
+  if (item.pending) return false
+  if (!item.hasCrossAccountCounterpart) return false
+  return !countsTowardTotals(item)
 }
 
 // Single predicate for "does this item belong in spend/income aggregates", so the donut, top

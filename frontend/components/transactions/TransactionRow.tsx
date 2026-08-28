@@ -4,7 +4,7 @@ import { colors, hexToRgba } from '@/constants/theme'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import { formatAmount } from '@/lib/format/money'
-import { countsTowardTotals, isInvestmentSweep } from '@/lib/transactions/totals'
+import { countsTowardTotals, isInvestmentSweep, isUnlinkedInternalTransfer } from '@/lib/transactions/totals'
 import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
 import { linkPillLabel } from '@/lib/transactions/linkSummary'
 import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
@@ -47,7 +47,13 @@ export function TransactionRow({ item, categoryName, categoryColor, categoryIcon
       ? { label: reimbursementPill, color: colors.reimbursed }
       : isInvestmentSweep(item)
         ? { label: 'Investment', color: colors.textMuted }
-        : item.pending
+        : isUnlinkedInternalTransfer(item)
+          ? // Money that left for another of the user's own accounts, which is why it stopped
+            // counting — but no Transfer record names the other side yet, so it can't claim the
+            // transfer badge. Muted for the same reason "Investment" is: nothing here was
+            // confirmed by the user.
+            { label: 'Internal', color: colors.textMuted }
+          : item.pending
           ? // The bank hasn't settled this yet, which is also why the account's balance won't
             // reflect it — Plaid's `current` balance moves only when a transaction posts.
             // Labelling the row is what makes that mismatch read as "in progress" rather

@@ -10,6 +10,7 @@ function item(date: string): FeedItem {
     transferId: null, transferKind: null, transferRole: null, transferSource: null,
     isBrokerageCashAccount: false,
     isSweptOutflow: false,
+    hasCrossAccountCounterpart: false,
     links: [],
   }
 }
