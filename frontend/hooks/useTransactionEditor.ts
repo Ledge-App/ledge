@@ -157,9 +157,13 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
           }
         }
         if (pendingTransfer) {
-          for (const transferInput of buildTransferInputs(activeSheetItem, pendingTransfer, feed)) {
-            await transfers.create(transferInput)
-          }
+          // Concurrent, not sequential: each create's own onSuccess invalidates transfers.list,
+          // and a sequential loop paid that invalidation's full feed recompute once per
+          // counterpart instead of once per save. React Query dedupes concurrent invalidations
+          // of the same query, so this collapses back down to one refetch either way.
+          await Promise.all(
+            buildTransferInputs(activeSheetItem, pendingTransfer, feed).map((input) => transfers.create(input)),
+          )
           setPendingTransfer(null)
         }
         setActiveSheetItem(null)
@@ -205,9 +209,9 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
         if (pendingTransfer && editingManual) {
           const standIn = editedManualAsFeedItem(input)
           if (standIn) {
-            for (const transferInput of buildTransferInputs(standIn, pendingTransfer, feed)) {
-              await transfers.create(transferInput)
-            }
+            await Promise.all(
+              buildTransferInputs(standIn, pendingTransfer, feed).map((transferInput) => transfers.create(transferInput)),
+            )
           }
           setPendingTransfer(null)
         }
