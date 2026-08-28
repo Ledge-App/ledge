@@ -1,4 +1,4 @@
-# Ledge — Architecture Spec
+# ToFi — Architecture Spec
 > Agent context document. Read this before writing any code. Pairs with `product.md` (features) and `design.md` (UI/visual system).
 
 ---
@@ -197,10 +197,10 @@ created_at           timestamptz
 UNIQUE(user_id, plaid_pfc_primary, plaid_pfc_detailed)
 ```
 Rules:
-- **Many-to-one**: multiple PFC codes can map to the same Ledge category
-- **One-to-one constraint**: a single PFC code cannot map to multiple Ledge categories
+- **Many-to-one**: multiple PFC codes can map to the same ToFi category
+- **One-to-one constraint**: a single PFC code cannot map to multiple ToFi categories
 - **Detailed overrides primary**: a detailed mapping takes precedence over a primary-only mapping
-- **Required on category create/edit**: every Ledge category must have at least one PFC code assigned — enforced in UI
+- **Required on category create/edit**: every ToFi category must have at least one PFC code assigned — enforced in UI
 - Seeded on onboarding from the default mapping table (see `product.md`); user can edit via Settings → Categories
 - Used as fallback categorization for new vendors with no existing `vendor_mapping`
 
@@ -426,7 +426,7 @@ backend/
 │       │   └── schema.ts                  # single source of truth
 │       ├── plaid/
 │       │   ├── client.ts                  # Plaid SDK factory, instantiated per-request with decrypted per-user creds
-│       │   └── pfc.ts                     # full PFC taxonomy + default Ledge mapping table
+│       │   └── pfc.ts                     # full PFC taxonomy + default ToFi mapping table
 │       ├── crypto/
 │       │   └── aes.ts                     # AES-256 encrypt/decrypt for secrets + access tokens
 │       └── supabase/

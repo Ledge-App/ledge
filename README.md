@@ -6,10 +6,17 @@ Each user connects Plaid with their **own** Plaid developer credentials (BYOK �
 
 Raw financial data (transactions, balances, account numbers) **never persists on the backend** — it's fetched live from Plaid on each request and relayed straight to the device. Only user-defined metadata (categories, budgets, vendor mappings, reimbursement links) is stored server-side.
 
-The app was called Ledge before 2026-08. Internal identifiers still say `ledge` — the bundle ID,
-the Expo slug and scheme, and the MMKV store ids — and that is deliberate, not an oversight:
-each is bound to something external (an App Store Connect record, OAuth redirects, or data
-already on users' devices). See "Decisions taken" in `docs/app-store-readiness.md`.
+The app was called Ledge before 2026-08. Source identifiers and docs now say ToFi, but four
+externally-bound identifiers still say `ledge` and that is deliberate, not an oversight:
+
+| Identifier | Bound to |
+| --- | --- |
+| `com.qihongw08.ledge` (bundle ID) | the shipped App Store Connect record — unchangeable, and Sign in with Apple user ids are scoped to it |
+| `ledge` (Expo slug) | the EAS project |
+| `ledge://` (URL scheme) | Plaid's redirect URI and `oauth-redirect/oauth-callback.html` |
+| `ledge-*` (MMKV store ids) | data already on users' devices — the id is the on-disk filename |
+
+See "Decisions taken" in `docs/app-store-readiness.md`.
 
 See `docs/product.md`, `docs/architecture.md`, and `docs/design.md` for the full spec.
 

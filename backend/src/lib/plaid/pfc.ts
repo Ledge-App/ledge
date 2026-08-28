@@ -11,7 +11,7 @@
 // code in any version) were present. Diff against the CSV by hand when revising.
 
 export interface PfcMappingEntry {
-  ledgeCategory: string
+  tofiCategory: string
   /** Plaid's primary PFC code shared by every entry in detailedCodes, e.g. 'FOOD_AND_DRINK'. */
   primary: string
   color: string
@@ -27,7 +27,7 @@ export interface PfcMappingEntry {
 
 export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
   {
-    ledgeCategory: 'Food & Drink',
+    tofiCategory: 'Food & Drink',
     primary: 'FOOD_AND_DRINK',
     color: '#F97316',
     icon: 'food-and-drink',
@@ -44,7 +44,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Transport',
+    tofiCategory: 'Transport',
     primary: 'TRANSPORTATION',
     color: '#3B82F6',
     icon: 'transport',
@@ -60,7 +60,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Travel',
+    tofiCategory: 'Travel',
     primary: 'TRAVEL',
     color: '#8B5CF6',
     icon: 'travel',
@@ -74,7 +74,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Entertainment',
+    tofiCategory: 'Entertainment',
     primary: 'ENTERTAINMENT',
     color: '#EC4899',
     icon: 'entertainment',
@@ -89,7 +89,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Shopping',
+    tofiCategory: 'Shopping',
     primary: 'GENERAL_MERCHANDISE',
     color: '#EAB308',
     icon: 'shopping',
@@ -112,7 +112,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Bills & Utilities',
+    tofiCategory: 'Bills & Utilities',
     primary: 'RENT_AND_UTILITIES',
     color: '#6B7280',
     icon: 'bills-and-utilities',
@@ -128,7 +128,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Health',
+    tofiCategory: 'Health',
     primary: 'MEDICAL',
     color: '#10B981',
     icon: 'health',
@@ -144,7 +144,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Personal Care',
+    tofiCategory: 'Personal Care',
     primary: 'PERSONAL_CARE',
     color: '#F43F5E',
     icon: 'personal-care',
@@ -157,7 +157,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Home',
+    tofiCategory: 'Home',
     primary: 'HOME_IMPROVEMENT',
     color: '#84CC16',
     icon: 'home',
@@ -171,7 +171,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Services',
+    tofiCategory: 'Services',
     primary: 'GENERAL_SERVICES',
     color: '#06B6D4',
     icon: 'services',
@@ -189,7 +189,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Income',
+    tofiCategory: 'Income',
     primary: 'INCOME',
     color: '#34D399',
     icon: 'income',
@@ -216,7 +216,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Transfers In',
+    tofiCategory: 'Transfers In',
     primary: 'TRANSFER_IN',
     color: '#2DD4BF',
     icon: 'transfer-in',
@@ -233,7 +233,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Transfers Out',
+    tofiCategory: 'Transfers Out',
     primary: 'TRANSFER_OUT',
     color: '#9CA3AF',
     icon: 'transfer-out',
@@ -253,7 +253,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
   {
     // Named 'Payments' rather than 'Loans' because Plaid files credit card payments under the
     // LOAN_PAYMENTS primary, and a card payment isn't a loan — it's paying off a balance.
-    ledgeCategory: 'Payments',
+    tofiCategory: 'Payments',
     primary: 'LOAN_PAYMENTS',
     color: '#F87171',
     icon: 'payments',
@@ -275,7 +275,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     // New primary in PFCv2 — money the user *received* as loan proceeds, which is neither income
     // (it's debt) nor a payment. Without an entry here these six codes have no mapped primary at
     // all, so they'd fall through even the primary fallback and land in Uncategorized.
-    ledgeCategory: 'Loans Received',
+    tofiCategory: 'Loans Received',
     primary: 'LOAN_DISBURSEMENTS',
     color: '#FBBF24',
     icon: 'loan-received',
@@ -295,7 +295,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Fees',
+    tofiCategory: 'Fees',
     primary: 'BANK_FEES',
     color: '#6B7280',
     icon: 'fee',
@@ -313,7 +313,7 @@ export const DEFAULT_PFC_MAPPING: PfcMappingEntry[] = [
     ],
   },
   {
-    ledgeCategory: 'Other',
+    tofiCategory: 'Other',
     primary: 'GOVERNMENT_AND_NON_PROFIT',
     color: '#71717A',
     icon: 'other',
