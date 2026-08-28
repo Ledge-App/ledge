@@ -22,7 +22,12 @@ interface AccountRowProps {
   delayLongPress?: number
 }
 
-const variantIcons: Record<string, { name: string; color: string }> = {
+/**
+ * Stand-in glyphs for accounts with no institution logo. Exported so the composition map
+ * falls back to the SAME icon this row does — an account should not be a wallet here and a
+ * generic square there.
+ */
+export const variantIcons: Record<string, { name: string; color: string }> = {
   cash: { name: 'wallet', color: '#3B82F6' },
   investment: { name: 'trending-up', color: '#E11D48' },
   credit: { name: 'card', color: '#6B7280' },

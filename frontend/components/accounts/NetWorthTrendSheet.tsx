@@ -4,9 +4,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, shadow } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
+import { formatAsOfDate } from '@/lib/format/date'
 import { monthLabel } from '@/lib/transactions/filterByMonth'
 import { computeNetWorthHistory, netWorthYearRange } from '@/lib/accounts/netWorthHistory'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
+import { NetWorthCompositionMap } from './NetWorthCompositionMap'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 import type { Account } from '@/types/domain'
@@ -173,8 +175,16 @@ export function NetWorthTrendSheet({ visible, onClose, netWorth, accounts, feed,
           )}
         </View>
 
+        {/* Below the chart, because it describes a different moment: the chart answers the
+            year the scope selector is set to, while this always describes RIGHT NOW. The
+            "As of" stamp says so outright, since the selector above visibly does not drive it. */}
+        <View className="mt-5 rounded-xl bg-surface p-3" style={shadow.card}>
+          <Text className="px-1 pb-2 font-sansSemi text-sm text-primary">{`As of ${formatAsOfDate(new Date())}`}</Text>
+          <NetWorthCompositionMap accounts={accounts} feed={feed} />
+        </View>
+
         {rows.length > 0 ? (
-          <View className="mt-5 overflow-hidden rounded-xl bg-surface" style={shadow.card}>
+        <View className="mt-5 overflow-hidden rounded-xl bg-surface" style={shadow.card}>
             {rows.map((point, index) => (
               <View
                 key={`${point.year}-${point.month}`}

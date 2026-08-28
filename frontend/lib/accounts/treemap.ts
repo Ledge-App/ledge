@@ -17,13 +17,20 @@ export interface AllocationItem {
   gainPct: number | null
 }
 
-export interface TreemapRect {
-  item: AllocationItem
+/** A laid-out tile. Generic in its payload so the same algorithm serves holdings and accounts. */
+export interface TreemapRect<T = AllocationItem> {
+  item: T
   x: number
   y: number
   width: number
   height: number
 }
+
+/** The only thing squarify needs of an item: its share of the box, 0..1. */
+export interface Weighted {
+  weight: number
+}
+
 
 /** Holdings -> weighted allocation, largest first. Valueless positions can't be drawn. */
 export function computeAllocation(holdings: Holding[]): AllocationItem[] {
@@ -54,24 +61,30 @@ function worstAspect(rowAreas: number[], side: number): number {
   return worst
 }
 
-/** Lay out items (assumed sorted desc by weight) into width x height. */
-export function squarify(items: AllocationItem[], width: number, height: number): TreemapRect[] {
+/**
+ * Lay out items (assumed sorted desc by weight) into width x height.
+ *
+ * Generic over the payload: the algorithm only ever reads `weight`, so holdings, accounts and
+ * account groups all lay out through this one tested implementation rather than through
+ * copies that could drift apart.
+ */
+export function squarify<T extends Weighted>(items: T[], width: number, height: number): TreemapRect<T>[] {
   if (items.length === 0 || width <= 0 || height <= 0) return []
 
   const totalWeight = items.reduce((sum, i) => sum + i.weight, 0)
   if (totalWeight <= 0) return []
   const scale = (width * height) / totalWeight
 
-  const rects: TreemapRect[] = []
+  const rects: TreemapRect<T>[] = []
   let x = 0
   let y = 0
   let remainingWidth = width
   let remainingHeight = height
-  let row: AllocationItem[] = []
+  let row: T[] = []
 
-  const areaOf = (item: AllocationItem) => item.weight * scale
+  const areaOf = (item: T) => item.weight * scale
 
-  function layoutRow(finalRow: AllocationItem[]) {
+  function layoutRow(finalRow: T[]) {
     const rowArea = finalRow.reduce((sum, i) => sum + areaOf(i), 0)
     const horizontal = remainingWidth < remainingHeight // rows lay along the shorter side
     const side = horizontal ? remainingWidth : remainingHeight

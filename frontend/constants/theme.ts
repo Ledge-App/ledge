@@ -78,6 +78,16 @@ export const assetClassColors = {
   other: { fill: '#828E98', text: '#3E4954' },
 } as const
 
+/**
+ * Debt in the net-worth composition map. Same fill/text split as the asset classes, but drawn
+ * from the rose family so a liability block reads as a liability rather than as another kind
+ * of asset — this is the one place that map's neutral "allocation" stance gives way, because
+ * owing money genuinely is a different thing from owning it.
+ *
+ * `text` clears 5.9:1 against its own tile at the deepest tint used.
+ */
+export const liabilityColors = { fill: '#C2676C', text: '#841428' } as const
+
 // Fallback channels for malformed input. category.color is a free-text DB column (validated
 // only as a non-empty string), so a value like 'red' or '#f00' would otherwise parse to NaN
 // channels and crash React Native at render time. Falls back to `textMuted` (#A8A89C).
