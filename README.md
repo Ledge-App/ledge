@@ -111,10 +111,11 @@ privacy/support/terms pages linked from the App Store listing. Deployed to Netli
 developer's machine, not from CI.
 
 `.netlify/` is gitignored — it is per-machine CLI state (an absolute publish path and the site id),
-so each developer links once:
+so each developer links once. The CLI is not a project dependency; run it through `npx`:
 
 ```bash
 cd oauth-redirect
-netlify link          # pick the existing site
-netlify deploy --prod
+npx netlify-cli login   # once per machine
+npx netlify-cli link    # once per clone — pick the existing site
+npx netlify-cli deploy --prod
 ```
