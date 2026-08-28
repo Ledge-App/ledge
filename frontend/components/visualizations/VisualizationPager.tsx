@@ -116,7 +116,7 @@ export function VisualizationPager({
                 className="rounded-lg bg-surface"
                 style={{ padding: 12, marginTop: 8, shadowColor: '#0F766E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 3 }}
               >
-                <SpendingTrend points={dailyPoints} lineColor={lineColor} />
+                <SpendingTrend points={dailyPoints} lineColor={lineColor} month={month} />
               </View>
 
               <View style={{ marginTop: 20 }}>

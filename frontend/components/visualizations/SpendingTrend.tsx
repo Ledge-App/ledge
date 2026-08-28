@@ -1,14 +1,19 @@
 import { useMemo, useState } from 'react'
 import { View, useWindowDimensions } from 'react-native'
 import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { runOnJS } from 'react-native-reanimated'
 import type { DayPoint } from '@/lib/transactions/visualizationData'
+import type { YearMonth } from '@/lib/transactions/filterByMonth'
 import { formatTick, niceScale } from '@/lib/charts/lineChart'
 import { formatAmount } from '@/lib/format/money'
+import { MONTH_NAMES } from '@/lib/format/date'
 import { colors, fontFamily, hexToRgba } from '@/constants/theme'
 
 interface SpendingTrendProps {
   points: DayPoint[]
   lineColor: string
+  month: YearMonth
 }
 
 const Y_W = 40
@@ -25,13 +30,14 @@ const TOOLTIP_BAND = TOOLTIP_H + 12
 const CHART_H = 220 + TOOLTIP_BAND
 const PAD_T = 12 + TOOLTIP_BAND
 
-export function SpendingTrend({ points, lineColor }: SpendingTrendProps) {
+export function SpendingTrend({ points, lineColor, month }: SpendingTrendProps) {
   const { width } = useWindowDimensions()
   const chartW = width - 40
   const plotW = chartW - Y_W - PAD_R
   const plotH = CHART_H - PAD_T - X_H
-  // Which day is tapped, if any — tapping the same one again clears it rather than requiring
-  // a tap elsewhere, since there's nothing else in this chart a tap could mean.
+  // Which day is currently pressed, if any. Shown for as long as the touch is down and cleared
+  // the moment it lifts — a press-and-drag "scrub" rather than a tap-to-toggle, since a single
+  // day's slot is only ~11pt wide on a 30-day month and too easy to miss with a plain tap.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
   const { bars, yTicks, yMax, yStep, avgY, slotX, slotW } = useMemo(() => {
@@ -73,9 +79,26 @@ export function SpendingTrend({ points, lineColor }: SpendingTrendProps) {
   // to a shorter month) where the selected index would point at nothing or the wrong day.
   const selected = selectedIndex !== null && selectedIndex < points.length ? selectedIndex : null
 
+  // Runs on the JS thread via runOnJS below — onBegin/onUpdate fire as UI-thread worklets, and
+  // calling a plain (non-worklet) function like this directly from one throws a "remote function"
+  // error. The index math has to live inside the runOnJS-wrapped call, not just the state set.
+  function selectFromX(x: number) {
+    setSelectedIndex(Math.min(points.length - 1, Math.max(0, Math.floor((x - Y_W) / slotW))))
+  }
+
+  // One gesture over the whole plot rather than a tap target per day: onBegin/onUpdate track
+  // the touch continuously, so dragging a finger across the chart scrubs through days the same
+  // way a plain tap would pick one — and onFinalize (covers a normal release AND a cancelled
+  // touch) always clears the selection, so the tooltip never persists past the touch itself.
+  const panGesture = Gesture.Pan()
+    .onBegin((e) => runOnJS(selectFromX)(e.x))
+    .onUpdate((e) => runOnJS(selectFromX)(e.x))
+    .onFinalize(() => runOnJS(setSelectedIndex)(null))
+
   return (
     <View style={{ alignItems: 'center' }}>
-      <Svg width={chartW} height={CHART_H}>
+      <GestureDetector gesture={panGesture}>
+        <Svg width={chartW} height={CHART_H}>
         {yTicks.map((tick) => {
           const y = PAD_T + plotH - (tick / yMax) * plotH
           return (
@@ -126,25 +149,10 @@ export function SpendingTrend({ points, lineColor }: SpendingTrendProps) {
           ) : null,
         )}
 
-        {/* Full slot height/width rather than the visible bar's own bounds, so a near-zero day
-            (whose bar is a sliver) is exactly as easy to tap as the tallest one. Transparent and
-            on top so it always wins the touch regardless of what's drawn beneath it. */}
-        {points.map((_, i) => (
-          <Rect
-            key={`hit-${i}`}
-            x={Y_W + slotW * i}
-            y={PAD_T}
-            width={slotW}
-            height={plotH}
-            fill="transparent"
-            onPress={() => setSelectedIndex((prev) => (prev === i ? null : i))}
-          />
-        ))}
-
         {selected !== null
           ? (() => {
               const point = points[selected]
-              const label = `${String(point.day).padStart(2, '0')} · ${formatAmount(point.amount)}`
+              const label = `${MONTH_NAMES[month.month - 1]} ${String(point.day).padStart(2, '0')} · ${formatAmount(point.amount)}`
               // Sized to the text rather than a fixed guess: the font is monospace, so every
               // character has the same advance width and this is exact, not an estimate — a
               // fixed width either clips a big amount (as seen with $2,450.00) or looks
@@ -178,6 +186,7 @@ export function SpendingTrend({ points, lineColor }: SpendingTrendProps) {
             })()
           : null}
       </Svg>
+      </GestureDetector>
     </View>
   )
 }
