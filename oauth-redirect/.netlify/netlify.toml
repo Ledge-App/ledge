@@ -6,9 +6,9 @@ redirects = []
 [functions."*"]
 
 [build]
-publish = "/Users/qihongwu/VSCode/ledger/oauth-redirect"
+publish = "/Users/qihongwu/VSCode/tofi/oauth-redirect"
 publishOrigin = "default"
-base = "/Users/qihongwu/VSCode/ledger/oauth-redirect"
+base = "/Users/qihongwu/VSCode/tofi/oauth-redirect"
 
 [build.environment]
 

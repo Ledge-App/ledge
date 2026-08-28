@@ -102,3 +102,20 @@ Run the test suite with `npm test`.
 - **Plaid Link is a native module** (`react-native-plaid-link-sdk`) and does not run in Expo Go — `npm run ios`/`npm run android` build a real dev client via `expo prebuild`, which needs Xcode/CocoaPods installed.
 - **Plaid OAuth institutions** (Chase, Bank of America, etc.) require a universal link, which needs: a paid Apple Developer Program membership, the **Associated Domains** capability with an explicit (non-wildcard) App ID registered on the Apple Developer portal, an `apple-app-site-association` file hosted at your redirect domain, that same URL registered in the Plaid Dashboard's Allowed redirect URIs, and `PLAID_REDIRECT_URI` set on the backend. Non-OAuth Sandbox institutions (e.g. "Platypus Bank", `user_good`/`pass_good`) work without any of this.
 - **Real/live institutions require Plaid Production keys**, entered by each user in Settings → Plaid Developer Account with Environment set to Production. Sandbox keys only work against Plaid's fake test institutions — linking a real bank always needs the user's own Production `client_id`/`secret` from their Plaid dashboard.
+
+## OAuth redirect site (`oauth-redirect/`)
+
+Static pages served over HTTPS at the domain in `frontend/constants/links.ts`: the Plaid
+universal-link `apple-app-site-association`, the `ledge://oauth-callback` interstitial, and the
+privacy/support/terms pages linked from the App Store listing. Deployed to Netlify from a
+developer's machine, not from CI.
+
+`.netlify/` is gitignored — it is per-machine CLI state (an absolute publish path and the site id),
+so each developer links once. The CLI is not a project dependency; run it through `npx`:
+
+```bash
+cd oauth-redirect
+npx netlify-cli login   # once per machine
+npx netlify-cli link    # once per clone — pick the existing site
+npx netlify-cli deploy --prod
+```
