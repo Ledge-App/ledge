@@ -4,6 +4,7 @@ import { createHeadlessApiClient } from '@/lib/api/client'
 import { supabaseAuth } from '@/lib/supabase/auth'
 import { getCachedInvestmentTransactions, getCachedTransactions } from '@/lib/storage/mmkv'
 import { syncDriver } from '@/lib/transactions/syncDriver'
+import { reportError } from '@/lib/observability/log'
 import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { deliverBudgetAlerts } from '@/lib/budgets/deliverAlerts'
@@ -109,9 +110,12 @@ TaskManager.defineTask(BUDGET_ALERT_TASK, async () => {
   try {
     await runBudgetAlertCheck()
     return BackgroundTask.BackgroundTaskResult.Success
-  } catch {
+  } catch (err) {
     // Transient by assumption (network, expired wake window); the next wake retries with the
-    // same cursors, and planSyncMerge's idempotency makes a half-applied round harmless.
+    // same cursors, and planSyncMerge's idempotency makes a half-applied round harmless. But
+    // the assumption is what needs checking: unreported, a permanently broken background wake
+    // is indistinguishable from one that has nothing to say, in either case forever.
+    reportError('budget-alert-task', err)
     return BackgroundTask.BackgroundTaskResult.Failed
   }
 })
@@ -125,8 +129,9 @@ TaskManager.defineTask(BUDGET_ALERT_TASK, async () => {
 export async function registerBudgetAlertTask(): Promise<void> {
   try {
     await BackgroundTask.registerTaskAsync(BUDGET_ALERT_TASK, { minimumInterval: 60 })
-  } catch {
+  } catch (err) {
     // Unavailable on this platform/build (e.g. web, or Background App Refresh disabled) —
     // the foreground watcher still covers every app open.
+    reportError('budget-alert-task-registration', err)
   }
 }

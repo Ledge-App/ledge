@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv'
+import { reportError } from '@/lib/observability/log'
 import type { InvestmentTransaction, PlaidTransaction } from '@/types/domain'
 
 const storage = new MMKV({ id: 'ledge-transaction-cache' })
@@ -16,9 +17,12 @@ export function getCachedTransactions(itemId: string): PlaidTransaction[] {
   if (!raw) return []
   try {
     return JSON.parse(raw) as PlaidTransaction[]
-  } catch {
+  } catch (err) {
     // A corrupted cache entry must not crash the feed — treat it as empty and let the
-    // next sync rebuild it from Plaid.
+    // next sync rebuild it from Plaid. Reported because the recovery is indistinguishable from
+    // an empty cache: silently, this became a full re-drain of the item's history from Plaid.
+    // The payload itself is never logged; it is transaction bodies.
+    reportError('transaction-cache', err, { itemId })
     return []
   }
 }
@@ -63,7 +67,8 @@ export function getPendingRemovedTransactionIds(): string[] {
   if (!raw) return []
   try {
     return JSON.parse(raw) as string[]
-  } catch {
+  } catch (err) {
+    reportError('pending-removed-queue', err)
     return []
   }
 }
@@ -139,8 +144,9 @@ export function getCachedInvestmentTransactions(itemId: string): InvestmentTrans
   if (!raw) return []
   try {
     return JSON.parse(raw) as InvestmentTransaction[]
-  } catch {
+  } catch (err) {
     // Same contract as getCachedTransactions: a corrupted entry must not crash the feed.
+    reportError('investment-cache', err, { itemId })
     return []
   }
 }

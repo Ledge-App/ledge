@@ -3,11 +3,15 @@ import { plaidCredentialRepository } from '../repositories/plaidCredentialReposi
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
 import { transactionRepository } from '../repositories/transactionRepository.js'
-import { isRateLimitError, plaidErrorOf } from '../lib/plaid/errors.js'
+import { isRateLimitError, plaidErrorOf, plaidItemErrorDetail } from '../lib/plaid/errors.js'
+import { preconditionError } from '../trpc/errors.js'
 
 export interface TransactionSyncItemError {
   itemId: string
   message: string
+  /** Plaid's error_code — ITEM_LOGIN_REQUIRED and INVALID_ACCESS_TOKEN need different repairs,
+   *  and the message alone cannot tell them apart. Absent when the call never reached Plaid. */
+  errorCode?: string
 }
 
 export interface TransactionSyncResult {
@@ -43,7 +47,7 @@ const MAX_PAGES_PER_ITEM = 10
 export const transactionSyncService = {
   async sync(userId: string, cursors: Record<string, string>): Promise<TransactionSyncResult> {
     const creds = await plaidCredentialRepository.getDecrypted(userId)
-    if (!creds) throw new Error('No Plaid credentials saved for this user.')
+    if (!creds) throw preconditionError('No Plaid credentials saved for this user.')
     const client = createPlaidClient(creds.clientId, creds.secret, creds.environment)
     const items = await plaidItemRepository.listDecryptedTokens(userId)
 
@@ -92,7 +96,10 @@ export const transactionSyncService = {
         // One user's misconfigured/broken Plaid item must not block sync for their other
         // items (architecture.md's BYOK isolation tradeoff). hasMore is left unset so the
         // client doesn't hot-loop on a failing item; the next app-driven sync retries it.
-        itemErrors.push({ itemId: item.itemId, message: err instanceof Error ? err.message : 'Sync failed for this account.' })
+        itemErrors.push({
+          itemId: item.itemId,
+          ...plaidItemErrorDetail(err, 'Sync failed for this account.'),
+        })
         // Plaid requires restarting pagination from the cursor it began with when the
         // underlying data mutated mid-pagination; discard this item's partial progress.
         if (plaidErrorOf(err).errorCode === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {

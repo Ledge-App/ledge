@@ -252,6 +252,9 @@ describe('syncDriver', () => {
   it('records a failed request, releases the in-flight lock and resolves its callers', async () => {
     const { syncDriver } = await importDriver()
     const call = vi.fn().mockRejectedValue(new Error('network down'))
+    // Every screen renders a sync failure as generic copy, so the report is the only place the
+    // real message survives.
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     // Callers must not have to catch: today's triggerSync swallows too, since failures
     // surface through the snapshot instead.
@@ -260,6 +263,8 @@ describe('syncDriver', () => {
 
     expect(syncDriver.getSnapshot().error).toBeInstanceOf(Error)
     expect(syncDriver.getSnapshot().isSyncing).toBe(false)
+    expect(reported.mock.calls[0][0]).toBe('[transaction-sync] network down')
+    reported.mockRestore()
 
     // The lock is released, so a forced retry is possible immediately.
     const ok = vi.fn().mockResolvedValue(response())

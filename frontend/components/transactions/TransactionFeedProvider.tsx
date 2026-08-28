@@ -19,6 +19,7 @@ import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { syncDriver } from '@/lib/transactions/syncDriver'
+import { reportError } from '@/lib/observability/log'
 import { detectPendingPreviews, detectTransfers } from '@/lib/transfers/autoMatch'
 import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
 import type { AutoMatchResult, TransferDraft } from '@/lib/transfers/autoMatch'
@@ -208,9 +209,11 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
       for (let i = 0; i < rows.length; i += 100) {
         try {
           await createManyTransfers({ transfers: rows.slice(i, i + 100) })
-        } catch {
+        } catch (err) {
           // Best-effort by design: the pairs stay counted (never wrongly hidden) and the
-          // next app session re-detects and retries them.
+          // next app session re-detects and retries them. Count only — the drafts themselves
+          // are amounts and merchant names.
+          reportError('transfer-auto-apply', err, { pairCount: rows.length })
           break
         }
       }
@@ -269,8 +272,9 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
         for (const id of dissolveTransferIds) {
           try {
             await deleteTransfer({ id })
-          } catch {
+          } catch (err) {
             // Leave the queue untouched; the next pass retries this transfer.
+            reportError('transfer-orphan-sweep', err, { transferId: id })
           }
         }
       } finally {

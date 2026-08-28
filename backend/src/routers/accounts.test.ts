@@ -56,7 +56,19 @@ describe('accounts router', () => {
       { itemId: 'item-ok', accessToken: 'access-ok', institutionName: 'Chase' },
     ])
     accountsGet
-      .mockRejectedValueOnce(new Error('the login details of this item have changed'))
+      // Shaped like a real Plaid rejection: axios puts the status string on the message and the
+      // code the caller can act on in the response body.
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Request failed with status code 400'), {
+          response: {
+            data: {
+              error_type: 'ITEM_ERROR',
+              error_code: 'ITEM_LOGIN_REQUIRED',
+              error_message: 'the login details of this item have changed',
+            },
+          },
+        }),
+      )
       .mockResolvedValueOnce({ data: { accounts: [{ account_id: 'acc-1', name: 'Sapphire' }] } })
 
     const { accountsRouter } = await import('./accounts.js')
@@ -72,6 +84,7 @@ describe('accounts router', () => {
         itemId: 'item-broken',
         institutionName: 'Old Bank',
         message: 'the login details of this item have changed',
+        errorCode: 'ITEM_LOGIN_REQUIRED',
       },
     ])
   })

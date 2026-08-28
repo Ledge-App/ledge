@@ -22,7 +22,19 @@ describe('transactionSyncService', () => {
       { itemId: 'item-bad', accessToken: 'a2', institutionName: 'Broken Bank' },
     ])
     transactionRepoMock.sync.mockImplementation(async (_client: unknown, accessToken: string) => {
-      if (accessToken === 'a2') throw new Error('ITEM_LOGIN_REQUIRED')
+      // Shaped like a real rejection from the axios-based Plaid SDK: the message is the generic
+      // status string and the diagnosis is in the response body.
+      if (accessToken === 'a2') {
+        throw Object.assign(new Error('Request failed with status code 400'), {
+          response: {
+            data: {
+              error_type: 'ITEM_ERROR',
+              error_code: 'ITEM_LOGIN_REQUIRED',
+              error_message: 'the login details of this item have changed',
+            },
+          },
+        })
+      }
       return page({ added: [{ transaction_id: 't1' }], next_cursor: 'cursor-good' })
     })
 
@@ -32,7 +44,13 @@ describe('transactionSyncService', () => {
     expect(result.added).toEqual([{ transaction_id: 't1' }])
     expect(result.cursors).toEqual({ 'item-good': 'cursor-good' })
     expect(result.hasMore).toEqual({ 'item-good': false })
-    expect(result.itemErrors).toEqual([{ itemId: 'item-bad', message: 'ITEM_LOGIN_REQUIRED' }])
+    expect(result.itemErrors).toEqual([
+      {
+        itemId: 'item-bad',
+        message: 'the login details of this item have changed',
+        errorCode: 'ITEM_LOGIN_REQUIRED',
+      },
+    ])
   })
 
   it('returns empty results with no errors when there are no linked items', async () => {
@@ -86,7 +104,8 @@ describe('transactionSyncService', () => {
     itemRepoMock.listDecryptedTokens.mockResolvedValue([{ itemId: 'item-1', accessToken: 'a1', institutionName: 'Chase' }])
     transactionRepoMock.sync
       .mockResolvedValueOnce(page({ added: [{ transaction_id: 't1' }], next_cursor: 'c1', has_more: true }))
-      .mockRejectedValueOnce(new Error('RATE_LIMIT'))
+      // No response body: a transport failure that never reached Plaid, so there is no code.
+      .mockRejectedValueOnce(new Error('socket hang up'))
 
     const { transactionSyncService } = await import('./transactionSyncService.js')
     const result = await transactionSyncService.sync('user-1', {})
@@ -94,7 +113,7 @@ describe('transactionSyncService', () => {
     expect(result.added).toEqual([{ transaction_id: 't1' }])
     expect(result.cursors).toEqual({ 'item-1': 'c1' })
     expect(result.hasMore).toEqual({})
-    expect(result.itemErrors).toEqual([{ itemId: 'item-1', message: 'RATE_LIMIT' }])
+    expect(result.itemErrors).toEqual([{ itemId: 'item-1', message: 'socket hang up' }])
   })
 
   it('restarts from the original cursor when Plaid reports mutation-during-pagination', async () => {

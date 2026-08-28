@@ -7,6 +7,7 @@ import {
   setCursor,
 } from '@/lib/storage/mmkv'
 import { planSyncMerge, type SyncResultShape } from './planSyncMerge'
+import { reportError } from '@/lib/observability/log'
 import type { PlaidTransaction } from '@/types/domain'
 
 export interface SyncItemError {
@@ -181,6 +182,10 @@ async function drain(options: SyncNowOptions): Promise<void> {
   } catch (err) {
     // Never rethrown: callers await the first round only, and failures are surfaced through the
     // snapshot. Rethrowing here would surface as an unhandled rejection on the sequence promise.
+    //
+    // Reported as well as published, because every screen renders this as generic copy — the
+    // actual message reaches no user and, without this line, no log either.
+    reportError('transaction-sync', err, { itemIds: itemIds.length })
     publish({ error: err instanceof Error ? err : new Error('Sync failed.') })
   } finally {
     // Recorded even on failure, so an error can't turn a re-rendering tree into a retry storm.

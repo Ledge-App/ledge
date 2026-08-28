@@ -6,11 +6,36 @@
 export interface PlaidErrorDetail {
   errorType?: string
   errorCode?: string
+  errorMessage?: string
 }
 
 export function plaidErrorOf(err: unknown): PlaidErrorDetail {
-  const data = (err as { response?: { data?: { error_type?: string; error_code?: string } } })?.response?.data
-  return { errorType: data?.error_type, errorCode: data?.error_code }
+  const data = (
+    err as { response?: { data?: { error_type?: string; error_code?: string; error_message?: string } } }
+  )?.response?.data
+  return { errorType: data?.error_type, errorCode: data?.error_code, errorMessage: data?.error_message }
+}
+
+/** A per-item failure as the client receives it: something to show, plus something to act on. */
+export interface PlaidItemErrorDetail {
+  message: string
+  /** Plaid's error_code, absent when the failure wasn't a Plaid response (network, timeout). */
+  errorCode?: string
+}
+
+/**
+ * Describes a rejected Plaid call for a single item.
+ *
+ * The Plaid SDK is axios-based, so a rejected call's `err.message` is only ever
+ * "Request failed with status code 400" — the diagnosis is in the response body. Every per-item
+ * handler used to report that axios string, which is why a broken connection could not be told
+ * apart from an unsupported product or expired consent, all three of which need different
+ * remedies.
+ */
+export function plaidItemErrorDetail(err: unknown, fallbackMessage: string): PlaidItemErrorDetail {
+  const { errorCode, errorMessage } = plaidErrorOf(err)
+  const message = errorMessage ?? (err instanceof Error ? err.message : fallbackMessage)
+  return errorCode ? { message, errorCode } : { message }
 }
 
 /**
