@@ -4,8 +4,8 @@ import { toRequestEvent } from './requestEvent.js'
 function request(url: string, method = 'GET') {
   return { method, url, id: 'req-3' }
 }
-function reply(statusCode: number, responseTime = 12.5) {
-  return { statusCode, getResponseTime: () => responseTime }
+function reply(statusCode: number, elapsedTime = 12.5) {
+  return { statusCode, elapsedTime }
 }
 
 describe('toRequestEvent', () => {
