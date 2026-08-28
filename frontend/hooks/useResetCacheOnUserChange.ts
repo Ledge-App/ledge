@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { shouldResetCache } from '@/lib/auth/shouldResetCache'
 import { clearTransactionCache } from '@/lib/storage/mmkv'
 import { clearPersistedQueryCache } from '@/lib/storage/queryPersister'
+import { syncDriver } from '@/lib/transactions/syncDriver'
 import { supabaseAuth } from '@/lib/supabase/auth'
 
 /**
@@ -33,6 +34,10 @@ export function useResetCacheOnUserChange(queryClient: QueryClient): void {
         // throttle, so an app killed right after this clear could otherwise hand the previous
         // user's queries to the next launch.
         clearPersistedQueryCache()
+        // The driver keeps its cooldown and in-flight state in module scope, which outlives
+        // any session. Left alone, the returning user's first sync would be suppressed as a
+        // duplicate of one run for the user who just signed out.
+        syncDriver.reset()
       }
       cachedUserId.current = nextUserId
     })

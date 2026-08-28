@@ -42,7 +42,7 @@ describe('transactionSyncService', () => {
     const { transactionSyncService } = await import('./transactionSyncService.js')
     const result = await transactionSyncService.sync('user-1', {})
 
-    expect(result).toEqual({ added: [], modified: [], removed: [], cursors: {}, hasMore: {}, itemErrors: [] })
+    expect(result).toEqual({ added: [], modified: [], removed: [], cursors: {}, hasMore: {}, rateLimited: {}, itemErrors: [] })
   })
 
   it('drains an item across multiple pages until has_more is false', async () => {
@@ -114,4 +114,71 @@ describe('transactionSyncService', () => {
     expect(result.cursors).toEqual({ 'item-1': 'original' })
     expect(result.itemErrors).toHaveLength(1)
   })
+
+  it('reports a rate-limited item as undrained rather than as a failure', async () => {
+    credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
+    itemRepoMock.listDecryptedTokens.mockResolvedValue([{ itemId: 'item-1', accessToken: 'a1', institutionName: 'Chase' }])
+    const rateLimited = Object.assign(new Error('too many requests'), {
+      response: { data: { error_type: 'RATE_LIMIT_EXCEEDED', error_code: 'TRANSACTIONS_LIMIT' } },
+    })
+    transactionRepoMock.sync
+      .mockResolvedValueOnce(page({ added: [{ transaction_id: 't1' }], next_cursor: 'c1', has_more: true }))
+      .mockRejectedValueOnce(rateLimited)
+
+    const { transactionSyncService } = await import('./transactionSyncService.js')
+    const result = await transactionSyncService.sync('user-1', {})
+
+    // The pages already drained are kept, and the cursor still marks a valid resume point.
+    expect(result.added).toEqual([{ transaction_id: 't1' }])
+    expect(result.cursors).toEqual({ 'item-1': 'c1' })
+    // hasMore true because progress is real and more remains; rateLimited is what tells the
+    // client to wait before using it, instead of re-firing immediately.
+    expect(result.hasMore).toEqual({ 'item-1': true })
+    expect(result.rateLimited).toEqual({ 'item-1': true })
+    // Being throttled is not a broken item — surfacing it as one would mislead the user.
+    expect(result.itemErrors).toEqual([])
+  })
+
+  it('reports a rate limit on the first page with no cursor to advance', async () => {
+    credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
+    itemRepoMock.listDecryptedTokens.mockResolvedValue([{ itemId: 'item-1', accessToken: 'a1', institutionName: 'Chase' }])
+    transactionRepoMock.sync.mockRejectedValue(
+      Object.assign(new Error('too many requests'), { response: { data: { error_type: 'RATE_LIMIT_EXCEEDED' } } }),
+    )
+
+    const { transactionSyncService } = await import('./transactionSyncService.js')
+    const result = await transactionSyncService.sync('user-1', { 'item-1': 'stored' })
+
+    // No page landed, so no cursor is returned; the client keeps the one it already has.
+    expect(result.cursors).toEqual({})
+    expect(result.hasMore).toEqual({ 'item-1': true })
+    expect(result.rateLimited).toEqual({ 'item-1': true })
+    expect(result.itemErrors).toEqual([])
+  })
+
+  it('lets other items keep draining when one item is rate-limited', async () => {
+    credRepoMock.getDecrypted.mockResolvedValue({ clientId: 'c', secret: 's', environment: 'sandbox' })
+    itemRepoMock.listDecryptedTokens.mockResolvedValue([
+      { itemId: 'item-limited', accessToken: 'a1', institutionName: 'Chase' },
+      { itemId: 'item-fine', accessToken: 'a2', institutionName: 'Amex' },
+    ])
+    transactionRepoMock.sync.mockImplementation(async (_client: unknown, accessToken: string) => {
+      if (accessToken === 'a1') {
+        throw Object.assign(new Error('too many requests'), {
+          response: { data: { error_type: 'RATE_LIMIT_EXCEEDED' } },
+        })
+      }
+      return page({ added: [{ transaction_id: 't2' }], next_cursor: 'c-fine' })
+    })
+
+    const { transactionSyncService } = await import('./transactionSyncService.js')
+    const result = await transactionSyncService.sync('user-1', {})
+
+    expect(result.added).toEqual([{ transaction_id: 't2' }])
+    expect(result.cursors).toEqual({ 'item-fine': 'c-fine' })
+    expect(result.hasMore).toEqual({ 'item-limited': true, 'item-fine': false })
+    expect(result.rateLimited).toEqual({ 'item-limited': true })
+    expect(result.itemErrors).toEqual([])
+  })
+
 })

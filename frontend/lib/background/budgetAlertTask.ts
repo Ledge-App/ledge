@@ -2,15 +2,8 @@ import * as BackgroundTask from 'expo-background-task'
 import * as TaskManager from 'expo-task-manager'
 import { createHeadlessApiClient } from '@/lib/api/client'
 import { supabaseAuth } from '@/lib/supabase/auth'
-import {
-  appendPendingRemovedTransactionIds,
-  getCachedInvestmentTransactions,
-  getCachedTransactions,
-  getCursor,
-  setCachedTransactions,
-  setCursor,
-} from '@/lib/storage/mmkv'
-import { planSyncMerge } from '@/lib/transactions/planSyncMerge'
+import { getCachedInvestmentTransactions, getCachedTransactions } from '@/lib/storage/mmkv'
+import { syncDriver } from '@/lib/transactions/syncDriver'
 import { applyTransfers, mergeFeed } from '@/lib/transactions/resolveFeed'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { deliverBudgetAlerts } from '@/lib/budgets/deliverAlerts'
@@ -21,8 +14,10 @@ import { resolveBudgetsForMonth } from '@/lib/budgets/budgetMath'
 export const BUDGET_ALERT_TASK = 'budget-alert-sync'
 
 // Background wakes are short (~30s) and infrequent; a fresh install's history backlog is the
-// foreground's job. Three rounds cover any realistic day's delta.
-const MAX_BACKGROUND_DRAIN_ROUNDS = 3
+// foreground's job. Four rounds cover any realistic day's delta, and at 10 pages each they stay
+// inside Plaid's 50-calls-per-minute-per-item budget without the driver's pacing — which is why
+// this caller runs unpaced (see the syncNow options below).
+const MAX_BACKGROUND_DRAIN_ROUNDS = 4
 
 /**
  * The app-closed half of budget alerting: iOS wakes the app in the background, this syncs new
@@ -72,24 +67,24 @@ export async function runBudgetAlertCheck(): Promise<'delivered' | 'no-alerts' |
   if (itemIds.length === 0) return 'skipped'
   const accountIdToItemId = new Map(accounts.map((a) => [a.account_id, a.itemId]))
 
-  // Same drain loop as the foreground hook, same merge, same cursor discipline — planSyncMerge
-  // is the shared single source of truth for how a sync response folds into the cache.
-  for (let round = 0; round <= MAX_BACKGROUND_DRAIN_ROUNDS; round++) {
-    const cursors: Record<string, string> = {}
-    for (const itemId of itemIds) {
-      const cursor = getCursor(itemId)
-      if (cursor) cursors[itemId] = cursor
-    }
-    const result = await client.transactions.sync.mutate({ cursors })
-    const cachedByItem = new Map(itemIds.map((itemId) => [itemId, getCachedTransactions(itemId)]))
-    const plan = planSyncMerge(result, itemIds, accountIdToItemId, cachedByItem)
-    for (const [itemId, merged] of plan.mergedByItem) setCachedTransactions(itemId, merged)
-    for (const [itemId, cursor] of Object.entries(plan.cursors)) setCursor(itemId, cursor)
-    // Queued for the foreground orphan sweep — the background task only reads transfers, it
-    // never dissolves them; the next app open runs the sweep exactly as if it had synced this.
-    appendPendingRemovedTransactionIds(plan.removedIds)
-    if (!plan.hasMore) break
-  }
+  // The same driver the app uses, so a background wake can never fold a sync response
+  // differently than the foreground would have. Removals it queues are picked up by the
+  // foreground orphan sweep on the next app open — this task only ever reads transfers.
+  //
+  // force: a wake must not be suppressed by a cooldown the foreground set before backgrounding.
+  // minRoundIntervalMs 0: iOS grants ~30s, and the driver's 15s pacing would spend the whole
+  // window asleep; the round cap above keeps us inside the rate limit instead.
+  // stopOnRateLimit: a rate-limit backoff starts at 30s, which this wake cannot outlive — so
+  // stop and let the next wake resume from the persisted cursors.
+  await syncDriver.syncNow({
+    itemIds,
+    accountIdToItemId,
+    call: (input) => client.transactions.sync.mutate(input),
+    force: true,
+    maxRounds: MAX_BACKGROUND_DRAIN_ROUNDS,
+    minRoundIntervalMs: 0,
+    stopOnRateLimit: true,
+  })
 
   // Investment rows come from the MMKV cache rather than a fresh window fetch: they only affect
   // brokerage-cash classification (sweep exclusion), and the foreground refreshes them on open.

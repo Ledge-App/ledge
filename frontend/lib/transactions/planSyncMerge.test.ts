@@ -75,4 +75,22 @@ describe('planSyncMerge', () => {
     expect(planSyncMerge(result({ hasMore: { a: false } }), [], ACCOUNT_TO_ITEM, new Map()).hasMore).toBe(false)
     expect(planSyncMerge(result({}), [], ACCOUNT_TO_ITEM, new Map()).hasMore).toBe(false)
   })
+
+  it('surfaces the ids of rate-limited items so the driver can back off', () => {
+    const plan = planSyncMerge(
+      result({ hasMore: { 'item-1': true, 'item-2': false }, rateLimited: { 'item-1': true } }),
+      ['item-1', 'item-2'],
+      ACCOUNT_TO_ITEM,
+      new Map(),
+    )
+    expect(plan.rateLimitedItemIds).toEqual(['item-1'])
+    // Still hasMore: the item has pages left, it just may not be asked for them yet.
+    expect(plan.hasMore).toBe(true)
+  })
+
+  it('reports no rate-limited items when the field is absent', () => {
+    // Absent rather than empty is the normal case and the shape older callers still send.
+    expect(planSyncMerge(result({}), [], ACCOUNT_TO_ITEM, new Map()).rateLimitedItemIds).toEqual([])
+  })
+
 })

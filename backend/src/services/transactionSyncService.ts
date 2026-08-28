@@ -3,6 +3,7 @@ import { plaidCredentialRepository } from '../repositories/plaidCredentialReposi
 import { plaidItemRepository } from '../repositories/plaidItemRepository.js'
 import { createPlaidClient } from '../lib/plaid/client.js'
 import { transactionRepository } from '../repositories/transactionRepository.js'
+import { isRateLimitError, plaidErrorOf } from '../lib/plaid/errors.js'
 
 export interface TransactionSyncItemError {
   itemId: string
@@ -20,6 +21,16 @@ export interface TransactionSyncResult {
    * client re-syncing one undrained item doesn't interpret the flag as "re-sync everything".
    */
   hasMore: Record<string, boolean>
+  /**
+   * Items whose paging stopped because Plaid rate-limited us, not because they drained. Their
+   * `hasMore` is true — the progress already made is real and more remains — so a client that
+   * re-fires immediately would just be throttled again, harder. Honour this by backing off
+   * before the next round; the driver (lib/transactions/syncDriver.ts) is what does that.
+   *
+   * Deliberately not an `itemError`: being throttled is not a broken connection, and reporting
+   * it as one would put a scary, unactionable message in front of the user.
+   */
+  rateLimited: Record<string, true>
   itemErrors: TransactionSyncItemError[]
 }
 
@@ -41,6 +52,7 @@ export const transactionSyncService = {
     const removed: RemovedTransaction[] = []
     const nextCursors: Record<string, string> = {}
     const hasMore: Record<string, boolean> = {}
+    const rateLimited: Record<string, true> = {}
     const itemErrors: TransactionSyncItemError[] = []
 
     for (const item of items) {
@@ -67,14 +79,23 @@ export const transactionSyncService = {
           }
         }
       } catch (err) {
+        // Throttling is handled before the generic failure path: no itemError, and hasMore is
+        // set true rather than left unset, because unlike a broken item this one genuinely has
+        // pages left. Whatever cursor the last successful page recorded stays in nextCursors as
+        // the resume point; if page 1 was the one throttled, nothing is returned for this item
+        // and the client simply keeps the cursor it already had.
+        if (isRateLimitError(err)) {
+          hasMore[item.itemId] = true
+          rateLimited[item.itemId] = true
+          continue
+        }
         // One user's misconfigured/broken Plaid item must not block sync for their other
         // items (architecture.md's BYOK isolation tradeoff). hasMore is left unset so the
         // client doesn't hot-loop on a failing item; the next app-driven sync retries it.
         itemErrors.push({ itemId: item.itemId, message: err instanceof Error ? err.message : 'Sync failed for this account.' })
         // Plaid requires restarting pagination from the cursor it began with when the
         // underlying data mutated mid-pagination; discard this item's partial progress.
-        const code = (err as { response?: { data?: { error_code?: string } } })?.response?.data?.error_code
-        if (code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {
+        if (plaidErrorOf(err).errorCode === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {
           if (originalCursor) nextCursors[item.itemId] = originalCursor
           else delete nextCursors[item.itemId]
         }
@@ -82,6 +103,6 @@ export const transactionSyncService = {
     }
 
     // Relay only — nothing here is written to a table (see Constraint 10 in the plan header).
-    return { added, modified, removed, cursors: nextCursors, hasMore, itemErrors }
+    return { added, modified, removed, cursors: nextCursors, hasMore, rateLimited, itemErrors }
   },
 }
