@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { REDACTED_MESSAGE, logTrpcError, redactInternalMessage } from './errorLogging.js'
+import { REDACTED_MESSAGE, logTrpcError, redactInternalMessage, toAxiomEvent } from './errorLogging.js'
 
 function fakeLog() {
   return { warn: vi.fn(), error: vi.fn() }
@@ -93,5 +93,62 @@ describe('redactInternalMessage', () => {
       const shape = { message: 'Built-in categories cannot be renamed.', code: -32600, data: {} }
       expect(redactInternalMessage(shape, code).message).toBe('Built-in categories cannot be renamed.')
     }
+  })
+})
+
+describe('toAxiomEvent', () => {
+  const event = {
+    error: Object.assign(new Error('db is down'), { code: 'INTERNAL_SERVER_ERROR' }) as never,
+    path: 'accounts.list',
+    type: 'query',
+    userId: 'user-1',
+    input: { cursors: { 'item-1': 'secret-cursor' } },
+  }
+
+  it('carries the same description the log line uses, plus what a log store needs to slice on', () => {
+    const sent = toAxiomEvent(event, { requestId: 'req-7' }) as Record<string, unknown>
+
+    expect(sent._time).toEqual(expect.any(String))
+    expect(sent.level).toBe('error')
+    expect(sent.service).toBe('tofi-backend')
+    expect(sent.env).toEqual(expect.any(String))
+    expect(sent.requestId).toBe('req-7')
+    expect(sent.trpc).toEqual({ path: 'accounts.list', type: 'query', code: 'INTERNAL_SERVER_ERROR' })
+    expect(sent.userId).toBe('user-1')
+  })
+
+  it('flattens the error, which JSON.stringify would otherwise drop entirely', () => {
+    const sent = toAxiomEvent(event, {}) as { err: Record<string, unknown> }
+    // An Error serializes to {} — losing the message and stack is exactly the failure this whole
+    // change is meant to prevent.
+    expect(sent.err.message).toBe('db is down')
+    expect(sent.err.stack).toEqual(expect.any(String))
+    expect(sent.err.type).toBe('Error')
+  })
+
+  it('marks an expected rejection as a warning so it can be filtered out of alerts', () => {
+    const sent = toAxiomEvent({ error: { code: 'UNAUTHORIZED', message: 'nope' } as never, type: 'query' }, {})
+    expect((sent as { level: string }).level).toBe('warn')
+  })
+
+  it('never sends the procedure input', () => {
+    // Same constraint as the log line: an ingested event is stored, and inputs carry cursors,
+    // amounts and transaction ids.
+    expect(JSON.stringify(toAxiomEvent(event, {}))).not.toContain('secret-cursor')
+  })
+
+  it('includes the plaid error code when the cause is a plaid rejection', () => {
+    const sent = toAxiomEvent(
+      {
+        error: Object.assign(new Error('Request failed with status code 400'), {
+          code: 'INTERNAL_SERVER_ERROR',
+          cause: { response: { data: { error_type: 'ITEM_ERROR', error_code: 'ITEM_LOGIN_REQUIRED' } } },
+        }) as never,
+        path: 'transactions.sync',
+        type: 'mutation',
+      },
+      {},
+    ) as { plaid: Record<string, unknown> }
+    expect(sent.plaid.errorCode).toBe('ITEM_LOGIN_REQUIRED')
   })
 })

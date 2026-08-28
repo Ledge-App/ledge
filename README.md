@@ -1,10 +1,15 @@
-# Ledge
+# ToFi
 
 A personal budgeting app for iOS that connects to bank, credit card, and investment accounts via Plaid. Users categorize transactions, set budgets, and track reimbursements — built for a small, closed group of friends rather than the general public.
 
 Each user connects Plaid with their **own** Plaid developer credentials (BYOK — bring your own key), entered in-app after signup. This keeps everyone's linked-account usage isolated under their own free Plaid account instead of sharing one app-wide key.
 
 Raw financial data (transactions, balances, account numbers) **never persists on the backend** — it's fetched live from Plaid on each request and relayed straight to the device. Only user-defined metadata (categories, budgets, vendor mappings, reimbursement links) is stored server-side.
+
+The app was called Ledge before 2026-08. Internal identifiers still say `ledge` — the bundle ID,
+the Expo slug and scheme, and the MMKV store ids — and that is deliberate, not an oversight:
+each is bound to something external (an App Store Connect record, OAuth redirects, or data
+already on users' devices). See "Decisions taken" in `docs/app-store-readiness.md`.
 
 See `docs/product.md`, `docs/architecture.md`, and `docs/design.md` for the full spec.
 
@@ -47,6 +52,19 @@ npm run dev            # starts the Fastify server on :3000
 | `ACCESS_TOKEN_ENCRYPTION_KEY` | Generate: `openssl rand -hex 32`                                         |
 | `PLAID_REDIRECT_URI`          | Only needed for Plaid OAuth institutions (Chase, BofA, etc.) — see below |
 | `PORT`                        | Defaults to `3000`                                                       |
+| `AXIOM_TOKEN`                 | Optional — Axiom → Settings → API tokens (ingest scope on one dataset)    |
+| `AXIOM_DATASET`               | Optional — the Axiom dataset to ingest into (`tofi-backend`)               |
+
+Both `AXIOM_*` variables are optional and must be set together; with either missing, nothing is
+sent anywhere and logging is stdout only. That is the right setup locally — the sink exists
+because Vercel's Hobby plan keeps runtime logs for about an hour, live-tail only, and gates Log
+Drains behind Pro.
+
+Every request ships one `info`/`warn` event describing method, path, status and duration, plus an
+`error`/`warn` event per failed tRPC procedure. Requests accumulate in an instance-local queue
+and flush in batches so responses do not each wait on the sink; a request that raised an error
+flushes the queue immediately. Query strings are never shipped — a batched tRPC GET carries its
+procedure input there.
 
 Run the test suite with `npm test`.
 

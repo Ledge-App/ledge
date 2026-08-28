@@ -5,6 +5,11 @@ import { plaidErrorOf } from '../lib/plaid/errors.js'
  * A signed-out app polling, a validation rejection or a stale id is ordinary traffic; logging
  * those at error level is how an error log becomes noise nobody reads.
  */
+/**
+ * Codes reported at warn rather than error. Everything is shipped to the sink either way — this
+ * only sets `level`, which is what a query filters on to separate real failures from ordinary
+ * rejected traffic.
+ */
 const EXPECTED_CODES = new Set([
   'UNAUTHORIZED',
   'FORBIDDEN',
@@ -51,24 +56,54 @@ export interface TrpcErrorEvent {
  * 11). The user id is kept: an opaque uuid is what makes a user's report traceable to a line
  * here, and it is not financial data.
  */
-export function logTrpcError(log: LoggerLike, event: TrpcErrorEvent): void {
+/**
+ * The shared description of a failure, so the stdout line and the event shipped to Axiom can
+ * never disagree about what happened.
+ */
+function describeTrpcError(event: TrpcErrorEvent) {
   const { error, path, type, userId } = event
   // A Plaid failure's message is only ever "Request failed with status code 400"; the code that
   // says what to actually do about it is in the response body hanging off the cause.
   const plaid = plaidErrorOf(error.cause)
-  const detail = {
+  return {
+    level: EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
     trpc: { path: path ?? '<unknown>', type, code: error.code },
     ...(plaid.errorType || plaid.errorCode ? { plaid } : {}),
     ...(userId ? { userId } : {}),
-    // `err` is pino's conventional key for a serialized Error — message, type and stack.
-    err: error,
   }
+}
 
-  if (EXPECTED_CODES.has(error.code)) {
-    log.warn(detail, 'trpc request rejected')
+export function logTrpcError(log: LoggerLike, event: TrpcErrorEvent): void {
+  const { level, ...detail } = describeTrpcError(event)
+  // `err` is pino's conventional key for a serialized Error — message, type and stack.
+  const line = { ...detail, err: event.error }
+
+  if (level === 'warn') {
+    log.warn(line, 'trpc request rejected')
     return
   }
-  log.error(detail, 'trpc procedure failed')
+  log.error(line, 'trpc procedure failed')
+}
+
+/**
+ * The same failure as a plain object safe to JSON.stringify.
+ *
+ * An Error serializes to `{}`, so shipping one verbatim would drop the message and stack — the
+ * exact information this whole change exists to preserve.
+ */
+export function toAxiomEvent(event: TrpcErrorEvent, context: { requestId?: string }): object {
+  const { level, ...detail } = describeTrpcError(event)
+  const error = event.error as { name?: string; message?: string; stack?: string }
+  return {
+    // Axiom reads _time as the event timestamp.
+    _time: new Date().toISOString(),
+    level,
+    service: 'tofi-backend',
+    env: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'development',
+    ...(context.requestId ? { requestId: context.requestId } : {}),
+    ...detail,
+    err: { type: error?.name ?? 'Error', message: error?.message, stack: error?.stack },
+  }
 }
 
 /**
