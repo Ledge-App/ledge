@@ -53,6 +53,34 @@ describe('logTrpcError', () => {
     expect(log.error.mock.calls[0][0].plaid).toBeUndefined()
   })
 
+  it('tags a Supabase connectivity failure so it reads as a platform outage, not our bug', () => {
+    const log = fakeLog()
+    // What a dropped direct-Postgres connection actually throws (backend/src/lib/db/client.ts).
+    const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' })
+    logTrpcError(log, {
+      error: trpcError('INTERNAL_SERVER_ERROR', 'connect ECONNREFUSED 127.0.0.1:5432', cause),
+      path: 'plaidCredentials.get',
+      type: 'query',
+    })
+
+    const detail = log.error.mock.calls[0][0]
+    expect(detail.dependency).toBe('supabase')
+    expect(detail.dependencyReason).toBe('ECONNREFUSED')
+  })
+
+  it('omits the dependency field for an application-level failure, even one touching the database', () => {
+    const log = fakeLog()
+    // A real bug (bad query, RLS rejection) completed the round trip — tagging it "supabase" would
+    // hide our own defect behind what looks like a platform incident.
+    const cause = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' })
+    logTrpcError(log, {
+      error: trpcError('INTERNAL_SERVER_ERROR', 'duplicate key value violates unique constraint', cause),
+      path: 'transfers.create',
+      type: 'mutation',
+    })
+    expect(log.error.mock.calls[0][0].dependency).toBeUndefined()
+  })
+
   it('never logs the procedure input', () => {
     const log = fakeLog()
     // Constraint 11: raw Plaid data must not be persisted server-side, and a log line is
