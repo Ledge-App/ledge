@@ -8,9 +8,38 @@ describe('networkErrorOf', () => {
   })
 
   it('matches every known network error code', () => {
-    for (const code of ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'EPIPE', 'ERR_JWKS_TIMEOUT']) {
+    for (const code of [
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'ECONNRESET',
+      'EAI_AGAIN',
+      'EPIPE',
+      'ERR_JWKS_TIMEOUT',
+      'ECONNABORTED',
+    ]) {
       expect(networkErrorOf(Object.assign(new Error('x'), { code }))).toEqual({ matched: true, reason: code })
     }
+  })
+
+  it('matches an axios request timeout, since that\'s how the Plaid client\'s own timeout surfaces', () => {
+    // What axios actually throws when lib/plaid/client.ts's baseOptions.timeout fires.
+    const axiosTimeout = Object.assign(new Error('timeout of 15000ms exceeded'), { code: 'ECONNABORTED' })
+    expect(networkErrorOf(axiosTimeout)).toEqual({ matched: true, reason: 'ECONNABORTED' })
+  })
+
+  it('matches postgrest-js\'s own wrapping of an aborted/timed-out request', () => {
+    // What lib/supabase/*.ts's fetchWithTimeout() firing actually produces once postgrest-js
+    // re-wraps it: no stable code (code is the empty string, not absent), only this message shape.
+    const abortedQuery = { message: 'AbortError: This operation was aborted', code: '', hint: 'Request was aborted (timeout or manual cancellation)' }
+    expect(networkErrorOf(abortedQuery)).toEqual({ matched: true, reason: abortedQuery.message })
+  })
+
+  it('matches any @supabase/auth-js failure by its own stable error class name', () => {
+    // auth-js wraps every failed/aborted fetch (admin API, token refresh, sign-in) in this class
+    // regardless of what failed underneath, with no reusable code or message pattern of its own.
+    const authFetchError = Object.assign(new Error('AbortError'), { name: 'AuthRetryableFetchError', status: 0 })
+    expect(networkErrorOf(authFetchError)).toEqual({ matched: true, reason: 'AuthRetryableFetchError' })
   })
 
   it('matches a stalled JWKS fetch, since jose reports that as its own error code', () => {

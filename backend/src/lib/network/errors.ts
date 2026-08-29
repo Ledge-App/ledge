@@ -26,7 +26,12 @@
  *
  * `ERR_JWKS_TIMEOUT` is `jose`'s own error code (requireAuth.ts's `createRemoteJWKSet`) for a
  * stalled fetch of Supabase's JWKS endpoint — a real network failure hiding behind what
- * `protectedProcedure` otherwise reports as a routine UNAUTHORIZED (see trpc.ts).
+ * `protectedProcedure` otherwise reports as a routine UNAUTHORIZED (see trpc.ts). `ECONNABORTED`
+ * is axios's own code for the Plaid client's request timeout (lib/plaid/client.ts).
+ *
+ * lib/fetchTimeout.ts's own abort (used by the Supabase clients in lib/supabase/) doesn't
+ * surface as a code at all: postgrest-js catches it and re-wraps it as a plain object with
+ * `code: ''` and a message starting "AbortError: ..." — matched below by name/message instead.
  */
 const NETWORK_ERROR_CODES = new Set([
   'ECONNREFUSED',
@@ -36,9 +41,22 @@ const NETWORK_ERROR_CODES = new Set([
   'EAI_AGAIN',
   'EPIPE',
   'ERR_JWKS_TIMEOUT',
+  'ECONNABORTED',
 ])
 
-const NETWORK_MESSAGE_PATTERNS = [/fetch failed/i, /network connection was lost/i, /socket hang up/i, /other side closed/i]
+// @supabase/auth-js wraps any failed/aborted fetch (its admin API, token refresh, sign-in) in
+// this class regardless of what actually failed underneath — a stable name, not a message.
+const NETWORK_ERROR_NAMES = new Set(['AuthRetryableFetchError'])
+
+const NETWORK_MESSAGE_PATTERNS = [
+  /fetch failed/i,
+  /network connection was lost/i,
+  /socket hang up/i,
+  /other side closed/i,
+  // postgrest-js's own re-wrap of an aborted/timed-out request (lib/fetchTimeout.ts firing on a
+  // Supabase client) — the underlying AbortError's name folded into the message, not a field.
+  /^AbortError:/i,
+]
 
 export interface NetworkErrorDetail {
   matched: boolean
@@ -52,6 +70,9 @@ export function networkErrorOf(err: unknown): NetworkErrorDetail {
   // a way no error message is.
   const code = (err as { code?: string })?.code ?? (err as { cause?: { code?: string } })?.cause?.code
   if (code && NETWORK_ERROR_CODES.has(code)) return { matched: true, reason: code }
+
+  const name = (err as { name?: string })?.name
+  if (name && NETWORK_ERROR_NAMES.has(name)) return { matched: true, reason: name }
 
   const message = err instanceof Error ? err.message : typeof (err as { message?: unknown })?.message === 'string' ? (err as { message: string }).message : undefined
   if (message && NETWORK_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))) {

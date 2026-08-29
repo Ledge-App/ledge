@@ -77,7 +77,7 @@ function describeTrpcError(event: TrpcErrorEvent) {
     // protectedProcedure) is not the routine, expected-traffic UNAUTHORIZED the warn bucket
     // exists for — it means auth verification itself is down, which is worth error-level
     // attention regardless of which TRPCError code the failure happened to surface as.
-    level: network.matched ? ('error' as const) : EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
+    level: !network.matched && EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
     trpc: { path: path ?? '<unknown>', type, code: error.code },
     ...(plaid.errorType || plaid.errorCode ? { plaid } : {}),
     ...(network.matched ? { dependency: 'network', dependencyReason: network.reason } : {}),
