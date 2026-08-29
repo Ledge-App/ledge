@@ -101,4 +101,31 @@ describe('fetchWithNetworkRetry', () => {
     expect(response.status).toBe(500)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('never retries a POST (mutation) even when fetch itself rejects', async () => {
+    // React Native's fetch throws the identical generic error whether the connection failed
+    // before anything was sent, or dropped after the body was fully delivered and only the
+    // response was lost — the second case means the server may have already applied the
+    // write, so retrying a mutation here risks a duplicate (e.g. a second transfer row).
+    const err = new TypeError('Network request failed')
+    const fetchMock = vi.fn().mockRejectedValue(err)
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchWithNetworkRetry('https://api.example/trpc', { method: 'POST' })).rejects.toBe(err)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still retries an explicit GET the same as the default (no method) case', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    const response = new Response('ok')
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError('Network request failed')).mockResolvedValueOnce(response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const promise = fetchWithNetworkRetry('https://api.example/trpc', { method: 'GET' })
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(300)
+
+    await expect(promise).resolves.toBe(response)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })
