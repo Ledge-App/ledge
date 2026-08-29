@@ -46,6 +46,13 @@ export default function RootLayout() {
             // below, or restored queries would be garbage-collected on arrival.
             staleTime: 60 * 1000,
             cacheTime: 24 * 60 * 60 * 1000,
+            // The library default (3 retries, its own 1s/2s/4s backoff) was written for a fetch
+            // with no retry of its own — stacked on top of fetchWithNetworkRetry's now-real
+            // 2-attempt/2s-cap backoff, the two layers compound to 10+ seconds before a failing
+            // query surfaces to the UI. A never-reached-the-server failure is already retried
+            // one layer down; what's left for this layer to cover is a definitive HTTP error
+            // status (a transient 5xx), which one extra attempt is enough for.
+            retry: 1,
           },
           // No `mutations` override: the library default of 0 retries is deliberate, not an
           // oversight. A lost response after the server already applied the write (a dropped
