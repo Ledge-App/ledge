@@ -20,6 +20,15 @@
  * actionable anyway — and detail never reaches the remote sink at all, only `scope` and the
  * error's own message/name, keeping that boundary structurally true rather than reviewer-enforced.
  */
+// One remote report per scope per window, no matter how many times reportError fires for it.
+// Some call sites are per-item inside a loop (mmkv.ts reads one cache entry per account,
+// TransactionFeedProvider's orphan sweep is one call per stale transfer id) — a single corrupted
+// cache affecting 200 items would otherwise mean 200 outbound requests, on a device that may
+// also be offline and paying for each one in battery during background execution. The console
+// line is unaffected: every call still logs locally, only the remote leg is throttled.
+const REMOTE_REPORT_THROTTLE_MS = 30_000
+const lastRemoteReportAt = new Map<string, number>()
+
 export function reportError(scope: string, error: unknown, detail?: Record<string, unknown>): void {
   const message = error instanceof Error ? error.message : String(error)
   const parts: unknown[] = [`[${scope}] ${message}`]
@@ -27,6 +36,11 @@ export function reportError(scope: string, error: unknown, detail?: Record<strin
   // The Error itself last, so a console that renders stacks still has one to render.
   if (error instanceof Error) parts.push(error)
   console.error(...parts)
+
+  const now = Date.now()
+  const lastReport = lastRemoteReportAt.get(scope)
+  if (lastReport !== undefined && now - lastReport < REMOTE_REPORT_THROTTLE_MS) return
+  lastRemoteReportAt.set(scope, now)
 
   // Deliberately not awaited and wrapped so a network failure while reporting a network
   // failure can't compound into an unhandled rejection — see the module doc above.
