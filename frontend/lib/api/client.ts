@@ -2,6 +2,7 @@ import { createTRPCReact } from '@trpc/react-query'
 import { createTRPCProxyClient, httpBatchLink } from '@trpc/client'
 import type { AppRouter } from '@/types/backend'
 import { supabaseAuth } from '@/lib/supabase/auth'
+import { fetchWithTimeout } from '@/lib/api/fetchTimeout'
 
 export const api = createTRPCReact<AppRouter>()
 
@@ -32,12 +33,9 @@ const NETWORK_RETRY_ATTEMPTS = 2
 const NETWORK_RETRY_BASE_MS = 300
 const NETWORK_RETRY_CAP_MS = 2_000
 
-// Without this, a connection that never resolves — accepted, then stalled, by a captive
-// portal or a wedged proxy — leaves `await fetch(...)` pending forever: `catch` never runs, so
-// the retry loop below never engages either. 20s comfortably exceeds Vercel's default function
-// duration, so a request that's genuinely still being processed on a healthy connection is
-// never cut off before the server itself would have answered or timed out.
-const FETCH_TIMEOUT_MS = 20_000
+// A single bounded fetch, reused across every attempt — see lib/api/fetchTimeout.ts for why a
+// per-request timeout is needed at all, and why it's a standalone module rather than living here.
+const boundedFetch = fetchWithTimeout()
 
 /**
  * "Full jitter" (AWS's name for it): a random delay between 0 and the exponential ceiling,
@@ -57,15 +55,8 @@ export async function fetchWithNetworkRetry(input: RequestInfo | URL, init?: Req
   const isIdempotent = (init?.method ?? 'GET').toUpperCase() === 'GET'
   const callerSignal = init?.signal
   for (let attempt = 0; ; attempt++) {
-    // A fresh controller per attempt, chained to both our own timeout and the caller's signal
-    // (react-query cancels a superseded/unmounted query this way) — so either one can cut this
-    // attempt short, and we can tell which one did.
-    const attemptController = new AbortController()
-    const onCallerAbort = () => attemptController.abort()
-    callerSignal?.addEventListener('abort', onCallerAbort)
-    const timeoutId = setTimeout(() => attemptController.abort(), FETCH_TIMEOUT_MS)
     try {
-      return await fetch(input, { ...init, signal: attemptController.signal })
+      return await boundedFetch(input, init)
     } catch (err) {
       // The caller cancelled this request on purpose (unmount, a superseded refetch) — that's
       // not a connectivity failure, and retrying would just re-fire work the caller already
@@ -73,9 +64,6 @@ export async function fetchWithNetworkRetry(input: RequestInfo | URL, init?: Req
       if (callerSignal?.aborted) throw err
       if (!isIdempotent || attempt >= NETWORK_RETRY_ATTEMPTS) throw err
       await new Promise((resolve) => setTimeout(resolve, jitteredBackoffMs(attempt)))
-    } finally {
-      clearTimeout(timeoutId)
-      callerSignal?.removeEventListener('abort', onCallerAbort)
     }
   }
 }

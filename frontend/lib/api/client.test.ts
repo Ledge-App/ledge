@@ -175,4 +175,23 @@ describe('fetchWithNetworkRetry', () => {
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('never issues a live request when the caller signal is already aborted before the call even starts', async () => {
+    // The scenario fetchWithTimeout's own tests cover directly: a query cancelled between being
+    // queued and httpBatchLink actually dispatching it. Asserted again here through the public
+    // fetchWithNetworkRetry entry point, since it's the one this whole retry contract is about.
+    const callerController = new AbortController()
+    callerController.abort()
+    const fetchMock = vi.fn().mockImplementation((_input: unknown, opts: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        if (opts.signal?.aborted) reject(new DOMException('Aborted', 'AbortError'))
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      fetchWithNetworkRetry('https://api.example/trpc', { signal: callerController.signal }),
+    ).rejects.toThrow('Aborted')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })

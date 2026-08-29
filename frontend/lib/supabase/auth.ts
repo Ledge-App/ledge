@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
 import { Platform } from 'react-native'
 import { reportError } from '@/lib/observability/log'
+import { fetchWithTimeout } from '@/lib/api/fetchTimeout'
 
 // Auth only: sign in, session, refresh — no data queries (see architecture.md). reportError is
 // the one deliberate exception: it dynamically imports the api client only inside a failure
@@ -61,6 +62,12 @@ export const supabaseAuth = createClient(
       persistSession: true,
       detectSessionInUrl: false,
     },
+    // Without this, a stalled token refresh (this client's own network call, not one that goes
+    // through lib/api/client.ts) can hang indefinitely — the same "app hanging" failure mode
+    // this whole observability effort exists to catch, reachable from a path fetchWithNetworkRetry
+    // never sees, since httpBatchLink's headers() callback (which calls getSession(), which can
+    // trigger this exact refresh) runs and is awaited before fetchWithNetworkRetry is ever called.
+    global: { fetch: fetchWithTimeout() },
   },
 )
 
