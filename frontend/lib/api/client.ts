@@ -18,10 +18,44 @@ function resolveApiUrl(): string {
   return url
 }
 
+// Only for a fetch that never got a response at all — DNS failure, dropped connection, exactly
+// what "network connection was lost" is (the incident this exists for). A resolved response,
+// even a 500, is a real application-level result and is never retried here: retrying that would
+// mean guessing whether the server already processed the request, and for a mutation that guess
+// can manufacture a duplicate write. React Query's own retry (queries: 3, exponential — mutations
+// deliberately 0, see app/_layout.tsx) already governs that case correctly on its own.
+const NETWORK_RETRY_ATTEMPTS = 2
+const NETWORK_RETRY_BASE_MS = 300
+const NETWORK_RETRY_CAP_MS = 2_000
+
+/**
+ * "Full jitter" (AWS's name for it): a random delay between 0 and the exponential ceiling,
+ * rather than the ceiling itself. A fixed schedule (wait exactly 300ms, then exactly 900ms)
+ * means every device affected by the same outage retries at the same synchronized instants —
+ * so the moment the backend recovers, every client hits it again at once, in a repeating clump.
+ * Randomizing within the window spreads those same retries into a smooth trickle instead.
+ */
+export function jitteredBackoffMs(attempt: number): number {
+  const ceiling = Math.min(NETWORK_RETRY_CAP_MS, NETWORK_RETRY_BASE_MS * 2 ** attempt)
+  return Math.random() * ceiling
+}
+
+export async function fetchWithNetworkRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(input, init)
+    } catch (err) {
+      if (attempt >= NETWORK_RETRY_ATTEMPTS) throw err
+      await new Promise((resolve) => setTimeout(resolve, jitteredBackoffMs(attempt)))
+    }
+  }
+}
+
 function authedLinks() {
   return [
     httpBatchLink({
       url: `${resolveApiUrl()}/trpc`,
+      fetch: fetchWithNetworkRetry,
       headers: async () => {
         const { data } = await supabaseAuth.auth.getSession()
         const token = data.session?.access_token

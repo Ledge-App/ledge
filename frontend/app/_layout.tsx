@@ -47,6 +47,14 @@ export default function RootLayout() {
             staleTime: 60 * 1000,
             cacheTime: 24 * 60 * 60 * 1000,
           },
+          // No `mutations` override: the library default of 0 retries is deliberate, not an
+          // oversight. A lost response after the server already applied the write (a dropped
+          // connection mid-response, not the same as the fetch never landing at all) makes a
+          // retry indistinguishable from a second, duplicate write — a second transfer row from
+          // one save, for instance — and nothing here carries an idempotency key yet. Real
+          // network-layer failures (the request never reaching the server) already get backoff
+          // one layer down, at the fetch itself (lib/api/client.ts's fetchWithNetworkRetry),
+          // which is safe to retry precisely because the server never saw that attempt.
         },
       }),
   )
