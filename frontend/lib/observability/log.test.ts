@@ -87,6 +87,18 @@ describe('reportError', () => {
     expect(mutateMock).toHaveBeenCalledTimes(2)
   })
 
+  it('lets the next report for a scope through right away after a failed send, rather than dropping every report in the window', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mutateMock.mockRejectedValueOnce(new Error('sink unreachable'))
+
+    await reportError('failed-send-retry-test', new Error('first, delivery fails'))
+    expect(mutateMock).toHaveBeenCalledTimes(1)
+
+    // Nothing here waits out the 30s window — a failed send must not count as a delivered one.
+    await reportError('failed-send-retry-test', new Error('second, right after the failure'))
+    expect(mutateMock).toHaveBeenCalledTimes(2)
+  })
+
   it('reports again once the throttle window has passed', async () => {
     vi.useFakeTimers()
     vi.spyOn(console, 'error').mockImplementation(() => {})

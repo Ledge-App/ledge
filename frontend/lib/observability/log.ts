@@ -8,6 +8,13 @@
  * does, and "the user will complain" doesn't reliably surface that at the scale that matters —
  * a handful of complaints looks identical to isolated bad luck without an aggregate count.
  *
+ * Adding the remote leg to this shared function means every EXISTING caller gets it too, not
+ * just the auth-sign-in one this change was written for — including, for instance, the
+ * Plaid-credentials "test connection" button's failure handler. That's a deliberate choice, not
+ * an oversight: every current call site is either an automatic path already covered by the
+ * reasoning above, or an interactive failure for which the same "isolated complaints vs. a real
+ * pattern" argument applies just as well as it does for sign-in.
+ *
  * `console.error` reaches the Metro console in development and the device log (Console.app,
  * `adb logcat`) in a release build. `reportClientError` (observability router, backend) is the
  * actual off-device destination — the same Axiom sink the backend's own errors ship to, so an
@@ -29,7 +36,10 @@
 const REMOTE_REPORT_THROTTLE_MS = 30_000
 const lastRemoteReportAt = new Map<string, number>()
 
-export function reportError(scope: string, error: unknown, detail?: Record<string, unknown>): void {
+// Callers that outlive their own return value (a background task whose process can be
+// suspended the instant its promise settles) need to await this; everything else is free to
+// call it and move on, since a rejection here is never possible — see reportRemote's own catch.
+export function reportError(scope: string, error: unknown, detail?: Record<string, unknown>): Promise<void> {
   const message = error instanceof Error ? error.message : String(error)
   const parts: unknown[] = [`[${scope}] ${message}`]
   if (detail && Object.keys(detail).length > 0) parts.push(detail)
@@ -39,12 +49,10 @@ export function reportError(scope: string, error: unknown, detail?: Record<strin
 
   const now = Date.now()
   const lastReport = lastRemoteReportAt.get(scope)
-  if (lastReport !== undefined && now - lastReport < REMOTE_REPORT_THROTTLE_MS) return
+  if (lastReport !== undefined && now - lastReport < REMOTE_REPORT_THROTTLE_MS) return Promise.resolve()
   lastRemoteReportAt.set(scope, now)
 
-  // Deliberately not awaited and wrapped so a network failure while reporting a network
-  // failure can't compound into an unhandled rejection — see the module doc above.
-  void reportRemote(scope, message, error instanceof Error ? error.name : undefined)
+  return reportRemote(scope, message, error instanceof Error ? error.name : undefined)
 }
 
 async function reportRemote(scope: string, message: string, name: string | undefined): Promise<void> {
@@ -53,6 +61,11 @@ async function reportRemote(scope: string, message: string, name: string | undef
     await createHeadlessApiClient().observability.reportClientError.mutate({ scope, message, name })
   } catch {
     // The sink itself is down, or the device is offline — already on the console above, and
-    // there is nowhere further to escalate to.
+    // there is nowhere further to escalate to. But the throttle timestamp above was set
+    // optimistically, before this attempt even started, so a failed send must not count as one:
+    // undoing it here means the NEXT real failure for this scope can try again immediately,
+    // rather than every occurrence in the next 30s being silently dropped with zero delivery
+    // attempts — exactly backwards for a mechanism meant to catch a real outage.
+    lastRemoteReportAt.delete(scope)
   }
 }
