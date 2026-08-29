@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const sendToAxiomMock = vi.fn().mockResolvedValue(undefined)
-vi.mock('../lib/observability/axiom.js', () => ({ sendToAxiom: sendToAxiomMock }))
+vi.mock('../lib/observability/axiom.js', () => ({
+  sendToAxiom: sendToAxiomMock,
+  axiomEnvelope: () => ({ _time: '2024-01-01T00:00:00.000Z', env: 'test' }),
+}))
 
 describe('observability router', () => {
   it('accepts a client error report with no session at all', async () => {
