@@ -53,7 +53,7 @@ describe('logTrpcError', () => {
     expect(log.error.mock.calls[0][0].plaid).toBeUndefined()
   })
 
-  it('tags a Supabase connectivity failure so it reads as a platform outage, not our bug', () => {
+  it('tags a network connectivity failure so it reads as a platform outage, not our bug', () => {
     const log = fakeLog()
     // What a dropped direct-Postgres connection actually throws (backend/src/lib/db/client.ts).
     const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' })
@@ -64,14 +64,16 @@ describe('logTrpcError', () => {
     })
 
     const detail = log.error.mock.calls[0][0]
-    expect(detail.dependency).toBe('supabase')
+    // Not "supabase": a generic connection-refused code carries no signal about which
+    // downstream call failed, so it's tagged as what it verifiably is, nothing more specific.
+    expect(detail.dependency).toBe('network')
     expect(detail.dependencyReason).toBe('ECONNREFUSED')
   })
 
   it('omits the dependency field for an application-level failure, even one touching the database', () => {
     const log = fakeLog()
-    // A real bug (bad query, RLS rejection) completed the round trip — tagging it "supabase" would
-    // hide our own defect behind what looks like a platform incident.
+    // A real bug (bad query, RLS rejection) completed the round trip — tagging it a network
+    // failure would hide our own defect behind what looks like a platform incident.
     const cause = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' })
     logTrpcError(log, {
       error: trpcError('INTERNAL_SERVER_ERROR', 'duplicate key value violates unique constraint', cause),

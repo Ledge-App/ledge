@@ -1,5 +1,5 @@
 import { plaidErrorOf } from '../lib/plaid/errors.js'
-import { supabaseErrorOf } from '../lib/supabase/errors.js'
+import { networkErrorOf } from '../lib/network/errors.js'
 
 /**
  * Codes that mean "the client asked for something it can't have" rather than "we broke".
@@ -66,15 +66,16 @@ function describeTrpcError(event: TrpcErrorEvent) {
   // A Plaid failure's message is only ever "Request failed with status code 400"; the code that
   // says what to actually do about it is in the response body hanging off the cause.
   const plaid = plaidErrorOf(error.cause)
-  // A Supabase/Postgres connectivity failure (a platform outage, not a bad query) would otherwise
-  // log as a bare INTERNAL_SERVER_ERROR indistinguishable from an actual defect — see
-  // lib/supabase/errors.ts for exactly what this does and doesn't match.
-  const supabase = supabaseErrorOf(error.cause)
+  // A connectivity failure to ANY downstream (Supabase, Plaid, or otherwise) — a platform
+  // outage, not a bad query — would otherwise log as a bare INTERNAL_SERVER_ERROR
+  // indistinguishable from an actual defect. Deliberately not attributed to a specific service:
+  // see lib/network/errors.ts for why a generic network error can't honestly be pinned on one.
+  const network = networkErrorOf(error.cause)
   return {
     level: EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
     trpc: { path: path ?? '<unknown>', type, code: error.code },
     ...(plaid.errorType || plaid.errorCode ? { plaid } : {}),
-    ...(supabase.matched ? { dependency: 'supabase', dependencyReason: supabase.reason } : {}),
+    ...(network.matched ? { dependency: 'network', dependencyReason: network.reason } : {}),
     ...(userId ? { userId } : {}),
   }
 }
