@@ -18,6 +18,11 @@
  * (SQLSTATE 57014) — a slow query of ours, not a connectivity failure. `ETIMEDOUT` (the Node
  * error code for a connection that never completed) already covers the connectivity case
  * precisely; matching the word "timeout" in arbitrary error text does not.
+ *
+ * Message text is the least stable signal here — undici's own "fetch failed" wording could
+ * change in a future Node release with no compile-time warning. Where possible it's worth
+ * checking underneath: undici wraps the real system error in `.cause`, which often still
+ * carries one of the stable codes above even when the top-level error is a bare "fetch failed".
  */
 const NETWORK_ERROR_CODES = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'EPIPE'])
 
@@ -30,7 +35,10 @@ export interface NetworkErrorDetail {
 }
 
 export function networkErrorOf(err: unknown): NetworkErrorDetail {
-  const code = (err as { code?: string })?.code
+  // Checked before the message patterns below: a code — ours or the one undici hangs off
+  // `.cause` for its own "fetch failed" wrapper — is stable across runtime wording changes in
+  // a way no error message is.
+  const code = (err as { code?: string })?.code ?? (err as { cause?: { code?: string } })?.cause?.code
   if (code && NETWORK_ERROR_CODES.has(code)) return { matched: true, reason: code }
 
   const message = err instanceof Error ? err.message : typeof (err as { message?: unknown })?.message === 'string' ? (err as { message: string }).message : undefined

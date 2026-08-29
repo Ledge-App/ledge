@@ -21,6 +21,14 @@ describe('networkErrorOf', () => {
     })
   })
 
+  it('matches undici\'s own "fetch failed" wrapper by the real code underneath it, not just its message', () => {
+    // undici wraps the actual system error in `.cause` and gives the top-level error the bare,
+    // runtime-specific message "fetch failed" — the code-based match should reach through that
+    // wrapper rather than depend on the message text alone.
+    const wrapped = Object.assign(new Error('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) })
+    expect(networkErrorOf(wrapped)).toEqual({ matched: true, reason: 'ECONNREFUSED' })
+  })
+
   it('does not match an application-level Postgres/PostgREST error', () => {
     // A real bug: a unique-violation or an RLS rejection completed the round trip and got a
     // proper answer back — tagging this as a network failure would hide our own defect.
