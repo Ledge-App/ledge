@@ -128,4 +128,51 @@ describe('fetchWithNetworkRetry', () => {
     await expect(promise).resolves.toBe(response)
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+
+  it('treats a stalled connection as a failure once the per-attempt timeout elapses, and retries it', async () => {
+    // A connection that's accepted but never answered never rejects on its own — the mock
+    // models that by only settling when its own signal is aborted, same as real fetch does.
+    vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    const response = new Response('ok')
+    let calls = 0
+    const fetchMock = vi.fn().mockImplementation((_input: unknown, opts: RequestInit) => {
+      calls++
+      if (calls === 1) {
+        return new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        })
+      }
+      return Promise.resolve(response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const promise = fetchWithNetworkRetry('https://api.example/trpc')
+
+    // Nothing happens until the per-attempt timeout (20s) fires and aborts the stalled attempt.
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Then the usual jittered backoff before the retry, same as any other rejection.
+    await vi.advanceTimersByTimeAsync(300)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await expect(promise).resolves.toBe(response)
+  })
+
+  it('never retries when the caller cancels the request itself, even for a GET', async () => {
+    // httpBatchLink passes its own AbortSignal for query cancellation (unmount, a superseded
+    // refetch) — that's a deliberate discard, not a connectivity failure, and must not look
+    // like one just because it also makes fetch() reject.
+    const callerController = new AbortController()
+    const abortError = new DOMException('Aborted', 'AbortError')
+    const fetchMock = vi.fn().mockImplementation(() => {
+      callerController.abort()
+      return Promise.reject(abortError)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchWithNetworkRetry('https://api.example/trpc', { signal: callerController.signal })).rejects.toBe(
+      abortError,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })
