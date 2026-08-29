@@ -52,10 +52,10 @@ export function reportError(scope: string, error: unknown, detail?: Record<strin
   if (lastReport !== undefined && now - lastReport < REMOTE_REPORT_THROTTLE_MS) return Promise.resolve()
   lastRemoteReportAt.set(scope, now)
 
-  return reportRemote(scope, message, error instanceof Error ? error.name : undefined)
+  return reportRemote(scope, message, error instanceof Error ? error.name : undefined, now)
 }
 
-async function reportRemote(scope: string, message: string, name: string | undefined): Promise<void> {
+async function reportRemote(scope: string, message: string, name: string | undefined, reportedAt: number): Promise<void> {
   try {
     const { createHeadlessApiClient } = await import('@/lib/api/client')
     await createHeadlessApiClient().observability.reportClientError.mutate({ scope, message, name })
@@ -63,9 +63,11 @@ async function reportRemote(scope: string, message: string, name: string | undef
     // The sink itself is down, or the device is offline — already on the console above, and
     // there is nowhere further to escalate to. But the throttle timestamp above was set
     // optimistically, before this attempt even started, so a failed send must not count as one:
-    // undoing it here means the NEXT real failure for this scope can try again immediately,
-    // rather than every occurrence in the next 30s being silently dropped with zero delivery
-    // attempts — exactly backwards for a mechanism meant to catch a real outage.
-    lastRemoteReportAt.delete(scope)
+    // undoing it means the NEXT real failure for this scope can try again immediately, rather
+    // than every occurrence in the next 30s being silently dropped with zero delivery attempts.
+    // Only undo it if it's still THIS call's timestamp: a slow failure can resolve after a
+    // later, un-throttled call for the same scope already wrote its own fresher timestamp, and
+    // that later call's own in-flight attempt must not be un-throttled out from under it.
+    if (lastRemoteReportAt.get(scope) === reportedAt) lastRemoteReportAt.delete(scope)
   }
 }

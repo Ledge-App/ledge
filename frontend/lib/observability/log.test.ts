@@ -99,6 +99,39 @@ describe('reportError', () => {
     expect(mutateMock).toHaveBeenCalledTimes(2)
   })
 
+  it('does not let a slow, later-failing call for a scope wipe out a newer call\'s throttle entry', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    let rejectCallA: ((err: Error) => void) | undefined
+    mutateMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectCallA = reject
+        }),
+    )
+
+    // Call A starts but its send never settles yet.
+    const callA = reportError('slow-then-fails-scope', new Error('first'))
+
+    // The window elapses; a second occurrence is correctly un-throttled and succeeds quickly,
+    // writing its own fresh timestamp while call A is still pending.
+    await vi.advanceTimersByTimeAsync(30_001)
+    mutateMock.mockResolvedValueOnce({ ok: true })
+    await reportError('slow-then-fails-scope', new Error('second, after the window'))
+    expect(mutateMock).toHaveBeenCalledTimes(2)
+
+    // Call A's stale send now finally fails — its rollback must not touch the fresher entry.
+    rejectCallA?.(new Error('sink unreachable'))
+    await callA
+
+    // A third occurrence right after must still be throttled by the second call's entry.
+    await reportError('slow-then-fails-scope', new Error('third, right after the second'))
+    expect(mutateMock).toHaveBeenCalledTimes(2)
+
+    vi.useRealTimers()
+  })
+
   it('reports again once the throttle window has passed', async () => {
     vi.useFakeTimers()
     vi.spyOn(console, 'error').mockImplementation(() => {})
