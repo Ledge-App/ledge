@@ -1,5 +1,6 @@
 import { plaidErrorOf } from '../lib/plaid/errors.js'
 import { networkErrorOf } from '../lib/network/errors.js'
+import { axiomEnvelope } from '../lib/observability/axiom.js'
 
 /**
  * Codes that mean "the client asked for something it can't have" rather than "we broke".
@@ -102,11 +103,9 @@ export function toAxiomEvent(event: TrpcErrorEvent, context: { requestId?: strin
   const { level, ...detail } = describeTrpcError(event)
   const error = event.error as { name?: string; message?: string; stack?: string }
   return {
-    // Axiom reads _time as the event timestamp.
-    _time: new Date().toISOString(),
+    ...axiomEnvelope(),
     level,
     service: 'tofi-backend',
-    env: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'development',
     ...(context.requestId ? { requestId: context.requestId } : {}),
     ...detail,
     err: { type: error?.name ?? 'Error', message: error?.message, stack: error?.stack },
