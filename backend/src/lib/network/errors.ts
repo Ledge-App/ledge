@@ -23,8 +23,20 @@
  * change in a future Node release with no compile-time warning. Where possible it's worth
  * checking underneath: undici wraps the real system error in `.cause`, which often still
  * carries one of the stable codes above even when the top-level error is a bare "fetch failed".
+ *
+ * `ERR_JWKS_TIMEOUT` is `jose`'s own error code (requireAuth.ts's `createRemoteJWKSet`) for a
+ * stalled fetch of Supabase's JWKS endpoint — a real network failure hiding behind what
+ * `protectedProcedure` otherwise reports as a routine UNAUTHORIZED (see trpc.ts).
  */
-const NETWORK_ERROR_CODES = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'EPIPE'])
+const NETWORK_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  'EPIPE',
+  'ERR_JWKS_TIMEOUT',
+])
 
 const NETWORK_MESSAGE_PATTERNS = [/fetch failed/i, /network connection was lost/i, /socket hang up/i, /other side closed/i]
 

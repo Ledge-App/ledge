@@ -73,7 +73,11 @@ function describeTrpcError(event: TrpcErrorEvent) {
   // see lib/network/errors.ts for why a generic network error can't honestly be pinned on one.
   const network = networkErrorOf(error.cause)
   return {
-    level: EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
+    // Checked first: an UNAUTHORIZED caused by a stalled JWKS fetch (see trpc.ts's
+    // protectedProcedure) is not the routine, expected-traffic UNAUTHORIZED the warn bucket
+    // exists for — it means auth verification itself is down, which is worth error-level
+    // attention regardless of which TRPCError code the failure happened to surface as.
+    level: network.matched ? ('error' as const) : EXPECTED_CODES.has(error.code) ? ('warn' as const) : ('error' as const),
     trpc: { path: path ?? '<unknown>', type, code: error.code },
     ...(plaid.errorType || plaid.errorCode ? { plaid } : {}),
     ...(network.matched ? { dependency: 'network', dependencyReason: network.reason } : {}),

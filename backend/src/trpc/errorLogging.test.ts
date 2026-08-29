@@ -70,6 +70,26 @@ describe('logTrpcError', () => {
     expect(detail.dependencyReason).toBe('ECONNREFUSED')
   })
 
+  it('logs an UNAUTHORIZED caused by a stalled JWKS fetch at error level, not warn', () => {
+    const log = fakeLog()
+    // trpc.ts's protectedProcedure attaches this cause when ctx.authError is set — the JWKS
+    // timeout that caused the token to fail verification, not the token itself being bad.
+    const cause = Object.assign(new Error('request timed out'), { code: 'ERR_JWKS_TIMEOUT' })
+    logTrpcError(log, {
+      error: trpcError('UNAUTHORIZED', 'UNAUTHORIZED', cause),
+      path: 'accounts.list',
+      type: 'query',
+    })
+
+    // An UNAUTHORIZED with this cause means auth verification itself is down, not that a
+    // signed-out client is polling — the routine case this code is normally warn-level for.
+    expect(log.warn).not.toHaveBeenCalled()
+    expect(log.error).toHaveBeenCalledTimes(1)
+    const detail = log.error.mock.calls[0][0]
+    expect(detail.dependency).toBe('network')
+    expect(detail.dependencyReason).toBe('ERR_JWKS_TIMEOUT')
+  })
+
   it('omits the dependency field for an application-level failure, even one touching the database', () => {
     const log = fakeLog()
     // A real bug (bad query, RLS rejection) completed the round trip — tagging it a network

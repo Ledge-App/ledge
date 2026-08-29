@@ -8,9 +8,16 @@ describe('networkErrorOf', () => {
   })
 
   it('matches every known network error code', () => {
-    for (const code of ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'EPIPE']) {
+    for (const code of ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN', 'EPIPE', 'ERR_JWKS_TIMEOUT']) {
       expect(networkErrorOf(Object.assign(new Error('x'), { code }))).toEqual({ matched: true, reason: code })
     }
+  })
+
+  it('matches a stalled JWKS fetch, since jose reports that as its own error code', () => {
+    // requireAuth.ts's createRemoteJWKSet surfaces exactly this shape when Supabase's own
+    // /.well-known/jwks.json endpoint is slow or unreachable.
+    const jwksTimeout = Object.assign(new Error('request timed out'), { code: 'ERR_JWKS_TIMEOUT', name: 'JWKSTimeout' })
+    expect(networkErrorOf(jwksTimeout)).toEqual({ matched: true, reason: 'ERR_JWKS_TIMEOUT' })
   })
 
   it('matches a PostgREST fetch failure by message, since it carries no network error code', () => {
