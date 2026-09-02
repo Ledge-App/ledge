@@ -1,6 +1,7 @@
 import { Image, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '@/constants/theme'
+import { FINANCEKIT_ITEM_ID } from '@/lib/financekit/mergeAccounts'
 import { formatMaskableAmount } from '@/lib/format/money'
 
 interface AccountRowProps {
@@ -11,6 +12,8 @@ interface AccountRowProps {
   isMasked: boolean
   /** Base64 PNG institution logo; replaces the generic variant icon when present. */
   logo?: string | null
+  /** The account's item. Only read to spot Apple accounts, which get the Apple mark. */
+  itemId?: string | null
   onPress?: () => void
   /**
    * Drag-to-reorder handlers, applied to the SAME Pressable that handles the tap. Wrapping
@@ -36,6 +39,27 @@ export const variantIcons: Record<string, { name: string; color: string }> = {
   cashOnHand: { name: 'cash', color: colors.income },
 }
 
+/**
+ * The Apple mark, standing in for the institution logo FinanceKit does not supply.
+ *
+ * Apple accounts come from Wallet rather than Plaid, so `institutionLogo` is always null for them
+ * and they would otherwise fall back to the grey generic card that every unlinked credit row uses
+ * — beside a row named "Apple Card", that reads as a logo that failed to load. Monochrome and in
+ * the text colour, matching the Apple row in AddAccountSheet and the sign-in button.
+ */
+export const appleIcon = { name: 'logo-apple', color: colors.textPrimary }
+
+/**
+ * Which glyph an account shows when there is no institution logo to show instead.
+ *
+ * One function rather than a lookup at each call site, so the accounts list and the net worth map
+ * cannot disagree about what an account looks like.
+ */
+export function accountFallbackIcon(variant: string, itemId?: string | null) {
+  if (itemId === FINANCEKIT_ITEM_ID) return appleIcon
+  return variantIcons[variant] ?? variantIcons.cash
+}
+
 export function AccountRow({
   name,
   balance,
@@ -43,13 +67,14 @@ export function AccountRow({
   limit,
   isMasked,
   logo,
+  itemId,
   onPress,
   onLongPress,
   onPressOut,
   delayLongPress,
 }: AccountRowProps) {
   const balanceColor = variant === 'credit' ? colors.expense : colors.textPrimary
-  const icon = variantIcons[variant] ?? variantIcons.cash
+  const icon = accountFallbackIcon(variant, itemId)
 
   return (
     <Pressable

@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Image, Pressable, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -8,7 +8,8 @@ import { formatAmount } from '@/lib/format/money'
 import { countsTowardTotals, isInvestmentSweep, isUnlinkedInternalTransfer } from '@/lib/transactions/totals'
 import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
 import { linkPillLabel } from '@/lib/transactions/linkSummary'
-import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
+import { useAccountMarks } from '@/hooks/useAccountMarks'
+import { AccountMarkChip } from '@/components/accounts/AccountMarkChip'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
 
 interface TransactionRowProps {
@@ -30,8 +31,8 @@ function TransactionRowComponent({ item, categoryName, categoryColor, categoryIc
   // Resolved here rather than passed in, so EVERY surface that renders an entry — the
   // transactions list, account/category detail sheets, anything added later — shows the
   // bank badge without each parent re-wiring it. Rides the shared accounts query cache.
-  const institutionLogos = useInstitutionLogos()
-  const institutionLogo = item.accountId ? institutionLogos.get(item.accountId) ?? null : null
+  const accountMarks = useAccountMarks()
+  const accountMark = item.accountId ? accountMarks.get(item.accountId) ?? null : null
   const transferType = item.transferKind ? TRANSFER_TYPES[item.transferKind] : null
   // Greyed when the totals leave it out, so the row reads as "not spending, not income" at a
   // glance. Shared with the detail sheet, which has to reach the same verdict.
@@ -118,17 +119,9 @@ function TransactionRowComponent({ item, categoryName, categoryColor, categoryIc
           <Text className="font-mono text-base" style={{ color: amountColor }}>
             {amountSign(item)}{formatAmount(Math.abs(item.amount))}
           </Text>
-          {institutionLogo ? (
-            // Which card/bank this hit, at a glance — mirrors the amount-side bank chip in
-            // apps like the reference tracker. Base64 PNG straight from Plaid. The ring
-            // repeats the amount's meaning: green in, red out, muted for anything not counted.
-            <View style={{ borderWidth: 1.5, borderColor: amountColor, borderRadius: 12, padding: 1 }}>
-              <Image
-                source={{ uri: `data:image/png;base64,${institutionLogo}` }}
-                style={{ width: 17, height: 17, borderRadius: 8.5 }}
-              />
-            </View>
-          ) : null}
+          {/* Which card/bank this hit, at a glance — mirrors the amount-side bank chip in apps
+              like the reference tracker. */}
+          <AccountMarkChip mark={accountMark} ringColor={amountColor} size={17} />
         </View>
         {badge ? (
           // Under the amount, not beside the title: the badge is the row's meaning ('Auto'

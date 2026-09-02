@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, hexToRgba } from '@/constants/theme'
 import { formatAmount } from '@/lib/format/money'
-import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
+import { useAccountMarks } from '@/hooks/useAccountMarks'
+import { AccountMarkChip } from '@/components/accounts/AccountMarkChip'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 
@@ -22,12 +23,12 @@ interface LinkedTransactionsProps {
 export function LinkedTransactions({ item, onUnlink }: LinkedTransactionsProps) {
   // Rides the shared accounts query cache, same as TransactionRow. Called before the early return
   // below so the hook order stays fixed across renders.
-  const institutionLogos = useInstitutionLogos()
+  const accountMarks = useAccountMarks()
   // Per link, not one flag for the section: unlinking is two round trips (the dismissal, then the
   // delete) and several links can be listed, so the spinner has to name the one being removed.
   // Held above the early return below to keep hook order fixed, same as the logos.
   const [removingId, setRemovingId] = useState<string | null>(null)
-  const logoFor = (link: FeedLink) => (link.accountId ? institutionLogos.get(link.accountId) ?? null : null)
+  const markFor = (link: FeedLink) => (link.accountId ? accountMarks.get(link.accountId) ?? null : null)
 
   const handleUnlink = async (link: FeedLink) => {
     setRemovingId(link.recordId)
@@ -83,14 +84,7 @@ export function LinkedTransactions({ item, onUnlink }: LinkedTransactionsProps) 
                 {/* The same bank chip the feed row wears, so the counterpart is identifiable by
                     the account it hit and not merchant name alone. The ring repeats the
                     counterpart's direction: green when the row it's linked from is an expense. */}
-                {logoFor(link) ? (
-                  <View style={{ borderWidth: 1.5, borderColor: counterpartColor, borderRadius: 12, padding: 1 }}>
-                    <Image
-                      source={{ uri: `data:image/png;base64,${logoFor(link)}` }}
-                      style={{ width: 17, height: 17, borderRadius: 8.5 }}
-                    />
-                  </View>
-                ) : null}
+                <AccountMarkChip mark={markFor(link)} ringColor={counterpartColor} size={17} />
               </View>
             ) : null}
           </View>

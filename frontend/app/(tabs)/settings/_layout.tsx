@@ -13,12 +13,12 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Settings' }} />
-      <Stack.Screen name="accounts" options={{ title: 'Accounts' }} />
       <Stack.Screen name="plaid-account" options={{ title: 'Plaid Developer Account' }} />
       <Stack.Screen name="categories" options={{ title: 'Categories' }} />
       <Stack.Screen name="category-form" options={{ title: 'Category' }} />
       <Stack.Screen name="institutions" options={{ title: 'Linked Institutions' }} />
       <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="apple-accounts" options={{ title: 'Apple Accounts' }} />
     </Stack>
   )
 }

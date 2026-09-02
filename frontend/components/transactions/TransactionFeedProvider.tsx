@@ -16,10 +16,13 @@ import {
 } from '@/lib/storage/mmkv'
 import { applyTransfers, mergeFeed, type FeedItem } from '@/lib/transactions/resolveFeed'
 import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
+import { plaidItemIdsFrom } from '@/lib/financekit/mergeAccounts'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { syncDriver } from '@/lib/transactions/syncDriver'
 import { reportError } from '@/lib/observability/log'
+// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
+import { probeLog, probeMark, startDevHeartbeat } from '@/lib/observability/devProbe'
 import { detectPendingPreviews, detectTransfers } from '@/lib/transfers/autoMatch'
 import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
 import type { AutoMatchResult, TransferDraft } from '@/lib/transfers/autoMatch'
@@ -67,6 +70,8 @@ function pairKey(draft: TransferDraft): string {
  * The consuming hook's return shape is unchanged, so no screen had to change.
  */
 export function TransactionFeedProvider({ children }: { children: ReactNode }) {
+  startDevHeartbeat()
+  const endRender = probeMark('provider render')
   const accounts = useAccounts()
   const manualTransactions = useManualTransactions()
   const overrides = useTransactionOverrides()
@@ -76,7 +81,10 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
   const transfers = useTransfers()
   const dismissals = useTransferDismissals()
 
-  const itemIds = useMemo(() => Array.from(new Set((accounts.data ?? []).map((a) => a.itemId))), [accounts.data])
+  // plaidItemIdsFrom, not a plain map over itemIds: Apple accounts carry the synthetic 'financekit'
+  // itemId, and everything downstream of this line — the sync driver, investment transactions, the
+  // cache prune, the Plaid MMKV cache — is Plaid-only and would silently misbehave on it.
+  const itemIds = useMemo(() => plaidItemIdsFrom(accounts.data ?? []), [accounts.data])
 
   const investmentTransactions = useInvestmentTransactions(itemIds)
 
@@ -124,7 +132,7 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     void syncDriver.syncNow({ itemIds, accountIdToItemId })
   }, [itemIds, accountIdToItemId])
 
-  const rawTransactions = useMemo(
+  const plaidTransactions = useMemo(
     () => itemIds.flatMap((itemId) => getCachedTransactions(itemId)),
     // Re-derive whenever a sync round completes, since MMKV writes happen as a side effect
     // of the driver rather than through React state.
@@ -132,11 +140,21 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     [itemIds, syncState.completedAt],
   )
 
+  // Apple Card rows arrive already Plaid-shaped, carrying a PFC crosswalked from their MCC, so the
+  // whole chain below — resolveCategory, transfer auto-match, aggregateMonth, the sweep exclusion —
+  // treats them as ordinary card transactions. Unlike the Plaid arrays these come through React
+  // state (useFinanceKit owns the read), so no completedAt trick is needed.
+  const rawTransactions = useMemo(
+    () => [...plaidTransactions, ...accounts.financeKitTransactions],
+    [plaidTransactions, accounts.financeKitTransactions],
+  )
+
   // plaidCategoryMappings is gated alongside the others rather than defaulted to []: resolving
   // with an empty mapping list would render a feed full of Uncategorized rows, then re-render
   // them categorized once the query lands. Better to hold the feed empty for one tick.
   const feed = useMemo(() => {
     if (!manualTransactions.data || !overrides.data || !vendorMappings.data || !plaidCategoryMappings.data) return []
+    const endFeed = probeMark('feed derive')
     const merged = mergeFeed(
       rawTransactions,
       manualTransactions.data,
@@ -152,9 +170,21 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     const withTransfers = applyTransfers(merged, transfers.data ?? [])
     // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
     // left unpaired, so it can never override a transfer that auto-applied or the user confirmed.
-    return applySweepExclusion(withTransfers)
+    const result = applySweepExclusion(withTransfers)
+    endFeed()
+    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Names WHICH source a
+    // row-count change came from: a feed that shrinks and refills while a sheet is open is what
+    // makes the sheet look like it reloads, and the totals alone cannot say who moved.
+    probeLog(
+      `feed sources plaid=${plaidTransactions.length} apple=${accounts.financeKitTransactions.length} ` +
+        `manual=${manualTransactions.data.length} investment=${investmentTransactions.transactions.length} ` +
+        `-> feed=${result.length}`,
+    )
+    return result
   }, [
     rawTransactions,
+    plaidTransactions,
+    accounts.financeKitTransactions,
     manualTransactions.data,
     overrides.data,
     vendorMappings.data,
@@ -285,10 +315,21 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
 
   // Memoized so pull-to-refresh consumers (usePullToRefresh) don't rebuild their
   // RefreshControl on every feed render. force: the user asked, so the cooldown does not apply.
+  // Both sources, in parallel: the user pulling to refresh means "make everything current", and a
+  // FinanceKit read is local and cheap. Promise.all rather than sequential so a slow Plaid round
+  // trip does not delay the Apple Card rows. Both swallow their own failures onto their snapshots,
+  // so neither can reject this.
   const refresh = useCallback(
-    () => syncDriver.syncNow({ itemIds, accountIdToItemId, force: true }),
-    [itemIds, accountIdToItemId],
+    async () => {
+      await Promise.all([
+        syncDriver.syncNow({ itemIds, accountIdToItemId, force: true }),
+        accounts.syncFinanceKit(),
+      ])
+    },
+    [itemIds, accountIdToItemId, accounts.syncFinanceKit],
   )
+
+  endRender()
 
   const value = useMemo<TransactionFeedValue>(
     () => ({

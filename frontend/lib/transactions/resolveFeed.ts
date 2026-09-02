@@ -1,7 +1,7 @@
 import { isBrokerageCashAccount } from '@/lib/accounts/accountType'
 import type { InvestmentTransaction, ManualTransaction, PlaidCategoryMapping, PlaidTransaction, TransactionOverride, Transfer, TransferKind, VendorMapping } from '@/types/domain'
 
-export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'uncategorized'
+export type CategorySource = 'override' | 'user_defined' | 'plaid_auto' | 'plaid_pfc' | 'mcc_pfc' | 'uncategorized'
 
 export interface ResolvedCategory {
   categoryId: string | null
@@ -19,7 +19,19 @@ export interface ResolvedCategory {
 // so any merchant first seen afterwards has no row. Both cases arrive carrying a perfectly good
 // personal_finance_category, so resolving it here is what keeps them out of Uncategorized.
 export function resolveCategory(
-  txn: { transactionId: string; merchantName: string | null; pfcPrimary?: string | null; pfcDetailed?: string | null },
+  txn: {
+    transactionId: string
+    merchantName: string | null
+    pfcPrimary?: string | null
+    pfcDetailed?: string | null
+    /**
+     * Where the PFC came from. FinanceKit transactions carry an ISO 18245 MCC rather than a PFC,
+     * so the caller translates it (lib/financekit/mccToPfc.ts) and labels it 'mcc' — the resolution
+     * order is identical either way, but reporting a crosswalked code as 'plaid_pfc' would be a
+     * lie wherever categorySource is surfaced. Defaults to 'plaid'.
+     */
+    pfcSource?: 'plaid' | 'mcc'
+  },
   overrides: TransactionOverride[],
   vendorMappings: VendorMapping[],
   plaidCategoryMappings: PlaidCategoryMapping[] = [],
@@ -60,7 +72,11 @@ export function resolveCategory(
   if (resolvedFromPfc) {
     // No subcategory: plaid_category_mappings binds a PFC code to a category only, and
     // subcategories are user-defined refinements with no Plaid equivalent.
-    return { categoryId: resolvedFromPfc.categoryId, subcategoryId: null, categorySource: 'plaid_pfc' }
+    return {
+      categoryId: resolvedFromPfc.categoryId,
+      subcategoryId: null,
+      categorySource: txn.pfcSource === 'mcc' ? 'mcc_pfc' : 'plaid_pfc',
+    }
   }
 
   return { categoryId: null, subcategoryId: null, categorySource: 'uncategorized' }
@@ -135,7 +151,10 @@ export interface FeedItem {
 }
 
 export function mergeFeed(
-  plaidTransactions: PlaidTransaction[],
+  // Widened to carry pfcSource: FinanceKit rows arrive Plaid-shaped but with a PFC crosswalked from
+  // an ISO 18245 MCC (lib/financekit/toFeedTransactions.ts). Optional, so Plaid callers are
+  // unaffected and default to 'plaid'.
+  plaidTransactions: (PlaidTransaction & { pfcSource?: 'plaid' | 'mcc' })[],
   manualTransactions: ManualTransaction[],
   overrides: TransactionOverride[],
   vendorMappings: VendorMapping[],
@@ -156,6 +175,7 @@ export function mergeFeed(
         merchantName: txn.merchant_name ?? null,
         pfcPrimary: txn.personal_finance_category?.primary ?? null,
         pfcDetailed: txn.personal_finance_category?.detailed ?? null,
+        pfcSource: txn.pfcSource,
       },
       overrides,
       vendorMappings,

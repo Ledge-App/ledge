@@ -15,7 +15,6 @@ import { CalendarCell } from '@/components/transactions/CalendarCell'
 import { AccountsFilterDropdown } from '@/components/ui/AccountsFilterDropdown'
 import {
   TransactionEditorErrorBanner,
-  TransactionEditorProvider,
   useTransactionEditorActions,
 } from '@/components/transactions/TransactionEditorProvider'
 import { TransferSuggestionsBanner, TransferSuggestionsSheet } from '@/components/transfers/TransferSuggestionsSheet'
@@ -278,9 +277,7 @@ function TransactionsScreenContent({ feedState }: { feedState: TransactionFeedSt
  */
 export default function TransactionsScreen() {
   const feedState = useTransactionFeed()
-  return (
-    <TransactionEditorProvider feed={feedState.feed}>
-      <TransactionsScreenContent feedState={feedState} />
-    </TransactionEditorProvider>
-  )
+  // The editor is mounted once in the tabs layout; see AuthedShell there for why it cannot live
+  // inside a sheet or a screen.
+  return <TransactionsScreenContent feedState={feedState} />
 }

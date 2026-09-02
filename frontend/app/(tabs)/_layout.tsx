@@ -3,6 +3,8 @@ import { Redirect, Tabs } from 'expo-router'
 import { useSession } from '@/lib/supabase/auth'
 import { useBudgetAlerts } from '@/hooks/useBudgetAlerts'
 import { TransactionFeedProvider } from '@/components/transactions/TransactionFeedProvider'
+import { TransactionEditorProvider } from '@/components/transactions/TransactionEditorProvider'
+import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { colors } from '@/constants/theme'
 
@@ -10,6 +12,26 @@ import { colors } from '@/constants/theme'
 function BudgetAlertWatcher() {
   useBudgetAlerts()
   return null
+}
+
+/**
+ * The editor and the sheet host, both mounted once for the whole tab tree.
+ *
+ * A component of its own because the editor needs the feed, which only exists inside
+ * TransactionFeedProvider — and the host has to sit below the feed for the same reason a layer's
+ * content can read it. TransactionEditorProvider mounts the host itself, so the ordering the
+ * layers depend on lives in one file rather than being spelled out again here.
+ *
+ * The editor used to be mounted inside AccountDetailSheet and CategoryDetailSheet, which put the
+ * edit sheet's Modal inside the subtree of the sheet that opened it. On iOS that nesting made touch
+ * delivery unrecoverable; presenting the two as siblings instead makes them fight for the screen.
+ * One host with stacked layers is the only arrangement that avoids both, and it requires the editor
+ * to live above it.
+ */
+function AuthedShell({ children }: { children: React.ReactNode }) {
+  const { feed } = useTransactionFeed()
+
+  return <TransactionEditorProvider feed={feed}>{children}</TransactionEditorProvider>
 }
 
 export default function TabsLayout() {
@@ -23,6 +45,7 @@ export default function TabsLayout() {
   return (
     <TransactionFeedProvider>
       <BudgetAlertWatcher />
+      <AuthedShell>
       <Tabs
       screenOptions={{
         headerShown: false,
@@ -67,6 +90,7 @@ export default function TabsLayout() {
         }}
       />
       </Tabs>
+      </AuthedShell>
     </TransactionFeedProvider>
   )
 }

@@ -2,16 +2,30 @@ import { describe, expect, it } from 'vitest'
 import { formatDayLabel, formatFullDate, formatRelativeIsoTime, formatRelativeTime } from './date'
 
 describe('formatDayLabel', () => {
-  it('writes the short day-header form', () => {
-    expect(formatDayLabel('2026-07-10')).toBe('7/10 Fri')
+  // Mid-year on purpose: a `now` on Jan 1 would make the assertions depend on the runner's
+  // timezone, since the current year is read from the local calendar.
+  const NOW = Date.UTC(2026, 6, 15)
+
+  it('omits the year for a date in the current year', () => {
+    expect(formatDayLabel('2026-07-10', NOW)).toBe('7/10 Fri')
+  })
+
+  it('shows the year for a date in an earlier year', () => {
+    // Apple Cash history reaches back years, and without the year this is indistinguishable from
+    // the same calendar day in any other year.
+    expect(formatDayLabel('2024-11-27', NOW)).toBe('11/27/2024 Wed')
+  })
+
+  it('shows the year for a date in a later year', () => {
+    expect(formatDayLabel('2027-01-01', NOW)).toBe('1/1/2027 Fri')
   })
 
   it('does not shift the day for a timezone behind UTC', () => {
-    expect(formatDayLabel('2026-01-01')).toBe('1/1 Thu')
+    expect(formatDayLabel('2026-01-01', NOW)).toBe('1/1 Thu')
   })
 
   it('returns an unparseable key untouched', () => {
-    expect(formatDayLabel('not-a-date')).toBe('not-a-date')
+    expect(formatDayLabel('not-a-date', NOW)).toBe('not-a-date')
   })
 })
 

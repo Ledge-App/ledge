@@ -12,6 +12,16 @@ interface AddAccountSheetProps {
   logoByItemId: Map<string, string | null>
   onManageInstitution: (itemId: string) => void
   onConnectNewBank: () => void
+  /**
+   * Apple Card / Cash / Savings via FinanceKit. Optional so the sheet stays usable without it.
+   * `visible` is false on devices that cannot serve FinanceKit data at all, in which case the row
+   * is not rendered rather than rendered disabled — there is nothing the user could do about it.
+   */
+  appleAccounts?: {
+    visible: boolean
+    isConnected: boolean
+    onConnect: () => void
+  }
 }
 
 /**
@@ -31,6 +41,7 @@ export function AddAccountSheet({
   logoByItemId,
   onManageInstitution,
   onConnectNewBank,
+  appleAccounts,
 }: AddAccountSheetProps) {
   const sheetScroll = useSheetScroll()
 
@@ -75,6 +86,28 @@ export function AddAccountSheet({
         })}
 
         <Text className="pb-1 pt-4 font-sansMed text-xs text-textMuted">SOMEWHERE ELSE</Text>
+
+        {appleAccounts?.visible ? (
+          <Pressable
+            onPress={appleAccounts.onConnect}
+            accessibilityRole="button"
+            accessibilityLabel="Add Apple Card, Apple Cash and Savings"
+            className="flex-row items-center gap-3 rounded-xl bg-surface px-4 py-3"
+          >
+            <View className="h-9 w-9 items-center justify-center rounded-full bg-surfaceRaised">
+              <Ionicons name="logo-apple" size={18} color={colors.textPrimary} />
+            </View>
+            <View className="flex-1">
+              <Text className="font-sansMed text-base text-textPrimary">Apple Card, Cash & Savings</Text>
+              {/* The contrast with the row below is the point: this one reads Wallet on the device,
+                  so it costs no Plaid connection and sends nothing to a server. */}
+              <Text className="font-sans text-xs text-textMuted">
+                {appleAccounts.isConnected ? 'Connected — reads Wallet on this iPhone' : 'Reads Wallet on this iPhone'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={onConnectNewBank}
           accessibilityRole="button"
