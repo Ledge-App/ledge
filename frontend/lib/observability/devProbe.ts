@@ -99,3 +99,66 @@ let nextSheetId = 0
 export function nextProbeSheetId(): string {
   return `s${(nextSheetId += 1)}`
 }
+
+/**
+ * One sheet presentation (or dismissal), measured as elapsed milliseconds from a single t=0.
+ *
+ * Separate from probeMark, which times ONE function inside ONE component. This spans components:
+ * the entrance animation is started by BottomSheet, but the Modal that finally puts the sheet on
+ * screen is committed and presented by SheetHost, one registry publish and one host re-render
+ * later. Only a shared clock can show the distance between those two moments — and that distance
+ * is entrance animation the user never sees, because translateY's 350ms is already counting.
+ *
+ * A single module-level timeline rather than a map: sheets open one at a time, and a phase mark
+ * carries no id of its own — the host does not know which sheet it is presenting for.
+ */
+let timeline: { id: string; startedAt: number } | null = null
+
+/** Opens a timeline. Every probePhase after this reports against this t=0. */
+export function probePhaseStart(id: string, label: string): void {
+  if (!__DEV__) return
+  timeline = { id, startedAt: Date.now() }
+  console.log(`[probe] ${id} ${label} +0ms`)
+}
+
+export function probePhase(label: string): void {
+  if (!__DEV__) return
+  if (timeline == null) return
+  console.log(`[probe] ${timeline.id} ${label} +${Date.now() - timeline.startedAt}ms`)
+}
+
+/**
+ * JS-thread responsiveness over a window, sampled in 250ms buckets.
+ *
+ * Deliberately plain setInterval/setTimeout and nothing else. The Reanimated frame probe this
+ * replaces never printed its report and never printed its own teardown line either, which means it
+ * was failing in a way the instrumentation could not see — and an unexplained probe is worse than no
+ * probe, because its silence reads as "no jank".
+ *
+ * A 16ms interval that fires 40ms late was blocked for 24ms. Buckets rather than one summary so the
+ * SHAPE is visible: a stall profile that grows as more cells mount is a different bug from a flat one.
+ */
+export function probeStallSampler(label: string, durationMs: number): void {
+  if (!__DEV__) return
+  let previous = Date.now()
+  let worstInBucket = 0
+  let bucketStartedAt = previous
+  const buckets: number[] = []
+
+  const sampler = setInterval(() => {
+    const now = Date.now()
+    const stall = now - previous - 16
+    previous = now
+    if (stall > worstInBucket) worstInBucket = stall
+    if (now - bucketStartedAt >= 250) {
+      buckets.push(Math.round(worstInBucket))
+      worstInBucket = 0
+      bucketStartedAt = now
+    }
+  }, 16)
+
+  setTimeout(() => {
+    clearInterval(sampler)
+    console.log(`[probe] ${label} — worst JS stall per 250ms: [${buckets.join(', ')}]`)
+  }, durationMs)
+}

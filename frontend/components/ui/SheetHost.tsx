@@ -1,9 +1,9 @@
 import { createContext, Fragment, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { Modal } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { getSheetLayers, subscribeSheetLayers } from '@/lib/ui/sheetRegistry'
+import { getSheetLayers, setHostPresented, subscribeSheetLayers } from '@/lib/ui/sheetRegistry'
 // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog } from '@/lib/observability/devProbe'
+import { probeLog, probePhase } from '@/lib/observability/devProbe'
 
 /**
  * Whether a sheet host is mounted above this point in the tree.
@@ -34,6 +34,12 @@ export function useHasSheetHost(): boolean {
 function SheetHostLayers() {
   const layers = useSyncExternalStore(subscribeSheetLayers, getSheetLayers)
 
+  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. BottomSheet republishes its
+  // layer on every render by design, and each republish re-renders this host and reconciles every
+  // layer under it. Counting those renders is how a "one open" that costs three full reconciliations
+  // of a 696-row sheet becomes visible.
+  probePhase(`host render (layers=${layers.length})`)
+
   // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. The host's Modal presents on
   // 0->1 and dismisses on 1->0, so this line is where a presentation cycle becomes visible: a stack
   // that collapses to 0 mid-flow dismisses the Modal and takes every sheet with it.
@@ -41,13 +47,50 @@ function SheetHostLayers() {
     probeLog(`host layers=${layers.length} [${layers.map((layer) => layer.id).join(' ')}]`)
   }, [layers])
 
+  // TEMPORARY DIAGNOSTIC — the three moments between "React decided to present" and "the sheet is
+  // actually visible", each reported against the open timeline BottomSheet started. The entrance
+  // animation has been running through all of them.
+  const isPresenting = layers.length > 0
+  useEffect(() => {
+    probePhase(isPresenting ? 'host committed <Modal> (React)' : 'host unmounted <Modal> (React)')
+  }, [isPresenting])
+
+  // Clears the presentation flag when the Modal goes away. onDismiss below would be the precise
+  // signal, but it is iOS-only, so Android would otherwise leave the flag stuck true and let the
+  // next sheet start its entrance before that Modal has presented — the exact bug this fixes.
+  useEffect(() => {
+    if (!isPresenting) setHostPresented(false)
+  }, [isPresenting])
+
   if (layers.length === 0) return null
 
   return (
-    <Modal transparent visible statusBarTranslucent>
+    <Modal
+      transparent
+      visible
+      statusBarTranslucent
+      // TEMPORARY DIAGNOSTIC — onShow is UIKit's own "the presentation finished" callback, so this
+      // is the first mark that means the sheet is genuinely on screen.
+      // The moment the sheets have been waiting for: UIKit reports the presentation finished, so a
+      // sheet's entrance animation will now actually be seen. Sheets read this through the registry
+      // rather than context, so publishing it re-renders no one but the sheets themselves.
+      onShow={() => {
+        setHostPresented(true)
+        probePhase('host <Modal> onShow (presented by UIKit)')
+      }}
+      onDismiss={() => {
+        setHostPresented(false)
+        probePhase('host <Modal> onDismiss (dismissed by UIKit)')
+      }}
+    >
       {/* Required inside the Modal: its content mounts in a detached native hierarchy that the
           root-level gesture handler never reaches, so the grabber's pan needs a root of its own. */}
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView
+        style={{ flex: 1 }}
+        // TEMPORARY DIAGNOSTIC — the layer content has been measured, i.e. every row inside the
+        // sheet now exists natively. On a heavy sheet this is the mark that lands late.
+        onLayout={() => probePhase('host content laid out')}
+      >
         {layers.map((layer) => (
           <Fragment key={layer.id}>{layer.node}</Fragment>
         ))}

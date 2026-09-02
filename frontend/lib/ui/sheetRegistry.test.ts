@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSheetLayers, removeSheetLayer, resetSheetRegistry, setSheetLayer, subscribeSheetLayers } from './sheetRegistry'
+import {
+  getHostPresented,
+  getSheetLayers,
+  removeSheetLayer,
+  resetSheetRegistry,
+  setHostPresented,
+  setSheetLayer,
+  subscribeHostPresented,
+  subscribeSheetLayers,
+} from './sheetRegistry'
 
 beforeEach(() => resetSheetRegistry())
 
@@ -79,5 +88,41 @@ describe('sheetRegistry', () => {
     expect(getSheetLayers().map((layer) => layer.id)).toEqual(['account'])
     removeSheetLayer('account')
     expect(getSheetLayers()).toEqual([])
+  })
+})
+
+
+/**
+ * The presentation flag gates every sheet's entrance animation, so what matters here is not that it
+ * stores a boolean but that it only wakes subscribers on a real change: a redundant notification
+ * re-runs the effect that starts the entrance, restarting an animation already in flight.
+ */
+describe('host presentation', () => {
+  it('starts unpresented', () => {
+    expect(getHostPresented()).toBe(false)
+  })
+
+  it('notifies subscribers when the presentation state changes', () => {
+    const listener = vi.fn()
+    subscribeHostPresented(listener)
+    setHostPresented(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(getHostPresented()).toBe(true)
+  })
+
+  it('does not notify when the state is reported again unchanged', () => {
+    setHostPresented(true)
+    const listener = vi.fn()
+    subscribeHostPresented(listener)
+    // onShow and the layers-emptied effect can both report the same state.
+    setHostPresented(true)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('stops notifying once unsubscribed', () => {
+    const listener = vi.fn()
+    subscribeHostPresented(listener)()
+    setHostPresented(true)
+    expect(listener).not.toHaveBeenCalled()
   })
 })

@@ -194,6 +194,32 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     transfers.data,
   ])
 
+  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. The feed memo re-derives
+  // whenever ONE of its ten deps changes identity, and the row counts alone cannot say which. A
+  // re-derive that reports identical counts is a dep whose identity churned without its data
+  // changing — the expensive kind, since 25ms of merge produces a feed nothing needed.
+  const probeFeedDeps = {
+    rawTransactions,
+    plaidTransactions,
+    financeKitTransactions: accounts.financeKitTransactions,
+    manual: manualTransactions.data,
+    overrides: overrides.data,
+    vendorMappings: vendorMappings.data,
+    plaidCategoryMappings: plaidCategoryMappings.data,
+    accountsData: accounts.data,
+    investmentTransactions: investmentTransactions.transactions,
+    transfers: transfers.data,
+  }
+  const prevFeedDeps = useRef<typeof probeFeedDeps | null>(null)
+  if (prevFeedDeps.current != null) {
+    const previous = prevFeedDeps.current
+    const changed = (Object.keys(probeFeedDeps) as (keyof typeof probeFeedDeps)[]).filter(
+      (key) => previous[key] !== probeFeedDeps[key],
+    )
+    probeLog(changed.length > 0 ? `feed deps changed: ${changed.join(', ')}` : 'feed deps unchanged')
+  }
+  prevFeedDeps.current = probeFeedDeps
+
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 
   // Delegates to the shared aggregator rather than recomputing inline, so these numbers

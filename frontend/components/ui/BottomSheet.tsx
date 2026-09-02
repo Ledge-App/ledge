@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, View } from 'react-native'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { borderRadius, colors } from '@/constants/theme'
 import { useHasSheetHost } from '@/components/ui/SheetHost'
-import { removeSheetLayer, setSheetLayer } from '@/lib/ui/sheetRegistry'
+import { getHostPresented, removeSheetLayer, setSheetLayer, subscribeHostPresented } from '@/lib/ui/sheetRegistry'
 import { DRAG_START_THRESHOLD_PX, shouldDismissOnRelease } from '@/lib/ui/sheetDrag'
 // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { nextProbeSheetId, probeLog, probeSheetMounted, registerProbeSheet } from '@/lib/observability/devProbe'
+import { nextProbeSheetId, probeLog, probePhase, probePhaseStart, probeSheetMounted, probeStallSampler, registerProbeSheet } from '@/lib/observability/devProbe'
 
 const SCREEN_HEIGHT = Dimensions.get('window').height
 
@@ -20,6 +20,19 @@ const MS_PER_S = 1000
 
 /** Past this much horizontal travel the gesture is a swipe, not a sheet drag. */
 const HORIZONTAL_SLOP_PX = 20
+
+/**
+ * How long the entrance will wait for a presentation callback before starting anyway.
+ *
+ * A safety net, not a timing knob. The entrance is gated on the Modal reporting itself presented,
+ * and a sheet whose callback never arrives would otherwise sit parked offscreen forever behind a
+ * full-screen backdrop — invisible, swallowing every touch, which is precisely the freeze this
+ * component has been bitten by more than once. Missing the callback must degrade to the old
+ * behaviour (an entrance that plays early), never to a wedged app.
+ *
+ * Set well beyond the ~190ms a real presentation takes, so it never pre-empts one.
+ */
+const PRESENTATION_DEADLINE_MS = 600
 
 /**
  * Vestigial, pending removal from its 13 call sites.
@@ -69,9 +82,49 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
    */
   const isClosing = useSharedValue(false)
 
+  /**
+   * Whether this sheet is actually on screen, and therefore whether an entrance would be seen.
+   *
+   * Two sources because there are two presentation paths. With a host, the host's one Modal reports
+   * through the registry; without one, this component's own Modal reports through onShow below.
+   */
+  const isHostPresented = useSyncExternalStore(subscribeHostPresented, getHostPresented)
+  const [isOwnModalPresented, setIsOwnModalPresented] = useState(false)
+  const [hasWaitedForPresentation, setHasWaitedForPresentation] = useState(false)
+  const isPresented = (hasHost ? isHostPresented : isOwnModalPresented) || hasWaitedForPresentation
+
+  // Arms the deadline while a mounted sheet is still waiting, and disarms it on close so the next
+  // open waits for its own presentation rather than inheriting a flag from the last one.
+  useEffect(() => {
+    if (!isMounted || !visible) {
+      setHasWaitedForPresentation(false)
+      return
+    }
+    const timer = setTimeout(() => setHasWaitedForPresentation(true), PRESENTATION_DEADLINE_MS)
+    return () => clearTimeout(timer)
+  }, [isMounted, visible])
+
+  // Cleared on UNMOUNT, not on close. onShow fires once per presentation, so a sheet reopened
+  // before its close animation finished — the Modal never went away — would never hear it again,
+  // and clearing this on `visible` would strand that reopen waiting for the deadline instead.
+  useEffect(() => {
+    if (!isMounted) setIsOwnModalPresented(false)
+  }, [isMounted])
+
+  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Samples the JS thread across
+  // the entrance AND the list fill that runs past it, so the two are visible on one timeline.
+  useEffect(() => {
+    if (!isMounted || !visible || !isPresented) return
+    probeStallSampler('entrance + list fill', 2000)
+  }, [isMounted, visible, isPresented])
+
   const sheetTop = topOffset ?? insets.top + 60
 
   const layerId = useRef<string>(`sheet-${(sheetSeq += 1)}`)
+
+  // TEMPORARY DIAGNOSTIC — the layer effect below runs on EVERY render by design, so a mark placed
+  // there unconditionally would bury the two transitions that matter in republish noise.
+  const isPublished = useRef(false)
 
   // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
   const probeId = useRef<string | null>(null)
@@ -105,12 +158,22 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
   // already partway through its 350ms by the time the Modal existed, and appeared halfway up or
   // simply snapped into place. Now the animation begins only once the sheet is actually on screen.
   useEffect(() => {
-    if (visible) setIsMounted(true)
+    if (!visible) return
+    // TEMPORARY DIAGNOSTIC — t=0 for the open timeline. The tap has landed and the mount is queued;
+    // everything downstream is reported as a distance from here.
+    probePhaseStart(probeId.current!, 'OPEN mount queued')
+    setIsMounted(true)
   }, [visible])
 
   useEffect(() => {
     if (!isMounted) return
     if (visible) {
+      // Held here until the sheet is genuinely on screen. The 350ms below runs on the UI thread the
+      // instant it is queued, so starting it at mount spent the entrance behind an unpresented
+      // Modal: measured at 189ms of a 350ms entrance, i.e. the sheet appeared already half-risen and
+      // snapped the rest of the way. Nothing is visible while we wait — translateY is parked
+      // offscreen and the backdrop is fully transparent.
+      if (!isPresented) return
       // Cleared BEFORE translateY is touched: writing translateY cancels any close still in
       // flight, and that cancellation's callback must see a sheet that is no longer closing so it
       // does not unmount the reopening sheet.
@@ -120,19 +183,25 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
       translateY.value = SCREEN_HEIGHT
       translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) })
       backdropOpacity.value = withTiming(1, { duration: 300 })
+      // TEMPORARY DIAGNOSTIC — the 350ms clock is now running. Compare against the host's
+      // 'Modal onShow' mark: that difference is entrance that plays before anything is on screen.
+      probePhase('OPEN entrance clock started (350ms)')
     } else {
       isClosing.value = true
-      probeLog(`sheet ${probeId.current} close started`)
+      probePhaseStart(probeId.current!, 'CLOSE started (300ms)')
       translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300, easing: Easing.in(Easing.cubic) }, (finished) => {
         runOnJS(probeLog)(`sheet close callback finished=${finished} isClosing=${isClosing.value}`)
         // Deliberately NOT gated on `finished`. Whether the animation ran to completion or was
         // cancelled, the sheet is meant to be gone — the only question is whether it has since
         // reopened, which isClosing answers. Gating on `finished` is what left the Modal mounted.
-        if (isClosing.value) runOnJS(setIsMounted)(false)
+        if (isClosing.value) {
+          runOnJS(setIsMounted)(false)
+          runOnJS(probePhase)('CLOSE unmount requested')
+        }
       })
       backdropOpacity.value = withTiming(0, { duration: 250 })
     }
-  }, [visible, isMounted, translateY, backdropOpacity, isClosing])
+  }, [visible, isMounted, isPresented, translateY, backdropOpacity, isClosing])
 
   // Gesture-handler rather than PanResponder: under the New Architecture the JS responder system
   // never runs its *move* negotiation for a view that declined the touch on start, so
@@ -254,8 +323,21 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
    */
   useEffect(() => {
     if (!hasHost) return
-    if (content === null) removeSheetLayer(layerId.current)
-    else setSheetLayer(layerId.current, content)
+    if (content === null) {
+      removeSheetLayer(layerId.current)
+      // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
+      if (isPublished.current) {
+        isPublished.current = false
+        probePhase('layer removed from registry')
+      }
+    } else {
+      setSheetLayer(layerId.current, content)
+      // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
+      if (!isPublished.current) {
+        isPublished.current = true
+        probePhase('layer published to registry')
+      }
+    }
   })
 
   // Unmounting mid-animation would otherwise strand the layer, and with it a full-screen backdrop.
@@ -274,7 +356,13 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
   if (!isMounted) return null
 
   return (
-    <Modal transparent visible={isMounted} statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible={isMounted}
+      statusBarTranslucent
+      onRequestClose={onClose}
+      onShow={() => setIsOwnModalPresented(true)}
+    >
       {/* Required INSIDE the Modal: RN mounts modal content in its own native view hierarchy, which
           sits outside any root-level gesture handler, so gestures registered here would never be
           recognized without a root of their own. */}

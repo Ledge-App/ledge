@@ -54,10 +54,43 @@ export function getSheetLayers(): SheetLayer[] {
   return snapshot
 }
 
+/**
+ * Whether the host's Modal is actually on screen.
+ *
+ * Separate from the layer store because it answers a different question. A layer exists the moment
+ * React commits it; the Modal holding it is presented by UIKit some time later — measured at 180ms
+ * on a sheet with a long list. A sheet that starts its entrance animation on the first fact rather
+ * than the second animates while invisible and is already part-way open when it appears.
+ *
+ * Lives here rather than in React context so BottomSheet can read it without the host having to be
+ * an ancestor that re-renders every sheet beneath it — the same reason the layers do.
+ */
+let hostPresented = false
+const presentationListeners = new Set<() => void>()
+
+export function setHostPresented(presented: boolean): void {
+  // Guarded: onShow and the layers-emptied effect can both report the same state, and waking every
+  // sheet for a no-op change would restart entrance animations that are already running.
+  if (hostPresented === presented) return
+  hostPresented = presented
+  for (const listener of presentationListeners) listener()
+}
+
+export function getHostPresented(): boolean {
+  return hostPresented
+}
+
+export function subscribeHostPresented(listener: () => void): () => void {
+  presentationListeners.add(listener)
+  return () => void presentationListeners.delete(listener)
+}
+
 /** Tests only: the store outlives any single component, so each case needs a clean slate. */
 export function resetSheetRegistry(): void {
   layers.clear()
   listeners.clear()
   nextOrder = 0
   snapshot = []
+  hostPresented = false
+  presentationListeners.clear()
 }

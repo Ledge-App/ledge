@@ -3,6 +3,7 @@ import { Redirect, Tabs } from 'expo-router'
 import { useSession } from '@/lib/supabase/auth'
 import { useBudgetAlerts } from '@/hooks/useBudgetAlerts'
 import { TransactionFeedProvider } from '@/components/transactions/TransactionFeedProvider'
+import { AccountMarksProvider } from '@/hooks/useAccountMarks'
 import { TransactionEditorProvider } from '@/components/transactions/TransactionEditorProvider'
 import { useTransactionFeed } from '@/hooks/useTransactionFeed'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -42,7 +43,11 @@ export default function TabsLayout() {
 
   // The provider wraps the watcher as well as the screens: it is a feed consumer too, and one
   // of the six independent copies of the feed this replaced.
+  // Outermost, above the feed and therefore above the sheet host: sheet layers render inside the
+  // host rather than where they were written, so anything they read has to be resolvable from
+  // there. Every transaction row reads this.
   return (
+    <AccountMarksProvider>
     <TransactionFeedProvider>
       <BudgetAlertWatcher />
       <AuthedShell>
@@ -92,5 +97,6 @@ export default function TabsLayout() {
       </Tabs>
       </AuthedShell>
     </TransactionFeedProvider>
+    </AccountMarksProvider>
   )
 }

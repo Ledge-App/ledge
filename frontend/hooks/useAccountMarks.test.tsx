@@ -13,7 +13,7 @@ import type { Account } from '@/types/domain'
 let accountsData: Account[] = []
 vi.mock('./useAccounts', () => ({ useAccounts: () => ({ data: accountsData }) }))
 
-const { useAccountMarks } = await import('./useAccountMarks')
+const { AccountMarksProvider, useAccountMarks } = await import('./useAccountMarks')
 
 function account(overrides: Partial<Account>): Account {
   return { account_id: 'a', name: 'Account', itemId: 'item-1', institutionLogo: null, ...overrides } as Account
@@ -27,7 +27,9 @@ function marks(accounts: Account[]) {
     return null
   }
   act(() => {
-    TestRenderer.create(createElement(Harness))
+    // Through the provider, which is now the only supported way to read this: the map is built once
+    // for the tree rather than once per consumer, because the consumers are transaction ROWS.
+    TestRenderer.create(createElement(AccountMarksProvider, null, createElement(Harness)))
   })
   return result!
 }
@@ -45,5 +47,35 @@ describe('useAccountMarks', () => {
 
   it('leaves out an account with nothing to show', () => {
     expect(marks([account({ account_id: 'plain' })]).has('plain')).toBe(false)
+  })
+
+  it('builds the map once however many consumers read it', () => {
+    accountsData = [account({ account_id: 'checking', institutionLogo: 'BASE64' })]
+    const seen: unknown[] = []
+    function Consumer() {
+      seen.push(useAccountMarks())
+      return null
+    }
+    act(() => {
+      TestRenderer.create(
+        createElement(AccountMarksProvider, null, createElement(Consumer), createElement(Consumer)),
+      )
+    })
+    // Same Map instance, not merely equal ones: a per-consumer map is what made a 696-row list read
+    // the whole accounts stack 696 times.
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toBe(seen[0])
+  })
+
+  it('throws when read outside a provider, rather than silently dropping every chip', () => {
+    function Bare() {
+      useAccountMarks()
+      return null
+    }
+    expect(() => {
+      act(() => {
+        TestRenderer.create(createElement(Bare))
+      })
+    }).toThrow(/AccountMarksProvider/)
   })
 })

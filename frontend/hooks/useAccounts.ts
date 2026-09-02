@@ -4,6 +4,14 @@ import { sortAccountsByPreference } from '@/lib/accounts/order'
 import { useAccountOrder } from '@/hooks/useAccountOrder'
 import { useFinanceKit } from '@/hooks/useFinanceKit'
 import { mergeFinanceKitIntoAccounts } from '@/lib/financekit/mergeAccounts'
+// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
+import { probeLog } from '@/lib/observability/devProbe'
+
+// TEMPORARY DIAGNOSTIC — every CALLER of useAccounts gets its own memo, so this counts call sites
+// paying to merge and sort the account list, not times the account list changed. TransactionRow
+// calls this hook (via useAccountMarks) once per row, so a filling list should make this climb with
+// the row count — which is the claim under test.
+let probeSortRuns = 0
 
 export function useAccounts() {
   const accounts = api.accounts.list.useQuery()
@@ -27,10 +35,12 @@ export function useAccounts() {
   // hook, so one sort is what keeps an account from sitting 2nd on the accounts screen and
   // 5th in the filter dropdown. Positions are per-group, but sorting the flat list is
   // equivalent — each screen slices groups out of this array and relative order survives.
-  const sorted = useMemo(
-    () => (merged.accounts ? sortAccountsByPreference(merged.accounts, positionByAccountId) : undefined),
-    [merged.accounts, positionByAccountId],
-  )
+  const sorted = useMemo(() => {
+    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
+    probeSortRuns += 1
+    if (probeSortRuns % 25 === 0) probeLog(`useAccounts merged+sorted ${probeSortRuns} times`)
+    return merged.accounts ? sortAccountsByPreference(merged.accounts, positionByAccountId) : undefined
+  }, [merged.accounts, positionByAccountId])
 
   return {
     // Unwrapped so callers keep receiving the plain account array they always have.
