@@ -15,7 +15,6 @@ import type { FeedItem } from '@/lib/transactions/resolveFeed'
 // react-native cannot be imported under vitest's node environment, and the hook only reaches for
 // Alert (the manual-delete confirmation, which this file never triggers).
 vi.mock('react-native', () => ({ Alert: { alert: vi.fn() } }))
-vi.mock('@/lib/observability/devProbe', () => ({ probeLog: () => {} }))
 
 const noopMutations = {
   create: vi.fn(async () => {}),

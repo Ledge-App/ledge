@@ -21,8 +21,6 @@ import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { syncDriver } from '@/lib/transactions/syncDriver'
 import { reportError } from '@/lib/observability/log'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog, probeMark, startDevHeartbeat } from '@/lib/observability/devProbe'
 import { detectPendingPreviews, detectTransfers } from '@/lib/transfers/autoMatch'
 import { findOrphanedTransfers } from '@/lib/transfers/orphanCleanup'
 import type { AutoMatchResult, TransferDraft } from '@/lib/transfers/autoMatch'
@@ -70,8 +68,6 @@ function pairKey(draft: TransferDraft): string {
  * The consuming hook's return shape is unchanged, so no screen had to change.
  */
 export function TransactionFeedProvider({ children }: { children: ReactNode }) {
-  startDevHeartbeat()
-  const endRender = probeMark('provider render')
   const accounts = useAccounts()
   const manualTransactions = useManualTransactions()
   const overrides = useTransactionOverrides()
@@ -154,7 +150,6 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
   // them categorized once the query lands. Better to hold the feed empty for one tick.
   const feed = useMemo(() => {
     if (!manualTransactions.data || !overrides.data || !vendorMappings.data || !plaidCategoryMappings.data) return []
-    const endFeed = probeMark('feed derive')
     const merged = mergeFeed(
       rawTransactions,
       manualTransactions.data,
@@ -171,15 +166,6 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
     // left unpaired, so it can never override a transfer that auto-applied or the user confirmed.
     const result = applySweepExclusion(withTransfers)
-    endFeed()
-    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Names WHICH source a
-    // row-count change came from: a feed that shrinks and refills while a sheet is open is what
-    // makes the sheet look like it reloads, and the totals alone cannot say who moved.
-    probeLog(
-      `feed sources plaid=${plaidTransactions.length} apple=${accounts.financeKitTransactions.length} ` +
-        `manual=${manualTransactions.data.length} investment=${investmentTransactions.transactions.length} ` +
-        `-> feed=${result.length}`,
-    )
     return result
   }, [
     rawTransactions,
@@ -193,32 +179,6 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     investmentTransactions.transactions,
     transfers.data,
   ])
-
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. The feed memo re-derives
-  // whenever ONE of its ten deps changes identity, and the row counts alone cannot say which. A
-  // re-derive that reports identical counts is a dep whose identity churned without its data
-  // changing — the expensive kind, since 25ms of merge produces a feed nothing needed.
-  const probeFeedDeps = {
-    rawTransactions,
-    plaidTransactions,
-    financeKitTransactions: accounts.financeKitTransactions,
-    manual: manualTransactions.data,
-    overrides: overrides.data,
-    vendorMappings: vendorMappings.data,
-    plaidCategoryMappings: plaidCategoryMappings.data,
-    accountsData: accounts.data,
-    investmentTransactions: investmentTransactions.transactions,
-    transfers: transfers.data,
-  }
-  const prevFeedDeps = useRef<typeof probeFeedDeps | null>(null)
-  if (prevFeedDeps.current != null) {
-    const previous = prevFeedDeps.current
-    const changed = (Object.keys(probeFeedDeps) as (keyof typeof probeFeedDeps)[]).filter(
-      (key) => previous[key] !== probeFeedDeps[key],
-    )
-    probeLog(changed.length > 0 ? `feed deps changed: ${changed.join(', ')}` : 'feed deps unchanged')
-  }
-  prevFeedDeps.current = probeFeedDeps
 
   const categoryById = useMemo(() => new Map((categories.data ?? []).map((c) => [c.id, c])), [categories.data])
 
@@ -354,8 +314,6 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     },
     [itemIds, accountIdToItemId, accounts.syncFinanceKit],
   )
-
-  endRender()
 
   const value = useMemo<TransactionFeedValue>(
     () => ({

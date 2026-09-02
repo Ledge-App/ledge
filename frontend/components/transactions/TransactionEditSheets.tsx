@@ -6,8 +6,6 @@ import { ManualTransactionSheet } from '@/components/transactions/ManualTransact
 import { TransferSheet } from '@/components/transfers/TransferSheet'
 import type { TransactionEditor } from '@/hooks/useTransactionEditor'
 import { activeSheetOf, type ActiveSheet } from '@/lib/transfers/transferReturn'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog } from '@/lib/observability/devProbe'
 
 interface TransactionEditSheetsProps {
   editor: TransactionEditor
@@ -44,14 +42,6 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
     transferItem: editor.transferItem,
     manualOpen: editor.manualSheetOpen,
   })
-
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-  useEffect(() => {
-    probeLog(
-      `edit host active=${active ?? 'NONE'} transferItem=${editor.transferItem?.id ?? '-'} ` +
-        `detail=${editor.activeSheetItem?.id ?? '-'} manual=${editor.manualSheetOpen}`,
-    )
-  }, [active, editor.transferItem, editor.activeSheetItem, editor.manualSheetOpen])
 
   const onClose =
     active === 'transfer'

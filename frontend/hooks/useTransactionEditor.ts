@@ -19,8 +19,6 @@ import {
 import type { PendingTransfer } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Account, Category, ManualTransaction, Subcategory, TransferKind } from '@/types/domain'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog } from '@/lib/observability/devProbe'
 
 // Handoffs between the sheets are synchronous. They used to be deferred behind a setTimeout
 // because each sheet was its own native modal and iOS will not present one while another is
@@ -124,9 +122,6 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   )
 
   const openTransaction = useCallback((item: FeedItem) => {
-    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. A tap that never reaches
-    // here and a tap that reaches here but opens nothing are different bugs.
-    probeLog(`editor openTransaction id=${item.id} source=${item.source}`)
     if (item.source === 'manual') {
       setEditingManual({
         id: item.id,
@@ -266,7 +261,6 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       if (!activeSheetItem) return
       const item = activeSheetItem
       setTransferForcedKind(forcedKind)
-      probeLog(`editor openTransfer kind=${forcedKind} item=${item.id} source=${item.source}`)
       // One transition rather than two setters, so no render can observe both sheets set or
       // neither. Batched anyway, but this is the version the sequence test drives.
       const { selection, transferReturn: destination } = openTransferFrom(item, editingManual?.id ?? null)
@@ -301,7 +295,6 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   // from, which saves the edit and the transfer together.
   const confirmTransfer = useCallback(
     ({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) => {
-      probeLog(`editor confirmTransfer kind=${kind} counterparts=${counterpartIds.length} return=${transferReturn?.to ?? 'NULL'}`)
       setPendingTransfer({ kind, counterpartIds })
       setTransferItem(null)
       resumeAfterTransfer()

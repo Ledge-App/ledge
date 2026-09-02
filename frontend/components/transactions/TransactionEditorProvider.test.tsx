@@ -26,7 +26,6 @@ vi.mock('react-native-gesture-handler', () => ({
 }))
 vi.mock('@/components/ui/ErrorBanner', () => ({ ErrorBanner: () => null }))
 // The host logs its layer stack through the dev probe, which reads __DEV__ — undefined outside Metro.
-vi.mock('@/lib/observability/devProbe', () => ({ probeLog: () => {}, probePhase: () => {} }))
 vi.mock('@/hooks/useTransactionEditor', () => ({ useTransactionEditor: () => ({}) }))
 
 /** Stands in for the real sheets, reporting the one thing under test: does it see a host? */

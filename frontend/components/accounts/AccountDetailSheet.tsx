@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -7,8 +7,6 @@ import { appleIcon } from '@/components/accounts/AccountRow'
 import { FINANCEKIT_ITEM_ID } from '@/lib/financekit/mergeAccounts'
 import { formatMaskableAmount } from '@/lib/format/money'
 import { groupByDay } from '@/lib/transactions/groupByDay'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog, probeMark, probePhase } from '@/lib/observability/devProbe'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { SheetScroll } from '@/components/ui/BottomSheet'
 import { DayGroupHeader } from '@/components/transactions/DayGroupHeader'
@@ -123,26 +121,10 @@ function AccountDetailSheetBody({
 
   // SectionList's own shape, mapped off the shared grouping so this sheet and the day-card lists
   // can't disagree about which day a row belongs to.
-  const sections = useMemo(() => {
-    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. A recompute hands
-    // SectionList an entirely new dataset, which is what resets its render window mid-scroll.
-    const endSections = probeMark(`sections rebuild for ${shown.title} (${shown.items.length} rows)`)
-    const next = groupByDay(shown.items).map((day) => ({ title: day.date, data: day.items }))
-    endSections()
-    // Section COUNT, not just row count. SectionList enables sticky headers on iOS by default, and
-    // every section becomes a sticky index on the underlying ScrollView — a few hundred of those is
-    // its own well-known cliff, and the row count alone hides how many there are.
-    probeLog(`sections=${next.length} for ${shown.items.length} rows`)
-    return next
-  }, [shown.items])
-
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Splits the long gap between
-  // 'host committed <Modal>' and 'host content laid out' into its two halves: everything up to this
-  // mark is React reconciling the sheet's tree, everything after it is UIKit creating and measuring
-  // the native views. Only one of those two is worth optimising, and the timeline cannot say which.
-  useLayoutEffect(() => {
-    probePhase('sheet body committed (React, pre-paint)')
-  })
+  const sections = useMemo(
+    () => groupByDay(shown.items).map((day) => ({ title: day.date, data: day.items })),
+    [shown.items],
+  )
 
   // Hoisted out of the JSX for the same reason the Transactions tab hoists its callbacks: an inline
   // renderer hands DayGroupHeader and TransactionRow a fresh identity on every render and defeats
@@ -159,38 +141,8 @@ function AccountDetailSheetBody({
     ),
     [],
   )
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts.
-  //
-  // VirtualizedList does not render its window in one pass: it renders initialNumToRender cells and
-  // then fills the rest in batches on FOLLOWING frames. With windowSize at its default of 21
-  // viewports, that fill can run for many frames and every cell in it creates native views — on the
-  // same UI thread the entrance animation is trying to use. Timestamping the curve is what says
-  // whether cells are still landing while the sheet is animating, and how far in it goes.
-  // Calls AND distinct rows, because the difference between them is the whole question. Equal
-  // numbers mean each row is rendered once and the cost is mounting it. Calls far ahead of distinct
-  // rows means the list is re-rendering cells it already has — churn, which would also explain why
-  // each batch of ten costs more than the last.
-  const cellCalls = useRef(0)
-  const distinctCells = useRef(new Set<string>())
-  // Fires 400ms after the LAST cell renders, so the total lands right after the fill ends instead of
-  // on a fixed timer that keeps falling past the end of the captured log. This one line is the whole
-  // question for windowSize: how many rows does the list mount before it stops?
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const countCell = (id: string) => {
-    cellCalls.current += 1
-    distinctCells.current.add(id)
-    if (cellCalls.current % 10 === 0) {
-      probePhase(`SectionList renderItem calls=${cellCalls.current} distinct rows=${distinctCells.current.size}`)
-    }
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-    settleTimer.current = setTimeout(() => {
-      probePhase(`SectionList FILL SETTLED — ${distinctCells.current.size} rows mounted, no cell for 400ms`)
-    }, 400)
-  }
-
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) => {
-      countCell(item.id)
       const category = item.categoryId ? categoryById.get(item.categoryId) : undefined
       return (
         <TransactionRow
@@ -248,16 +200,6 @@ function AccountDetailSheetBody({
 
       <SectionList
         {...sheetScroll.scrollProps}
-        // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. The list is the
-        // expensive child; this says when IT is measured, as opposed to the sheet chrome above it.
-        // The height is the whole diagnosis. A VirtualizedList decides its render window as
-        // windowSize x THIS number, so a list that measures its own height as its CONTENT height
-        // has a window covering every row and virtualizes nothing — which is what a windowSize of 5
-        // failing to bind, and 600 rows mounting over 82 seconds, both look like. A bounded list in
-        // this sheet should measure a few hundred px; anything in the thousands is the bug.
-        onLayout={(event) =>
-          probePhase(`SectionList laid out height=${Math.round(event.nativeEvent.layout.height)}px`)
-        }
         sections={sections}
         // Sticky headers OFF. groupByDay turns 696 card transactions into 344 sections — barely two
         // rows a day — and on iOS SectionList makes every one of them a sticky index on the
@@ -271,14 +213,6 @@ function AccountDetailSheetBody({
         // renders rows 19,000px below the fold regardless — so they are back at their defaults
         // rather than left in as decoration.
         stickySectionHeadersEnabled={false}
-        // Decisive: a VirtualizedList fills its window using MEASURED cell heights. If cells report
-        // no height, the 2410px window (5 x 482px) is never satisfied and the list keeps asking for
-        // rows forever — which is what 600 rows on a bounded 482px viewport looks like. Content
-        // height tracking the row count (~64px each) means measurement works and the fault is
-        // elsewhere; content height staying flat means this is it.
-        onContentSizeChange={(width, height) =>
-          probePhase(`SectionList content size ${Math.round(width)}x${Math.round(height)}px`)
-        }
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}
         renderSectionHeader={renderSectionHeader}

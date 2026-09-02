@@ -26,8 +26,6 @@ import {
   sortHoldingsByValue,
 } from '@/lib/accounts/holdings'
 import { hexToRgba } from '@/constants/theme'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { probeLog, probeMark } from '@/lib/observability/devProbe'
 import { formatRelativeIsoTime } from '@/lib/format/date'
 import { formatCompactMaskableAmount, formatMaskableAmount } from '@/lib/format/money'
 import { netPrincipal } from '@/lib/accounts/principal'
@@ -261,31 +259,11 @@ export function InvestmentDetailSheet({
 
   // Sorted and formatted once here rather than in the table below: the same strings are
   // measured to size the columns and then rendered into them.
-  const rows = useMemo(() => {
-    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. The holding count in the
-    // label is the point: a rebuild to 0 holdings is this sheet throwing its whole table away, and
-    // WHEN that lands relative to 'CLOSE started' says whether the teardown is inside the exit
-    // animation.
-    const endRows = probeMark(`holdings rows rebuild (${holdings.data?.length ?? 0} holdings)`)
-    const next = sortHoldingsByValue(holdings.data ?? []).map((h) => toCells(h, isMasked))
-    endRows()
-    return next
-  }, [holdings.data, isMasked])
-  const widths = useMemo(() => {
-    // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-    const endWidths = probeMark(`holdings columns measured (${rows.length} rows)`)
-    const next = measureColumns(rows)
-    endWidths()
-    return next
-  }, [rows])
-
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Every holding row owns a
-  // nested horizontal ScrollView, so mounting and unmounting this table is the most expensive
-  // native work the sheet does. These two lines say exactly when it happens.
-  const hasTable = !holdings.isLoading && holdings.error == null && (holdings.data?.length ?? 0) > 0
-  useEffect(() => {
-    probeLog(`investment table ${hasTable ? 'MOUNTED' : 'UNMOUNTED'} — account=${account ? account.account_id : 'null'}`)
-  }, [hasTable, account])
+  const rows = useMemo(
+    () => sortHoldingsByValue(holdings.data ?? []).map((h) => toCells(h, isMasked)),
+    [holdings.data, isMasked],
+  )
+  const widths = useMemo(() => measureColumns(rows), [rows])
   // Dated by when the INSTITUTION priced these holdings, not by when we fetched them. Our
   // fetch time would read "just now" over a portfolio the brokerage last repriced two days
   // ago, which is the opposite of what a freshness label is for.

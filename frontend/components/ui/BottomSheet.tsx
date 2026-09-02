@@ -7,8 +7,6 @@ import { borderRadius, colors } from '@/constants/theme'
 import { useHasSheetHost } from '@/components/ui/SheetHost'
 import { getHostPresented, removeSheetLayer, setSheetLayer, subscribeHostPresented } from '@/lib/ui/sheetRegistry'
 import { DRAG_START_THRESHOLD_PX, shouldDismissOnRelease } from '@/lib/ui/sheetDrag'
-// TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-import { nextProbeSheetId, probeLog, probePhase, probePhaseStart, probeSheetMounted, probeStallSampler, registerProbeSheet } from '@/lib/observability/devProbe'
 
 const SCREEN_HEIGHT = Dimensions.get('window').height
 
@@ -111,37 +109,9 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
     if (!isMounted) setIsOwnModalPresented(false)
   }, [isMounted])
 
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Samples the JS thread across
-  // the entrance AND the list fill that runs past it, so the two are visible on one timeline.
-  useEffect(() => {
-    if (!isMounted || !visible || !isPresented) return
-    probeStallSampler('entrance + list fill', 2000)
-  }, [isMounted, visible, isPresented])
-
   const sheetTop = topOffset ?? insets.top + 60
 
   const layerId = useRef<string>(`sheet-${(sheetSeq += 1)}`)
-
-  // TEMPORARY DIAGNOSTIC — the layer effect below runs on EVERY render by design, so a mark placed
-  // there unconditionally would bury the two transitions that matter in republish noise.
-  const isPublished = useRef(false)
-
-  // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-  const probeId = useRef<string | null>(null)
-  if (probeId.current === null) probeId.current = nextProbeSheetId()
-  useEffect(() => {
-    if (!isMounted) return
-    probeSheetMounted(probeId.current!, true, !hasHost)
-    const unregister = registerProbeSheet(probeId.current!, () => {
-      // SCREEN_HEIGHT means parked offscreen: invisible, but still swallowing every touch.
-      const parked = Math.round(translateY.value) >= Math.round(SCREEN_HEIGHT) - 1
-      return `y=${Math.round(translateY.value)}/${Math.round(SCREEN_HEIGHT)} backdrop=${backdropOpacity.value.toFixed(2)} closing=${isClosing.value}${parked ? ' PARKED-OFFSCREEN' : ''}`
-    })
-    return () => {
-      unregister()
-      probeSheetMounted(probeId.current!, false, !hasHost)
-    }
-  }, [isMounted, hasHost, translateY, backdropOpacity, isClosing])
 
   const onCloseRef = useRef(onClose)
   // In an effect rather than assigned during render: a render-phase write is a side effect, and
@@ -158,11 +128,7 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
   // already partway through its 350ms by the time the Modal existed, and appeared halfway up or
   // simply snapped into place. Now the animation begins only once the sheet is actually on screen.
   useEffect(() => {
-    if (!visible) return
-    // TEMPORARY DIAGNOSTIC — t=0 for the open timeline. The tap has landed and the mount is queued;
-    // everything downstream is reported as a distance from here.
-    probePhaseStart(probeId.current!, 'OPEN mount queued')
-    setIsMounted(true)
+    if (visible) setIsMounted(true)
   }, [visible])
 
   useEffect(() => {
@@ -183,21 +149,13 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
       translateY.value = SCREEN_HEIGHT
       translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) })
       backdropOpacity.value = withTiming(1, { duration: 300 })
-      // TEMPORARY DIAGNOSTIC — the 350ms clock is now running. Compare against the host's
-      // 'Modal onShow' mark: that difference is entrance that plays before anything is on screen.
-      probePhase('OPEN entrance clock started (350ms)')
     } else {
       isClosing.value = true
-      probePhaseStart(probeId.current!, 'CLOSE started (300ms)')
-      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300, easing: Easing.in(Easing.cubic) }, (finished) => {
-        runOnJS(probeLog)(`sheet close callback finished=${finished} isClosing=${isClosing.value}`)
+      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300, easing: Easing.in(Easing.cubic) }, () => {
         // Deliberately NOT gated on `finished`. Whether the animation ran to completion or was
         // cancelled, the sheet is meant to be gone — the only question is whether it has since
         // reopened, which isClosing answers. Gating on `finished` is what left the Modal mounted.
-        if (isClosing.value) {
-          runOnJS(setIsMounted)(false)
-          runOnJS(probePhase)('CLOSE unmount requested')
-        }
+        if (isClosing.value) runOnJS(setIsMounted)(false)
       })
       backdropOpacity.value = withTiming(0, { duration: 250 })
     }
@@ -229,7 +187,6 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
       'worklet'
       if (isClosing.value) return
       if (shouldDismissOnRelease({ dy: translationY, vy: velocityY / MS_PER_S })) {
-        runOnJS(probeLog)('sheet DRAG dismiss')
         // Hand off to the `visible` effect, which animates from wherever the finger left the sheet
         // down to offscreen and then unmounts it.
         runOnJS(requestClose)()
@@ -271,12 +228,7 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
       <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }, backdropStyle]}>
         <Pressable
           style={{ flex: 1 }}
-          onPress={() => {
-            // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts. Separates "the user
-            // dismissed it" from "something closed it", which the close lines alone cannot.
-            probeLog(`sheet ${probeId.current} BACKDROP press`)
-            onClose()
-          }}
+          onPress={onClose}
         />
       </Animated.View>
 
@@ -323,21 +275,8 @@ export function BottomSheet({ visible, onClose, children, topOffset, contentScro
    */
   useEffect(() => {
     if (!hasHost) return
-    if (content === null) {
-      removeSheetLayer(layerId.current)
-      // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-      if (isPublished.current) {
-        isPublished.current = false
-        probePhase('layer removed from registry')
-      }
-    } else {
-      setSheetLayer(layerId.current, content)
-      // TEMPORARY DIAGNOSTIC — remove with lib/observability/devProbe.ts
-      if (!isPublished.current) {
-        isPublished.current = true
-        probePhase('layer published to registry')
-      }
-    }
+    if (content === null) removeSheetLayer(layerId.current)
+    else setSheetLayer(layerId.current, content)
   })
 
   // Unmounting mid-animation would otherwise strand the layer, and with it a full-screen backdrop.
