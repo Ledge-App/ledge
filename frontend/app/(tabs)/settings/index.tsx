@@ -44,6 +44,11 @@ export default function SettingsIndexScreen() {
             label="Notifications"
             onPress={() => router.push('/(tabs)/settings/notifications')}
           />
+          <SettingsRow
+            icon="card"
+            label="Apple Accounts"
+            onPress={() => router.push('/(tabs)/settings/apple-accounts')}
+          />
         </View>
       </View>
 

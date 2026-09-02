@@ -1,0 +1,153 @@
+diff --git a/node_modules/expo-finance-kit/ios/ExpoFinanceKitModule.swift b/node_modules/expo-finance-kit/ios/ExpoFinanceKitModule.swift
+index 2d4611a..a9e8515 100644
+--- a/node_modules/expo-finance-kit/ios/ExpoFinanceKitModule.swift
++++ b/node_modules/expo-finance-kit/ios/ExpoFinanceKitModule.swift
+@@ -61,10 +61,12 @@ public class ExpoFinanceKitModule: Module {
+         let accountId = account.id.uuidString
+         if let balance = balances.first(where: { $0["accountId"] as? String == accountId }) {
+           var amount = balance["amount"] as? Double ?? 0.0
++          var creditLimitValue: Double? = nil
+ 
+           if let liabilityAccount = account.liabilityAccount,
+              let creditLimit = liabilityAccount.creditInformation.creditLimit {
+-              amount = NSDecimalNumber(decimal: creditLimit.amount).doubleValue - amount
++              creditLimitValue = NSDecimalNumber(decimal: creditLimit.amount).doubleValue
++              amount = creditLimitValue! - amount
+           }
+           
+           var accountType: String = "unknown"
+@@ -81,7 +83,8 @@ public class ExpoFinanceKitModule: Module {
+             "accountDescription": account.accountDescription,
+             "currencyCode": account.currencyCode,
+             "accountType": accountType,
+-            "balance": amount
++            "balance": amount,
++            "creditLimit": creditLimitValue
+           ])
+         }
+       }
+@@ -104,40 +107,40 @@ public class ExpoFinanceKitModule: Module {
+       let startDate = startDate != nil ? Date(timeIntervalSince1970: startDate! / 1000) : nil
+       let endDate = endDate != nil ? Date(timeIntervalSince1970: endDate! / 1000) : nil
+ 
+-      var predicate: Predicate<Transaction>?
++      var predicate: Predicate<FinanceKit.Transaction>?
+ 
+       if let accountIdString = accountId,
+         let uuid = UUID(uuidString: accountIdString)
+       {
+         if let start = startDate, let end = endDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.accountID == uuid && transaction.transactionDate >= start
+               && transaction.transactionDate <= end
+           }
+         } else if let start = startDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.accountID == uuid && transaction.transactionDate >= start
+           }
+         } else if let end = endDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.accountID == uuid && transaction.transactionDate <= end
+           }
+         } else {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.accountID == uuid
+           }
+         }
+       } else {
+         if let start = startDate, let end = endDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.transactionDate >= start && transaction.transactionDate <= end
+           }
+         } else if let start = startDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.transactionDate >= start
+           }
+         } else if let end = endDate {
+-          predicate = #Predicate<Transaction> { transaction in
++          predicate = #Predicate<FinanceKit.Transaction> { transaction in
+             transaction.transactionDate <= end
+           }
+         }
+@@ -145,7 +148,7 @@ public class ExpoFinanceKitModule: Module {
+ 
+       // Create query with predicate
+       let query = TransactionQuery(
+-        sortDescriptors: [SortDescriptor(\Transaction.transactionDate, order: .reverse)],
++        sortDescriptors: [SortDescriptor(\FinanceKit.Transaction.transactionDate, order: .reverse)],
+         predicate: predicate,
+         limit: nil,
+         offset: nil
+@@ -161,6 +164,8 @@ public class ExpoFinanceKitModule: Module {
+           "transactionDate": transaction.transactionDate.timeIntervalSince1970 * 1000,
+           "merchantName": transaction.merchantName,
+           "transactionDescription": transaction.transactionDescription,
++      "originalTransactionDescription": transaction.originalTransactionDescription,
++      "postedDate": transaction.postedDate.map { $0.timeIntervalSince1970 * 1000 },
+           "merchantCategoryCode": transaction.merchantCategoryCode?.rawValue,
+           "status": convertTransactionStatusToString(transaction.status),
+           "transactionType": convertTransactionTypeToString(transaction.transactionType),
+@@ -191,20 +196,32 @@ public class ExpoFinanceKitModule: Module {
+       }
+ 
+       return uniqueBalances.values.map { balance in
+-        var amount: Decimal = 0.0
++        var available: Decimal? = nil
++        var booked: Decimal? = nil
++        var balanceType = "unknown"
+ 
+         switch balance.currentBalance {
+         case .available(let availableBalance):
+-          amount = availableBalance.amount.amount
++          available = availableBalance.amount.amount
++          balanceType = "available"
+         case .booked(let bookedBalance):
+-          amount = bookedBalance.amount.amount
+-        case .availableAndBooked(let availableBalance, _):
+-          amount = availableBalance.amount.amount
++          booked = bookedBalance.amount.amount
++          balanceType = "booked"
++        case .availableAndBooked(let availableBalance, let bookedBalance):
++          available = availableBalance.amount.amount
++          booked = bookedBalance.amount.amount
++          balanceType = "availableAndBooked"
+         }
+ 
++        // `amount` preserved unchanged so getAccounts' credit-limit subtraction still works.
++        let amount = available ?? booked ?? 0.0
++
+         return [
+           "id": balance.id.uuidString,
+           "amount": NSDecimalNumber(decimal: amount).doubleValue,
++          "available": available.map { NSDecimalNumber(decimal: $0).doubleValue },
++          "booked": booked.map { NSDecimalNumber(decimal: $0).doubleValue },
++          "balanceType": balanceType,
+           "currencyCode": balance.currencyCode,
+           "accountId": balance.accountID.uuidString,
+         ]
+@@ -495,8 +512,8 @@ class TransactionMonitor {
+   private var appGroupIdentifier: String?
+   
+   private struct TransactionChangePayload {
+-    var inserted: [Transaction] = []
+-    var updated: [Transaction] = []
++    var inserted: [FinanceKit.Transaction] = []
++    var updated: [FinanceKit.Transaction] = []
+     var deleted: [UUID] = []
+   }
+   
+@@ -798,7 +815,7 @@ class TransactionMonitor {
+     return result
+   }
+   
+-  private func convertTransactionToDict(_ transaction: Transaction) -> [String: Any?] {
++  private func convertTransactionToDict(_ transaction: FinanceKit.Transaction) -> [String: Any?] {
+     return [
+       "id": transaction.id.uuidString,
+       "accountId": transaction.accountID.uuidString,

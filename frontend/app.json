@@ -53,7 +53,23 @@
         }
       ],
       "expo-notifications",
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.4"
+          }
+        }
+      ],
+      "./plugins/withFinanceKitEntitlement",
+      [
+        "expo-finance-kit/plugin/build/index.js",
+        {
+          "usageDescription": "ToFi reads your Apple Card, Apple Cash, and Savings transactions and balances on this iPhone so they appear in your net worth, budgets, and spending categories. This data stays on your device.",
+          "enableBackgroundDelivery": false
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/96613371-347c-470f-9fee-122140c33376"

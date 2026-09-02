@@ -28,7 +28,10 @@ function DayGroupHeaderComponent({ date, items, className }: DayGroupHeaderProps
 
   return (
     <View className={className ?? 'flex-row items-center justify-between py-3'}>
-      <Text className="font-sansSemi text-sm text-textPrimary">{formatDayLabel(date)}</Text>
+      {/* Read here rather than passed in: threading a `now` prop through every list that renders a
+          day header would churn five call sites to decide whether to print four characters, and
+          this component is memoized on its props, so reading the clock does not add a render. */}
+      <Text className="font-sansSemi text-sm text-textPrimary">{formatDayLabel(date, Date.now())}</Text>
       <View className="flex-row gap-3">
         {income > 0 ? <Text className="font-sans text-xs text-income">IN {formatAmount(income)}</Text> : null}
         {expense > 0 ? <Text className="font-sans text-xs text-expense">OUT {formatAmount(expense)}</Text> : null}

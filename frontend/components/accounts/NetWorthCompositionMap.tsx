@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import { assetClassColors, liabilityColors } from '@/constants/theme'
 import { TreemapTile } from '@/components/accounts/TreemapTile'
 import { AccountGlyph } from '@/components/accounts/AccountGlyph'
-import { variantIcons } from '@/components/accounts/AccountRow'
+import { accountFallbackIcon, variantIcons } from '@/components/accounts/AccountRow'
 import { CASH_ON_HAND_KEY, computeNetWorthComposition, layoutComposition } from '@/lib/accounts/composition'
 import { formatAmount } from '@/lib/format/money'
 import type { Account } from '@/types/domain'
@@ -18,11 +18,11 @@ const MAP_HEIGHT = 200
  * Stand-in glyph when Plaid has no logo for an institution, or the row has no institution at
  * all. Mirrors the accounts list's own fallbacks so the same account looks the same on both.
  */
-function fallbackIconFor(groupKey: string, accountKey: string) {
+function fallbackIconFor(groupKey: string, accountKey: string, itemId: string | null) {
   if (accountKey === CASH_ON_HAND_KEY) return variantIcons.cashOnHand
-  if (groupKey === 'investment') return variantIcons.investment
-  if (groupKey === 'liability') return variantIcons.credit
-  return variantIcons.cash
+  const variant = groupKey === 'investment' ? 'investment' : groupKey === 'liability' ? 'credit' : 'cash'
+  // Through the shared helper, so an Apple account carries the same mark it does in the list.
+  return accountFallbackIcon(variant, itemId)
 }
 const ACCOUNT_TINT_MAX = 0.4
 const ACCOUNT_TINT_STEP = 0.06
@@ -64,7 +64,11 @@ export function NetWorthCompositionMap({ accounts, feed }: { accounts: Account[]
     .find(({ account }) => account.key === selectedKey)
   const selected = selectedEntry?.account ?? null
   const selectedIcon = selectedEntry
-    ? fallbackIconFor(selectedEntry.account.isLiability ? 'liability' : selectedEntry.groupKey, selectedEntry.account.key)
+    ? fallbackIconFor(
+        selectedEntry.account.isLiability ? 'liability' : selectedEntry.groupKey,
+        selectedEntry.account.key,
+        selectedEntry.account.itemId,
+      )
     : null
 
   return (
@@ -111,7 +115,7 @@ export function NetWorthCompositionMap({ accounts, feed }: { accounts: Account[]
                   tint={Math.max(ACCOUNT_TINT_MAX - index * ACCOUNT_TINT_STEP, ACCOUNT_TINT_MIN)}
                   title={item.label}
                   logo={item.logo}
-                  fallbackIcon={fallbackIconFor(item.isLiability ? 'liability' : group.key, item.key)}
+                  fallbackIcon={fallbackIconFor(item.isLiability ? 'liability' : group.key, item.key, item.itemId)}
                   share={`${item.shareOfTotal >= 0.1 ? Math.round(item.shareOfTotal * 100) : (item.shareOfTotal * 100).toFixed(1)}%`}
                   isSelected={item.key === selectedKey}
                   onPress={() => setSelectedKey((current) => (current === item.key ? null : item.key))}

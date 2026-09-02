@@ -60,6 +60,26 @@ describe('resolveCategory PFC fallback', () => {
     expect(result).toEqual({ categoryId: 'cat-transfers-in', subcategoryId: null, categorySource: 'plaid_pfc' })
   })
 
+  it('labels a PFC that came from an MCC crosswalk as mcc_pfc, not plaid_pfc', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-apple-card', merchantName: 'Brand New Grocer', pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES', pfcSource: 'mcc' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result).toEqual({ categoryId: 'cat-food', subcategoryId: null, categorySource: 'mcc_pfc' })
+  })
+
+  it('still prefers an override over an MCC-derived PFC', () => {
+    const result = resolveCategory(
+      { transactionId: 'txn-override', merchantName: null, pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES', pfcSource: 'mcc' },
+      overrides,
+      vendorMappings,
+      pfcMappings,
+    )
+    expect(result.categorySource).toBe('override')
+  })
+
   it('categorizes a merchant that has no vendor mapping yet via its PFC detailed code', () => {
     const result = resolveCategory(
       { transactionId: 'txn-new', merchantName: 'Brand New Grocer', pfcPrimary: 'FOOD_AND_DRINK', pfcDetailed: 'FOOD_AND_DRINK_GROCERIES' },

@@ -7,7 +7,6 @@ import { DayGroupHeader } from '@/components/transactions/DayGroupHeader'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import {
   TransactionEditorErrorBanner,
-  TransactionEditorProvider,
   useTransactionEditorActions,
 } from '@/components/transactions/TransactionEditorProvider'
 import { colors } from '@/constants/theme'
@@ -279,168 +278,164 @@ export function InvestmentDetailSheet({
 
   return (
     <BottomSheet visible={account != null} onClose={onClose} contentScroll={sheetScroll}>
-      {/* Provider inside the sheet, so the edit sheets' Modal still mounts nested inside this
-          one's — presenting it as a sibling would fight this Modal for the screen. */}
-      <TransactionEditorProvider feed={feed}>
-        <View className="flex-row items-center justify-between px-5 py-3">
-          <Pressable onPress={onClose} hitSlop={8}>
-            <Ionicons name="close" size={22} color={colors.textSecondary} />
-          </Pressable>
-          <Text className="mx-3 flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>
-            {account?.name ?? ''}
-          </Text>
-          <View style={{ width: 22 }} />
-        </View>
+      <View className="flex-row items-center justify-between px-5 py-3">
+        <Pressable onPress={onClose} hitSlop={8}>
+          <Ionicons name="close" size={22} color={colors.textSecondary} />
+        </Pressable>
+        <Text className="mx-3 flex-1 text-center font-display text-md text-textPrimary" numberOfLines={1}>
+          {account?.name ?? ''}
+        </Text>
+        <View style={{ width: 22 }} />
+      </View>
 
-        <View className="items-center pb-4">
-          <Text className="font-display text-xl text-textPrimary">
-            {formatMaskableAmount(account?.balances?.current ?? 0, isMasked)}
-          </Text>
-          {/* Hidden entirely when no holding carries a price date: a confident-looking "as of"
-              over an unknown pricing time is the one genuinely misleading thing this label
-              could say. */}
-          {asOfLabel ? (
-            <Pressable
-              onPress={() => setShowRefreshInfo((shown) => !shown)}
-              hitSlop={8}
-              className="mt-1 flex-row items-center gap-1"
-            >
-              <Text className="font-sans text-xs text-textMuted">Updated {asOfLabel}</Text>
-              <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
-          {/* A Modal rather than inline text so the explanation reads as a tooltip and never
-              reflows the sheet under the user's finger. Nested inside the sheet's own Modal,
-              which RN allows; the backdrop dismisses it so there is no button to miss. */}
-          <Modal
-            visible={showRefreshInfo}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowRefreshInfo(false)}
+      <View className="items-center pb-4">
+        <Text className="font-display text-xl text-textPrimary">
+          {formatMaskableAmount(account?.balances?.current ?? 0, isMasked)}
+        </Text>
+        {/* Hidden entirely when no holding carries a price date: a confident-looking "as of"
+            over an unknown pricing time is the one genuinely misleading thing this label
+            could say. */}
+        {asOfLabel ? (
+          <Pressable
+            onPress={() => setShowRefreshInfo((shown) => !shown)}
+            hitSlop={8}
+            className="mt-1 flex-row items-center gap-1"
           >
-            <Pressable
-              className="flex-1 items-center justify-center px-10"
-              style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
-              onPress={() => setShowRefreshInfo(false)}
-            >
-              <View className="w-full rounded-2xl p-5" style={{ backgroundColor: colors.surface }}>
-                <Text className="font-sansSemi text-sm text-textPrimary">How often values update</Text>
-                <Text className="mt-2 font-sans text-xs leading-5 text-textMuted">
-                  Plaid collects new values from your brokerage at least once every market day,
-                  usually after close. Markets are shut on weekends and holidays, so a value can be a
-                  few days old even right after a refresh.
-                </Text>
-              </View>
-            </Pressable>
-          </Modal>
-        </View>
-
-        <View className="px-5">
-          <TransactionEditorErrorBanner />
-        </View>
-
-        <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="pb-10">
-          {holdings.isLoading ? (
-            <View className="items-center py-8">
-              <ActivityIndicator color={colors.primary} />
+            <Text className="font-sans text-xs text-textMuted">Updated {asOfLabel}</Text>
+            <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+        {/* A Modal rather than inline text so the explanation reads as a tooltip and never
+            reflows the sheet under the user's finger. Nested inside the sheet's own Modal,
+            which RN allows; the backdrop dismisses it so there is no button to miss. */}
+        <Modal
+          visible={showRefreshInfo}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowRefreshInfo(false)}
+        >
+          <Pressable
+            className="flex-1 items-center justify-center px-10"
+            style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+            onPress={() => setShowRefreshInfo(false)}
+          >
+            <View className="w-full rounded-2xl p-5" style={{ backgroundColor: colors.surface }}>
+              <Text className="font-sansSemi text-sm text-textPrimary">How often values update</Text>
+              <Text className="mt-2 font-sans text-xs leading-5 text-textMuted">
+                Plaid collects new values from your brokerage at least once every market day,
+                usually after close. Markets are shut on weekends and holidays, so a value can be a
+                few days old even right after a refresh.
+              </Text>
             </View>
-          ) : holdings.error ? (
-            <Text className="py-8 text-center font-sans text-sm text-textMuted">
-              {needsRelink
-                ? 'This institution needs to be reconnected to share holdings. Remove and relink it from Settings → Institutions.'
-                : "Couldn't load holdings for this account."}
-            </Text>
-          ) : (holdings.data?.length ?? 0) === 0 ? (
-            // Covers the "nothing at all" case too: when activity is also empty this is the
-            // sheet's only message, and it still reads correctly — there ARE no holdings.
-            <Text className="py-8 text-center font-sans text-sm text-textMuted">No holdings in this account</Text>
-          ) : (
-            <>
-              <HoldingsHeatMap holdings={holdings.data!} />
+          </Pressable>
+        </Modal>
+      </View>
 
-              {/* Two panes, one table. The pinned pane carries the STOCK header and every
-                  label; the ScrollView carries the numeric header AND every numeric row, which
-                  is what keeps the header locked to its columns — one scroll offset, no syncing
-                  code. Both panes emit rows from the same array, so order cannot drift. */}
-              <View className="mt-4 flex-row">
-                <View style={{ width: LABEL_WIDTH }}>
+      <View className="px-5">
+        <TransactionEditorErrorBanner />
+      </View>
+
+      <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="pb-10">
+        {holdings.isLoading ? (
+          <View className="items-center py-8">
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : holdings.error ? (
+          <Text className="py-8 text-center font-sans text-sm text-textMuted">
+            {needsRelink
+              ? 'This institution needs to be reconnected to share holdings. Remove and relink it from Settings → Institutions.'
+              : "Couldn't load holdings for this account."}
+          </Text>
+        ) : (holdings.data?.length ?? 0) === 0 ? (
+          // Covers the "nothing at all" case too: when activity is also empty this is the
+          // sheet's only message, and it still reads correctly — there ARE no holdings.
+          <Text className="py-8 text-center font-sans text-sm text-textMuted">No holdings in this account</Text>
+        ) : (
+          <>
+            <HoldingsHeatMap holdings={holdings.data!} />
+
+            {/* Two panes, one table. The pinned pane carries the STOCK header and every
+                label; the ScrollView carries the numeric header AND every numeric row, which
+                is what keeps the header locked to its columns — one scroll offset, no syncing
+                code. Both panes emit rows from the same array, so order cannot drift. */}
+            <View className="mt-4 flex-row">
+              <View style={{ width: LABEL_WIDTH }}>
+                <View
+                  className="justify-end border-b pb-2"
+                  style={{ borderColor: colors.borderStrong, height: HEADER_HEIGHT }}
+                >
+                  <Text className="font-sansMed text-xs text-textMuted">STOCK</Text>
+                </View>
+                {rows.map((cells) => (
+                  <HoldingLabelCell key={cells.holding.securityId} holding={cells.holding} />
+                ))}
+              </View>
+
+              {/* The sheet's drag-to-dismiss only claims a gesture when |dy| > |dx|, so a
+                  sideways swipe here can never dismiss the sheet. */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-1">
+                <View>
                   <View
-                    className="justify-end border-b pb-2"
+                    className="flex-row items-end border-b pb-2"
                     style={{ borderColor: colors.borderStrong, height: HEADER_HEIGHT }}
                   >
-                    <Text className="font-sansMed text-xs text-textMuted">STOCK</Text>
-                  </View>
-                  {rows.map((cells) => (
-                    <HoldingLabelCell key={cells.holding.securityId} holding={cells.holding} />
-                  ))}
-                </View>
-
-                {/* The sheet's drag-to-dismiss only claims a gesture when |dy| > |dx|, so a
-                    sideways swipe here can never dismiss the sheet. */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-1">
-                  <View>
-                    <View
-                      className="flex-row items-end border-b pb-2"
-                      style={{ borderColor: colors.borderStrong, height: HEADER_HEIGHT }}
-                    >
-                      {COLUMN_ORDER.map((key) => (
-                        <Text
-                          key={key}
-                          className="text-right font-sansMed text-xs text-textMuted"
-                          style={{ width: widths[key] }}
-                        >
-                          {HEADERS[key]}
-                        </Text>
-                      ))}
-                    </View>
-                    {rows.map((cells) => (
-                      <HoldingNumbersRow key={cells.holding.securityId} cells={cells} widths={widths} />
+                    {COLUMN_ORDER.map((key) => (
+                      <Text
+                        key={key}
+                        className="text-right font-sansMed text-xs text-textMuted"
+                        style={{ width: widths[key] }}
+                      >
+                        {HEADERS[key]}
+                      </Text>
                     ))}
                   </View>
-                </ScrollView>
-              </View>
-            </>
-          )}
+                  {rows.map((cells) => (
+                    <HoldingNumbersRow key={cells.holding.securityId} cells={cells} widths={widths} />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          </>
+        )}
 
-          {/* Sibling of the holdings conditional above, not nested inside its success branch:
-              transfers come from the feed, independent of holdings' network loading/error/empty
-              states — e.g. a fully-liquidated account has real transfers to show with zero
-              current holdings.
+        {/* Sibling of the holdings conditional above, not nested inside its success branch:
+            transfers come from the feed, independent of holdings' network loading/error/empty
+            states — e.g. a fully-liquidated account has real transfers to show with zero
+            current holdings.
 
-              Same DayGroupHeader + TransactionRow the account and category sheets render, so a
-              transfer greys out, badges "Transfer · Auto" and opens the same detail sheet here as
-              everywhere else — none of which is re-implemented on this screen. */}
-          {items.length > 0 ? (
-            <>
-              {/* Principal sits on the TRANSFERS row because it is the sum of exactly these rows —
-                  reading it beside the list it totals is what makes it self-explanatory.
+            Same DayGroupHeader + TransactionRow the account and category sheets render, so a
+            transfer greys out, badges "Transfer · Auto" and opens the same detail sheet here as
+            everywhere else — none of which is re-implemented on this screen. */}
+        {items.length > 0 ? (
+          <>
+            {/* Principal sits on the TRANSFERS row because it is the sum of exactly these rows —
+                reading it beside the list it totals is what makes it self-explanatory.
 
-                  It covers only what the feed holds (~24 months from the investments endpoint), so
-                  on an older account it understates. No gain is derived from it for that reason:
-                  market value minus a windowed principal would report pre-window contributions as
-                  profit. The GAIN column above is a different quantity and safe — it comes from the
-                  institution's own reported cost basis, which has no window. */}
-              <View className="mb-1 mt-6 flex-row items-baseline justify-between">
-                <Text className="font-sansMed text-xs text-textMuted">TRANSFERS</Text>
-                {principal !== null ? (
-                  <Text className="font-sansSemi text-sm text-textPrimary">
-                    {/* Magnitude plus a direction word, not a signed amount: an account being drawn
-                        down nets out negative, and "-$3,000.00 in" reads as a typo where
-                        "$3,000.00 out" reads as the fact it is. */}
-                    {formatMaskableAmount(Math.abs(principal), isMasked)} {principal < 0 ? 'out' : 'in'}
-                  </Text>
-                ) : null}
-              </View>
-              <InvestmentTransferDays shownDays={shownDays} categoryById={categoryById} />
-              {hiddenCount > 0 ? (
-                <Text className="py-3 text-center font-sans text-xs text-textMuted">
-                  {hiddenCount} older {hiddenCount === 1 ? 'transfer' : 'transfers'} not shown
+                It covers only what the feed holds (~24 months from the investments endpoint), so
+                on an older account it understates. No gain is derived from it for that reason:
+                market value minus a windowed principal would report pre-window contributions as
+                profit. The GAIN column above is a different quantity and safe — it comes from the
+                institution's own reported cost basis, which has no window. */}
+            <View className="mb-1 mt-6 flex-row items-baseline justify-between">
+              <Text className="font-sansMed text-xs text-textMuted">TRANSFERS</Text>
+              {principal !== null ? (
+                <Text className="font-sansSemi text-sm text-textPrimary">
+                  {/* Magnitude plus a direction word, not a signed amount: an account being drawn
+                      down nets out negative, and "-$3,000.00 in" reads as a typo where
+                      "$3,000.00 out" reads as the fact it is. */}
+                  {formatMaskableAmount(Math.abs(principal), isMasked)} {principal < 0 ? 'out' : 'in'}
                 </Text>
               ) : null}
-            </>
-          ) : null}
-        </ScrollView>
-      </TransactionEditorProvider>
+            </View>
+            <InvestmentTransferDays shownDays={shownDays} categoryById={categoryById} />
+            {hiddenCount > 0 ? (
+              <Text className="py-3 text-center font-sans text-xs text-textMuted">
+                {hiddenCount} older {hiddenCount === 1 ? 'transfer' : 'transfers'} not shown
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
     </BottomSheet>
   )
 }

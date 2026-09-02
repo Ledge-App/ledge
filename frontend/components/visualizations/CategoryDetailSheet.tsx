@@ -4,7 +4,6 @@ import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
 import type { SheetScroll } from '@/components/ui/BottomSheet'
 import { DayGroupedTransactions } from '@/components/transactions/DayGroupedTransactions'
 import {
-  TransactionEditorProvider,
   useTransactionEditorActions,
 } from '@/components/transactions/TransactionEditorProvider'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -91,16 +90,13 @@ export function CategoryDetailSheet({ visible, segment, allSegments, transaction
 
   return (
     <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
-      {/* Provider inside the sheet, so the edit sheets' Modal still mounts nested inside this
-          one's — presenting it as a sibling would fight this Modal for the screen. */}
-      <TransactionEditorProvider feed={feed}>
-        <CategoryDetailSheetBody
+      {/* No provider here: it is mounted once in the tabs layout. See AuthedShell there. */}
+      <CategoryDetailSheetBody
           segment={segment}
           allSegments={allSegments}
           transactions={transactions}
           sheetScroll={sheetScroll}
         />
-      </TransactionEditorProvider>
     </BottomSheet>
   )
 }

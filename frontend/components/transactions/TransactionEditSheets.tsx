@@ -5,12 +5,11 @@ import { TransactionDetailSheet } from '@/components/transactions/TransactionDet
 import { ManualTransactionSheet } from '@/components/transactions/ManualTransactionSheet'
 import { TransferSheet } from '@/components/transfers/TransferSheet'
 import type { TransactionEditor } from '@/hooks/useTransactionEditor'
+import { activeSheetOf, type ActiveSheet } from '@/lib/transfers/transferReturn'
 
 interface TransactionEditSheetsProps {
   editor: TransactionEditor
 }
-
-type ActiveSheet = 'detail' | 'transfer' | 'manual'
 
 /**
  * ONE bottom sheet, three contents.
@@ -36,24 +35,13 @@ export function TransactionEditSheets({ editor }: TransactionEditSheetsProps) {
   // own ScrollView; this is only how the sheet learns whether that scrollable sits at the top.
   const sheetScroll = useSheetScroll()
 
-  // Transfer wins over detail, and detail over manual: during a handoff both flags are written in
-  // the same batch, so the order here decides only what a mid-write render would show. Reading it
-  // as a single value is what keeps the host from ever having two contents visible at once.
-  const active: ActiveSheet | null =
-    editor.transferItem != null
-      ? 'transfer'
-      : editor.activeSheetItem != null
-        ? 'detail'
-        : editor.manualSheetOpen
-          ? 'manual'
-          : null
-
-  // Each content mounts its own ScrollView at the top, but no scroll event fires to say so — a
-  // stale offset from the previous content would wrongly hold the sheet undraggable. A swap keeps
-  // the sheet open, so nothing else resets it.
-  useEffect(() => {
-    sheetScroll.offsetY.value = 0
-  }, [active, sheetScroll])
+  // Derived by the same function the editor's transfer-return invariant is tested against, so
+  // "which sheet is showing" has one definition rather than two that can drift.
+  const active: ActiveSheet | null = activeSheetOf({
+    detailItem: editor.activeSheetItem,
+    transferItem: editor.transferItem,
+    manualOpen: editor.manualSheetOpen,
+  })
 
   const onClose =
     active === 'transfer'

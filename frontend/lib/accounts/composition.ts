@@ -22,6 +22,9 @@ export interface CompositionAccount {
   isLiability: boolean
   /** Base64 PNG institution logo, when the item came from a linked institution. */
   logo: string | null
+  /** The account's item, null for the built-in cash row. Read only to spot Apple accounts, which
+   *  have no logo and take the Apple mark rather than a generic glyph. */
+  itemId: string | null
   /** Masked account number ("··1234"), null for the built-in cash row. */
   mask: string | null
   value: number
@@ -79,6 +82,7 @@ export function computeNetWorthComposition(accounts: Account[], feed: FeedItem[]
       label: account.name,
       isLiability,
       logo: account.institutionLogo || null,
+      itemId: account.itemId ?? null,
       mask: account.mask ? `··${account.mask}` : null,
       value,
       weight: 0,
@@ -91,12 +95,13 @@ export function computeNetWorthComposition(accounts: Account[], feed: FeedItem[]
 
   const cashOnHand = computeCashOnHand(feed)
   if (cashOnHand > 0) {
-    // The built-in cash row has no institution behind it, so no logo and no mask.
+    // The built-in cash row has no institution behind it, so no logo, no item and no mask.
     cash.push({
       key: CASH_ON_HAND_KEY,
       label: 'Cash',
       isLiability: false,
       logo: null,
+      itemId: null,
       mask: null,
       value: cashOnHand,
       weight: 0,

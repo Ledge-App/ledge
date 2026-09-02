@@ -9,6 +9,13 @@ import { useTransfers } from './useTransfers'
 import { useManualTransactions } from './useManualTransactions'
 import { buildTransferInputs } from '@/lib/transfers/buildTransferInputs'
 import { transferCandidates } from '@/lib/transfers/candidates'
+import {
+  openTransferFrom,
+  openTransferFromManual,
+  selectionAfterTransfer,
+  transferReturnFor,
+  type TransferReturn,
+} from '@/lib/transfers/transferReturn'
 import type { PendingTransfer } from '@/lib/transfers/buildTransferInputs'
 import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
 import type { Account, Category, ManualTransaction, Subcategory, TransferKind } from '@/types/domain'
@@ -91,6 +98,13 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
   const [transferItem, setTransferItem] = useState<FeedItem | null>(null)
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
   const [transferForcedKind, setTransferForcedKind] = useState<TransferKind | undefined>(undefined)
+  /**
+   * Where closing the transfer sheet returns to, captured when it opens.
+   *
+   * Non-null for the whole time the transfer sheet is open, which is what makes "every sheet closed"
+   * unreachable from confirm or decline. See lib/transfers/transferReturn.ts.
+   */
+  const [transferReturn, setTransferReturn] = useState<TransferReturn | null>(null)
 
   const accounts = useAccounts()
   const categories = useCategories()
@@ -247,42 +261,51 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       if (!activeSheetItem) return
       const item = activeSheetItem
       setTransferForcedKind(forcedKind)
-      // Batched into one render, so the host never sees both set and never flickers between them.
-      setActiveSheetItem(null)
-      setTransferItem(item)
+      // One transition rather than two setters, so no render can observe both sheets set or
+      // neither. Batched anyway, but this is the version the sequence test drives.
+      const { selection, transferReturn: destination } = openTransferFrom(item, editingManual?.id ?? null)
+      setTransferReturn(destination)
+      setActiveSheetItem(selection.detailItem)
+      setTransferItem(selection.transferItem)
+      setManualSheetOpen(selection.manualOpen)
     },
-    [activeSheetItem],
+    [activeSheetItem, editingManual],
   )
 
-  // A manual item's flow came from the manual edit sheet (which still holds editingManual), so
-  // confirm/decline must land back there — reopening the Plaid-shaped detail sheet for a
-  // manual row was the old flow's detour.
-  const cameFromManualSheet = useCallback(
-    (item: FeedItem | null) => item?.source === 'manual' && editingManual?.id === item?.id,
-    [editingManual],
-  )
+  /**
+   * Reopens whichever sheet the transfer flow came from.
+   *
+   * Reads the destination captured at open time rather than re-deriving it, so there is no path
+   * where every sheet ends closed. The transferItem fallback covers a confirm arriving without a
+   * recorded return — it cannot happen through the UI, but silently dismissing the user's edit is
+   * the wrong answer if it ever does.
+   */
+  const resumeAfterTransfer = useCallback(() => {
+    const destination = transferReturn ?? (transferItem ? transferReturnFor(transferItem, editingManual?.id ?? null) : null)
+    setTransferReturn(null)
+    if (!destination) return
+    // selectionAfterTransfer, not two ad-hoc setters: it is the function the invariant test drives,
+    // so shipping anything else would leave that test proving something the app does not do.
+    const selection = selectionAfterTransfer(destination)
+    setActiveSheetItem(selection.detailItem)
+    setManualSheetOpen(selection.manualOpen)
+  }, [transferReturn, transferItem, editingManual])
 
   // Confirming doesn't write anything yet — it hands the choice back to the sheet it came
   // from, which saves the edit and the transfer together.
   const confirmTransfer = useCallback(
     ({ kind, counterpartIds }: { kind: TransferKind; counterpartIds: string[] }) => {
-      const item = transferItem
       setPendingTransfer({ kind, counterpartIds })
       setTransferItem(null)
-      if (!item) return
-      if (cameFromManualSheet(item)) setManualSheetOpen(true)
-      else setActiveSheetItem(item)
+      resumeAfterTransfer()
     },
-    [transferItem, cameFromManualSheet],
+    [transferReturn, resumeAfterTransfer],
   )
 
   const declineTransfer = useCallback(() => {
-    const item = transferItem
     setTransferItem(null)
-    if (!item) return
-    if (cameFromManualSheet(item)) setManualSheetOpen(true)
-    else setActiveSheetItem(item)
-  }, [transferItem, cameFromManualSheet])
+    resumeAfterTransfer()
+  }, [resumeAfterTransfer])
 
   // Removes one link. unmark rather than delete, so the dismissal it writes stops the next
   // detection pass re-creating the pair the user just took apart.
@@ -328,8 +351,11 @@ export function useTransactionEditor(feed: FeedItem[]): TransactionEditor {
       // Set (or cleared) explicitly: a forced kind left over from an earlier reimbursement
       // flow would otherwise lock a plain transfer marking to the wrong kind.
       setTransferForcedKind(forcedKind)
-      setManualSheetOpen(false)
-      setTransferItem(item)
+      const { selection, transferReturn: destination } = openTransferFromManual(item)
+      setTransferReturn(destination)
+      setActiveSheetItem(selection.detailItem)
+      setTransferItem(selection.transferItem)
+      setManualSheetOpen(selection.manualOpen)
     },
     [editedManualAsFeedItem],
   )

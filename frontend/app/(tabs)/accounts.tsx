@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { router } from 'expo-router'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { colors } from '@/constants/theme'
@@ -81,6 +81,8 @@ export default function AccountsTab() {
         title: 'Cash',
         balance: cashOnHand,
         variant: 'cashOnHand' as const,
+        // The built-in cash row has no institution behind it, so no item either.
+        itemId: null,
         items: feed.filter((item) => item.source === 'manual'),
         emptyLabel: 'No cash transactions yet',
       }
@@ -88,6 +90,7 @@ export default function AccountsTab() {
     return {
       title: detailTarget.name,
       balance: detailTarget.balances?.current ?? 0,
+      itemId: detailTarget.itemId,
       variant: isLiabilityAccount(detailTarget) ? ('credit' as const) : isInvestmentAccount(detailTarget) ? ('investment' as const) : ('cash' as const),
       items: feed.filter((item) => item.accountId === detailTarget.account_id),
       emptyLabel: 'No transactions for this account',
@@ -158,18 +161,31 @@ export default function AccountsTab() {
               <Text className="font-sans text-xs leading-4 text-textMuted">
                 Its balances and transactions are out of date.
               </Text>
-              {/* Update mode: this repairs the existing connection in place rather than
-                  replacing it, so it costs no Plaid connection and the sync cursor survives. */}
-              <Pressable
-                onPress={() => addAccount.repairConnection(itemError.itemId)}
-                disabled={isConnecting}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Reconnect ${itemError.institutionName}`}
-                className="pt-1"
-              >
-                <Text className="font-sansMed text-xs text-primary">Reconnect</Text>
-              </Pressable>
+              {/* Branched on kind: "Reconnect" means Plaid Link update mode, which has no meaning
+                  for Apple accounts — FinanceKit access can only be restored in iOS Settings, and
+                  the app cannot request it again once denied. */}
+              {itemError.kind === 'financekit' ? (
+                <Pressable
+                  onPress={() => void Linking.openSettings()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Settings to restore access to your Apple accounts"
+                  className="pt-1"
+                >
+                  <Text className="font-sansMed text-xs text-primary">Open Settings</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => addAccount.repairConnection(itemError.itemId)}
+                  disabled={isConnecting}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reconnect ${itemError.institutionName}`}
+                  className="pt-1"
+                >
+                  <Text className="font-sansMed text-xs text-primary">Reconnect</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         ))}
@@ -207,6 +223,7 @@ export default function AccountsTab() {
                         balance={account.balances?.current ?? 0}
                         variant="cash"
                         logo={account.institutionLogo}
+                        itemId={account.itemId}
                         isMasked={isMasked}
                         onPress={() => setDetailTarget(account)}
                         {...handlers}
@@ -250,6 +267,7 @@ export default function AccountsTab() {
                         balance={account.balances?.current ?? 0}
                         variant="investment"
                         logo={account.institutionLogo}
+                        itemId={account.itemId}
                         isMasked={isMasked}
                         onPress={() => setInvestmentDetail(account)}
                         {...handlers}
@@ -285,6 +303,7 @@ export default function AccountsTab() {
                         balance={account.balances?.current ?? 0}
                         variant="credit"
                         logo={account.institutionLogo}
+                        itemId={account.itemId}
                         limit={account.balances?.limit ?? null}
                         isMasked={isMasked}
                         onPress={() => setDetailTarget(account)}
@@ -305,6 +324,19 @@ export default function AccountsTab() {
         institutions={addAccount.connectedInstitutions}
         logoByItemId={addAccount.logoByItemId}
         onManageInstitution={addAccount.manageInstitution}
+        appleAccounts={{
+          // Hidden entirely when the device cannot serve FinanceKit data, and once the accounts are
+          // already connected there is nothing left for this row to do.
+          visible: accounts.financeKitStatus !== null && accounts.financeKitStatus !== 'unavailable',
+          isConnected: accounts.financeKitStatus === 'authorized',
+          onConnect: async () => {
+            addAccount.closePicker()
+            const outcome = await accounts.syncFinanceKit({ requestIfNeeded: true })
+            // Denied is terminal for this session: iOS will not re-prompt, so the only remedy is
+            // Settings. The item-error row above carries that affordance once status is denied.
+            if (outcome.status === 'denied') void Linking.openSettings()
+          },
+        }}
         onConnectNewBank={addAccount.connectNewBank}
       />
 
@@ -331,6 +363,7 @@ export default function AccountsTab() {
         title={detail?.title ?? ''}
         balance={detail?.balance ?? 0}
         variant={detail?.variant ?? 'cash'}
+        itemId={detail?.itemId ?? null}
         items={detail?.items ?? []}
         feed={feed}
         emptyLabel={detail?.emptyLabel}

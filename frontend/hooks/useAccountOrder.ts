@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import { applyGroupOrder, toPositionMap } from '@/lib/accounts/order'
 
@@ -30,13 +30,22 @@ export function useAccountOrder() {
     onSettled: () => utils.accountOrders.list.invalidate(),
   })
 
+  // Memoized, not computed inline. useAccounts feeds this Map to the memo that sorts the account
+  // list, so a fresh Map per render meant a fresh accounts array per render — and accounts.data is
+  // the root of the transaction feed. Every render therefore re-derived itemIds, re-read every
+  // cached Plaid transaction out of MMKV, and rebuilt the entire feed, whose new identity then
+  // handed every transaction list a dataset it had never seen. See useAccountOrder.test.tsx for the
+  // measurements; the visible symptom was account sheets taking ~600ms to appear, with their
+  // entrance animation finishing before they were on screen.
+  const positionByAccountId = useMemo(() => toPositionMap(query.data ?? []), [query.data])
+
   const setOrder = useCallback(
     (accountIds: string[]) => mutation.mutateAsync({ accountIds }),
     [mutation],
   )
 
   return {
-    positionByAccountId: toPositionMap(query.data ?? []),
+    positionByAccountId,
     setOrder,
     error: mutation.error?.message ?? null,
     resetError: mutation.reset,

@@ -16,6 +16,7 @@ import {
 } from '@/lib/storage/mmkv'
 import { applyTransfers, mergeFeed, type FeedItem } from '@/lib/transactions/resolveFeed'
 import { planCachePrune } from '@/lib/transactions/pruneOrphaned'
+import { plaidItemIdsFrom } from '@/lib/financekit/mergeAccounts'
 import { applySweepExclusion } from '@/lib/transactions/sweepExclusion'
 import { aggregateMonth } from '@/lib/transactions/aggregateMonth'
 import { syncDriver } from '@/lib/transactions/syncDriver'
@@ -76,7 +77,10 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
   const transfers = useTransfers()
   const dismissals = useTransferDismissals()
 
-  const itemIds = useMemo(() => Array.from(new Set((accounts.data ?? []).map((a) => a.itemId))), [accounts.data])
+  // plaidItemIdsFrom, not a plain map over itemIds: Apple accounts carry the synthetic 'financekit'
+  // itemId, and everything downstream of this line — the sync driver, investment transactions, the
+  // cache prune, the Plaid MMKV cache — is Plaid-only and would silently misbehave on it.
+  const itemIds = useMemo(() => plaidItemIdsFrom(accounts.data ?? []), [accounts.data])
 
   const investmentTransactions = useInvestmentTransactions(itemIds)
 
@@ -124,12 +128,21 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     void syncDriver.syncNow({ itemIds, accountIdToItemId })
   }, [itemIds, accountIdToItemId])
 
-  const rawTransactions = useMemo(
+  const plaidTransactions = useMemo(
     () => itemIds.flatMap((itemId) => getCachedTransactions(itemId)),
     // Re-derive whenever a sync round completes, since MMKV writes happen as a side effect
     // of the driver rather than through React state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [itemIds, syncState.completedAt],
+  )
+
+  // Apple Card rows arrive already Plaid-shaped, carrying a PFC crosswalked from their MCC, so the
+  // whole chain below — resolveCategory, transfer auto-match, aggregateMonth, the sweep exclusion —
+  // treats them as ordinary card transactions. Unlike the Plaid arrays these come through React
+  // state (useFinanceKit owns the read), so no completedAt trick is needed.
+  const rawTransactions = useMemo(
+    () => [...plaidTransactions, ...accounts.financeKitTransactions],
+    [plaidTransactions, accounts.financeKitTransactions],
   )
 
   // plaidCategoryMappings is gated alongside the others rather than defaulted to []: resolving
@@ -152,9 +165,12 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
     const withTransfers = applyTransfers(merged, transfers.data ?? [])
     // Last in the chain, deliberately: it only touches brokerage-cash outflows that applyTransfers
     // left unpaired, so it can never override a transfer that auto-applied or the user confirmed.
-    return applySweepExclusion(withTransfers)
+    const result = applySweepExclusion(withTransfers)
+    return result
   }, [
     rawTransactions,
+    plaidTransactions,
+    accounts.financeKitTransactions,
     manualTransactions.data,
     overrides.data,
     vendorMappings.data,
@@ -285,9 +301,18 @@ export function TransactionFeedProvider({ children }: { children: ReactNode }) {
 
   // Memoized so pull-to-refresh consumers (usePullToRefresh) don't rebuild their
   // RefreshControl on every feed render. force: the user asked, so the cooldown does not apply.
+  // Both sources, in parallel: the user pulling to refresh means "make everything current", and a
+  // FinanceKit read is local and cheap. Promise.all rather than sequential so a slow Plaid round
+  // trip does not delay the Apple Card rows. Both swallow their own failures onto their snapshots,
+  // so neither can reject this.
   const refresh = useCallback(
-    () => syncDriver.syncNow({ itemIds, accountIdToItemId, force: true }),
-    [itemIds, accountIdToItemId],
+    async () => {
+      await Promise.all([
+        syncDriver.syncNow({ itemIds, accountIdToItemId, force: true }),
+        accounts.syncFinanceKit(),
+      ])
+    },
+    [itemIds, accountIdToItemId, accounts.syncFinanceKit],
   )
 
   const value = useMemo<TransactionFeedValue>(

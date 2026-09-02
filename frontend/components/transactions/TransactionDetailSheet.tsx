@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native'
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { SheetScroll } from '@/components/ui/BottomSheet'
 import { CategoryIcon } from '@/components/categories/CategoryIcon'
@@ -11,7 +11,8 @@ import { formatAmount } from '@/lib/format/money'
 import { formatFullDate } from '@/lib/format/date'
 import { amountSign, transactionAmountColor } from '@/lib/transactions/amountDisplay'
 import { linkPillLabel } from '@/lib/transactions/linkSummary'
-import { useInstitutionLogos } from '@/hooks/useInstitutionLogos'
+import { useAccountMarks } from '@/hooks/useAccountMarks'
+import { AccountMarkChip } from '@/components/accounts/AccountMarkChip'
 import { colors, hexToRgba } from '@/constants/theme'
 import { TRANSFER_TYPES } from '@/lib/transfers/registry'
 import type { FeedItem, FeedLink } from '@/lib/transactions/resolveFeed'
@@ -42,7 +43,7 @@ export function TransactionDetailSheet({ sheetScroll, item, categories, subcateg
   const [markReimbursed, setMarkReimbursed] = useState(false)
   const [markTransfer, setMarkTransfer] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const institutionLogos = useInstitutionLogos()
+  const accountMarks = useAccountMarks()
 
   useEffect(() => {
     setCategoryId(item?.categoryId ?? null)
@@ -61,7 +62,7 @@ export function TransactionDetailSheet({ sheetScroll, item, categories, subcateg
 
   if (!item) return null
 
-  const institutionLogo = item.accountId ? institutionLogos.get(item.accountId) ?? null : null
+  const accountMark = item.accountId ? accountMarks.get(item.accountId) ?? null : null
   const amountColor = transactionAmountColor(item)
   const pillLabel = linkPillLabel(item)
   const selectedCategory = categories.find((c) => c.id === categoryId) ?? null
@@ -105,16 +106,7 @@ export function TransactionDetailSheet({ sheetScroll, item, categories, subcateg
       <ScrollView {...sheetScroll.scrollProps} className="px-5" contentContainerClassName="gap-4 pb-10">
         {/* The transaction itself, centred: which card it hit, what it came to, when. */}
         <View className="items-center gap-3 pt-1">
-          {institutionLogo ? (
-            // Ring in the amount's colour, the same signal the feed rows carry: green in, red out,
-            // muted for anything the totals leave out.
-            <View style={{ borderWidth: 2, borderColor: amountColor, borderRadius: 33, padding: 3 }}>
-              <Image
-                source={{ uri: `data:image/png;base64,${institutionLogo}` }}
-                style={{ width: 56, height: 56, borderRadius: 28 }}
-              />
-            </View>
-          ) : null}
+          <AccountMarkChip mark={accountMark} ringColor={amountColor} size={56} />
 
           <Text className="font-display text-2xl" style={{ color: amountColor }}>
             {amountSign(item)}{formatAmount(Math.abs(item.amount))}

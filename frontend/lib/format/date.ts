@@ -2,22 +2,35 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
+ * The short form day headers use: "7/10 Fri" this year, "11/27/2024 Wed" in any other.
+ *
+ * The year is conditional rather than always-on because most of a feed is the current year, where
+ * the year is noise — but a feed can span several years at once (Apple Cash history reaches back
+ * further than Plaid's sync window), and there a header omitting the year is indistinguishable from
+ * the same calendar day in another year.
+ *
+ * `now` is a parameter rather than a clock read, matching formatRelativeTime: callers re-render on
+ * their own tick, and the function stays testable without faking time. The current year comes from
+ * the LOCAL calendar — which year it is for the reader — while the key itself is parsed as UTC, the
+ * same split formatAsOfDate makes and for the same reason.
+ */
+export function formatDayLabel(dateKey: string, now: number): string {
+  const date = new Date(`${dateKey}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return dateKey
+
+  const year = date.getUTCFullYear()
+  const label = `${date.getUTCMonth() + 1}/${date.getUTCDate()}`
+  const suffix = year === new Date(now).getFullYear() ? '' : `/${year}`
+  return `${label}${suffix} ${DAY_NAMES[date.getUTCDay()]}`
+}
+
+/**
  * A YYYY-MM-DD key written out for display: "Mon, Jul 20, 2026".
  *
  * Parsed as UTC and read back with getUTC*, so a transaction never shifts a day for a user west
  * of Greenwich — the key is a calendar date, not an instant. An unparseable key is returned as-is
  * rather than rendering "Invalid Date" at the top of a sheet.
  */
-/**
- * The short form day headers use: "7/10 Fri". Same UTC handling as formatFullDate, for the same
- * reason — a calendar date must not shift under the user's timezone.
- */
-export function formatDayLabel(dateKey: string): string {
-  const date = new Date(`${dateKey}T00:00:00Z`)
-  if (Number.isNaN(date.getTime())) return dateKey
-  return `${date.getUTCMonth() + 1}/${date.getUTCDate()} ${DAY_NAMES[date.getUTCDay()]}`
-}
-
 export function formatFullDate(dateKey: string): string {
   const date = new Date(`${dateKey}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return dateKey

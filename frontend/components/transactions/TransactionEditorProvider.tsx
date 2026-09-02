@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from 'react'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { TransactionEditSheets } from '@/components/transactions/TransactionEditSheets'
+import { SheetHostProvider } from '@/components/ui/SheetHost'
 import { useTransactionEditor } from '@/hooks/useTransactionEditor'
 import type { TransactionEditor } from '@/hooks/useTransactionEditor'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -49,8 +50,17 @@ export function TransactionEditorProvider({ feed, children }: { feed: FeedItem[]
   return (
     <ActionsContext.Provider value={actions}>
       <EditorContext.Provider value={editor}>
-        {children}
-        <TransactionEditSheets editor={editor} />
+        {/* The host is mounted HERE, below both contexts and above the edit sheets, because both
+            halves of that sandwich are load-bearing and neither survives being split across files.
+            Below the contexts: a layer renders at the host's tree position, so every context its
+            content reads has to sit above the host. Above the edit sheets: BottomSheet reads
+            useHasSheetHost() where it is *written*, so sheets written outside the host present
+            their own Modal — and a second Modal beside the host's is the sibling arrangement that
+            dismisses the whole stack mid-reimbursement. */}
+        <SheetHostProvider>
+          {children}
+          <TransactionEditSheets editor={editor} />
+        </SheetHostProvider>
       </EditorContext.Provider>
     </ActionsContext.Provider>
   )

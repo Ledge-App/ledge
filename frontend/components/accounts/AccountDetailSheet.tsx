@@ -3,6 +3,8 @@ import { Pressable, SectionList, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, hexToRgba } from '@/constants/theme'
+import { appleIcon } from '@/components/accounts/AccountRow'
+import { FINANCEKIT_ITEM_ID } from '@/lib/financekit/mergeAccounts'
 import { formatMaskableAmount } from '@/lib/format/money'
 import { groupByDay } from '@/lib/transactions/groupByDay'
 import { BottomSheet, useSheetScroll } from '@/components/ui/BottomSheet'
@@ -11,7 +13,6 @@ import { DayGroupHeader } from '@/components/transactions/DayGroupHeader'
 import { TransactionRow } from '@/components/transactions/TransactionRow'
 import {
   TransactionEditorErrorBanner,
-  TransactionEditorProvider,
   useTransactionEditorActions,
 } from '@/components/transactions/TransactionEditorProvider'
 import type { FeedItem } from '@/lib/transactions/resolveFeed'
@@ -36,6 +37,8 @@ interface AccountDetailSheetProps {
   isMasked: boolean
   onClose: () => void
   emptyLabel?: string
+  /** The account's item. Only read to spot Apple accounts, which wear the Apple mark. */
+  itemId?: string | null
 }
 
 const variantIcons: Record<AccountDetailVariant, { name: string; color: string }> = {
@@ -57,28 +60,28 @@ export function AccountDetailSheet({
   isMasked,
   onClose,
   emptyLabel = 'No transactions for this account',
+  itemId,
 }: AccountDetailSheetProps) {
   const sheetScroll = useSheetScroll()
 
   // The caller clears its selection the moment it closes the sheet, which would blank the
   // content out mid-animation. Holding the last open values keeps the exit readable.
-  const lastShown = useRef({ title, balance, variant, items, emptyLabel })
-  if (visible) lastShown.current = { title, balance, variant, items, emptyLabel }
-  const shown = visible ? { title, balance, variant, items, emptyLabel } : lastShown.current
+  const lastShown = useRef({ title, balance, variant, items, emptyLabel, itemId })
+  if (visible) lastShown.current = { title, balance, variant, items, emptyLabel, itemId }
+  const shown = visible ? { title, balance, variant, items, emptyLabel, itemId } : lastShown.current
 
   return (
     <BottomSheet visible={visible} onClose={onClose} contentScroll={sheetScroll}>
-      {/* Provider inside the sheet, so the edit sheets' Modal still mounts nested inside this
-          one's — presenting it as a sibling would fight this Modal for the screen. */}
-      <TransactionEditorProvider feed={feed}>
-        <AccountDetailSheetBody
+      {/* No provider here: it is mounted once in the tabs layout. Nesting it inside this sheet put
+          the edit sheet's Modal inside this Modal's subtree, which on iOS made touch delivery
+          unrecoverable — see AuthedShell in (tabs)/_layout.tsx. */}
+      <AccountDetailSheetBody
           shown={shown}
           categoryById={categoryById}
           isMasked={isMasked}
           sheetScroll={sheetScroll}
           onClose={onClose}
         />
-      </TransactionEditorProvider>
     </BottomSheet>
   )
 }
@@ -89,6 +92,7 @@ type ShownAccount = {
   variant: AccountDetailSheetProps['variant']
   items: FeedItem[]
   emptyLabel: string
+  itemId?: string | null
 }
 
 /**
@@ -154,7 +158,11 @@ function AccountDetailSheetBody({
     [categoryById, openTransaction],
   )
 
-  const icon = variantIcons[shown.variant] ?? variantIcons.cash
+  // Tint and glyph come apart for Apple accounts: the card keeps the wash its KIND earns — grey
+  // for a card, blue for cash — while the glyph becomes the Apple mark. Tinting from the mark's own
+  // colour instead would wash the whole card in the text colour.
+  const tint = variantIcons[shown.variant] ?? variantIcons.cash
+  const icon = shown.itemId === FINANCEKIT_ITEM_ID ? appleIcon : tint
   const balanceColor = shown.variant === 'credit' ? colors.expense : colors.textPrimary
 
   return (
@@ -175,8 +183,8 @@ function AccountDetailSheetBody({
         )}
       </View>
 
-      <View className="mx-5 mb-4 items-center rounded-xl p-5" style={{ backgroundColor: hexToRgba(icon.color, 0.08) }}>
-        <View className="mb-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: hexToRgba(icon.color, 0.18) }}>
+      <View className="mx-5 mb-4 items-center rounded-xl p-5" style={{ backgroundColor: hexToRgba(tint.color, 0.08) }}>
+        <View className="mb-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: hexToRgba(tint.color, 0.18) }}>
           <Ionicons name={icon.name as any} size={24} color={icon.color} />
         </View>
         <Text className="font-display text-xl" style={{ color: balanceColor }}>
@@ -193,6 +201,18 @@ function AccountDetailSheetBody({
       <SectionList
         {...sheetScroll.scrollProps}
         sections={sections}
+        // Sticky headers OFF. groupByDay turns 696 card transactions into 344 sections — barely two
+        // rows a day — and on iOS SectionList makes every one of them a sticky index on the
+        // underlying ScrollView, which re-evaluates the whole set as each new one mounts. That is
+        // quadratic in the section count, and it matches what the sheet does: every batch of rows
+        // slower than the one before, the JS thread blocked for seven seconds straight, and a fill
+        // that never settles.
+        //
+        // Nothing else here is tuned. windowSize/maxToRenderPerBatch were tried first and did not
+        // bind at all — the list has a 482px viewport and a correctly measured 19,678px content and
+        // renders rows 19,000px below the fold regardless — so they are back at their defaults
+        // rather than left in as decoration.
+        stickySectionHeadersEnabled={false}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}
         renderSectionHeader={renderSectionHeader}
